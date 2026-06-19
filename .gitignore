@@ -1,0 +1,37 @@
+# =========================================================
+# .gitignore - Fabrica V2
+# Lo que Git debe IGNORAR (nunca subir a GitHub)
+# =========================================================
+
+# Secretos y configuracion sensible
+*.env
+.env
+.env.local
+*.key
+
+# Datos reales (clientes, ventas, deudas reales)
+datos_reales/
+*_reales.*
+*.backup
+*.dump
+
+# Archivos viejos o temporales
+*_OLD.*
+*_old.*
+*.tmp
+*.bak
+
+# Dependencias (cuando agregues backend/frontend)
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Carpetas de editores
+.vscode/
+.idea/

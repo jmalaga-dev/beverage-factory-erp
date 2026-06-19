@@ -1,0 +1,405 @@
+//Fabrica V2 - Modelo de datos completo
+
+/*
+=========================================================
+APUNTES / CONSIDERACIONES
+=========================================================
+- Los codigos QR se generan en el backend (no se guardan): tipo MP3EXUF17062026,
+  implicito de que tabla es y que registro/lote.
+
+- Filosofia de COSTO = B: el Precio_Unitario_Producto_Terminado de cada lote de
+  Produccion se RECALCULA por el backend cada vez que cambian sus insumos.
+  Por eso el informe comparativo entre fotos de Balance es clave (se calcula
+  comparando dos filas de Balance, no se guarda).
+
+- Saldos guardados (Cuenta, Deuda) y cantidades restantes (Compra, Produccion,
+  Produccion_Intermedio, Registro_Trabajador): son "saldo de conveniencia"
+  mantenidos por el backend/trigger de forma atomica. La VERDAD de respaldo
+  siempre es el libro de movimientos / los detalles. Nunca se escriben a mano.
+
+- Principio de trazabilidad: NUNCA se borra. Lo que se pierde, ajusta, devuelve
+  o reprocesa se REGISTRA como evento en Movimiento_Inventario.
+
+- Las islas (productivo / financiero) se unen con FKs opcionales (Id_Movimiento).
+  Opcionales para permitir migrar datos historicos sin vinculo exacto.
+
+- Balances, escenarios, prorrateos e informes comparativos son FOTOS congeladas
+  o reportes calculados, no se editan retroactivamente.
+
+- No tengo una BD de proveedores seria interesante tener eso más para ver de
+  cual es mejor
+*/
+
+// =========================================================
+// MATERIA PRIMA Y COMPRAS
+// =========================================================
+
+Table Materia_Prima {
+  Id_Materia_Prima integer [primary key]
+  Descripcion_Materia_Prima varchar
+  Unidad_Materia_Prima varchar
+}
+
+Table Compra {
+  Id_Compra integer [primary key]
+  Id_Materia_Prima integer
+  Fecha_Compra date
+  Cantidad_Compra numeric
+  Precio_Compra numeric
+  Cantidad_Restante_Compra numeric [note: 'stock del lote, mantenido por backend']
+  Id_Movimiento integer [null, note: 'pago de esta compra - une mundo productivo y financiero']
+}
+
+// =========================================================
+// TRABAJADORES Y JORNADAS
+// =========================================================
+
+Table Trabajador {
+  Id_Trabajador integer [primary key]
+  Nombre_Trabajador varchar
+  Pago_Trabajador numeric
+  Horas_Base_Trabajador numeric
+}
+
+Table Registro_Trabajador {
+  Id_Registro_Trabajador integer [primary key]
+  Id_Trabajador integer
+  Fecha_Registro_Trabajador date
+  Horas_Registro_Trabajador numeric
+  Horas_Restante_Registro_Trabajador numeric [note: 'horas no asignadas aun, mantenido por backend']
+  Id_Movimiento integer [null, note: 'pago de esta jornada/semana - une las islas']
+}
+
+// =========================================================
+// PRODUCTO INTERMEDIO
+// =========================================================
+
+Table Producto_Intermedio {
+  Id_Producto_Intermedio integer [primary key]
+  Descripcion_Producto_Intermedio varchar
+  Litros_Botella_Final numeric [note: 'desarrollo aun']
+}
+
+Table Produccion_Intermedio {
+  Id_Produccion_Intermedio integer [primary key]
+  Id_Producto_Intermedio integer
+  Fecha_Produccion_Intermedio date
+  Cantidad_Producida numeric
+  Cantidad_Restante_Producida numeric [note: 'stock del lote, mantenido por backend']
+}
+
+Table Detalle_PI_Materia_Prima {
+  Id_Detalle_PI_MP integer [primary key]
+  Id_Produccion_Intermedio integer
+  Id_Compra integer [note: 'lote exacto - trazabilidad']
+  Cantidad_Usada numeric
+}
+
+Table Detalle_PI_Trabajo {
+  Id_Detalle_PI_Trab integer [primary key]
+  Id_Produccion_Intermedio integer
+  Id_Registro_Trabajador integer
+  Horas_Usadas numeric
+}
+
+Table Detalle_PI_Intermedio {
+  Id_Detalle_PI_Int integer [primary key]
+  Id_Produccion_Intermedio integer
+  Id_Produccion_Intermedio_Origen integer [note: 'de que produccion intermedia previa salio']
+  Cantidad_Usada numeric
+}
+
+// =========================================================
+// PRODUCTO TERMINADO (para venta)
+// =========================================================
+
+Table Producto_Terminado {
+  Id_Producto_Terminado integer [primary key]
+  Descripcion_Producto_Terminado varchar
+  Precio_Venta_Recomendado_Producto_Terminado numeric [note: 'precio sugerido de venta']
+}
+
+Table Produccion {
+  Id_Produccion integer [primary key]
+  Id_Producto_Terminado integer
+  Fecha_Produccion date
+  Cantidad_Producida_Produccion numeric
+  Precio_Unitario_Producto_Terminado numeric [note: 'costo, RECALCULADO por backend (Filosofia B)']
+  Cantidad_Restante_Produccion numeric [note: 'stock del lote para descontar en ventas']
+}
+
+Table Detalle_Prod_Intermedio {
+  Id_Detalle_Prod_Int integer [primary key]
+  Id_Produccion integer
+  Id_Produccion_Intermedio integer [note: 'lote de intermedio consumido - trazabilidad']
+  Cantidad_Usada numeric
+}
+
+Table Detalle_Prod_Materia_Prima {
+  Id_Detalle_Prod_MP integer [primary key]
+  Id_Produccion integer
+  Id_Compra integer [note: 'lote de materia prima directa - trazabilidad']
+  Cantidad_Usada numeric
+}
+
+Table Detalle_Prod_Trabajador {
+  Id_Detalle_Prod_Trab integer [primary key]
+  Id_Produccion integer
+  Id_Registro_Trabajador integer [note: 'jornada usada - trazabilidad']
+  Horas_Usadas numeric
+}
+
+// =========================================================
+// CLIENTES
+// =========================================================
+
+Table Sector {
+  Id_Sector integer [primary key]
+  Nombre_Sector varchar [unique, note: 'lista validada para zonas en Google Maps']
+}
+
+Table Cliente {
+  Id_Cliente integer [primary key]
+  Nombre_Cliente varchar
+  Apellido_Cliente varchar
+  Celular_Cliente varchar
+  Licoreria_Cliente varchar [note: 'licoreria o descripcion del lugar']
+  Latitud_Cliente numeric
+  Longitud_Cliente numeric
+  Id_Sector integer
+}
+
+// =========================================================
+// VENTAS
+// =========================================================
+
+Table Venta {
+  Id_Venta integer [primary key]
+  Id_Cliente integer
+  Fecha_Venta date
+}
+
+Table Detalle_Venta {
+  Id_Detalle_Venta integer [primary key]
+  Id_Venta integer
+  Id_Produccion integer [note: 'lote exacto de producto terminado vendido - trazabilidad']
+  Cantidad_Venta numeric
+  Precio_Venta_Real numeric [note: 'PV real, puede variar por promocion']
+  Id_Movimiento integer [null, note: 'cobro de este producto - cada producto puede ir a una cuenta distinta']
+}
+
+// =========================================================
+// FINANZAS / FLUJO DE CAJA
+// =========================================================
+
+Table Cuenta {
+  Id_Cuenta integer [primary key]
+  Nombre_Cuenta varchar [unique]
+  Saldo_Actual_Cuenta numeric [note: 'mantenido por backend/trigger, NUNCA a mano. Movimiento es la verdad']
+}
+
+Table Grupo_Movimiento {
+  Id_Grupo_Movimiento integer [primary key]
+  Nombre_Grupo_Movimiento varchar [unique, note: 'lista validada: gastos familiares, servicios, etc.']
+}
+
+// EL LIBRO DE MOVIMIENTOS: todo lo que toca el dinero pasa por aqui
+Table Movimiento {
+  Id_Movimiento integer [primary key]
+  Fecha_Movimiento date
+  Tipo_Movimiento varchar [note: 'ENTRADA, SALIDA, TRANSFERENCIA']
+  Id_Cuenta_Origen integer [null, note: 'de donde sale (null si es ingreso externo)']
+  Id_Cuenta_Destino integer [null, note: 'a donde entra (null si es gasto/salida real)']
+  Monto_Movimiento numeric
+  Descripcion_Movimiento varchar [note: 'de donde vino / a que se destino']
+  Id_Grupo_Movimiento integer [null]
+}
+
+// =========================================================
+// DEUDAS (PASIVOS)
+// =========================================================
+
+Table Deuda {
+  Id_Deuda integer [primary key]
+  Descripcion_Deuda varchar [unique]
+  Saldo_Actual_Deuda numeric [note: 'mantenido por sistema = aumentos - pagos']
+}
+
+Table Movimiento_Deuda {
+  Id_Movimiento_Deuda integer [primary key]
+  Id_Deuda integer
+  Fecha_Movimiento_Deuda date
+  Tipo_Movimiento_Deuda varchar [note: 'AUMENTO o PAGO']
+  Monto_Movimiento_Deuda numeric
+  Id_Cuenta_Pago integer [null, note: 'de que cuenta salio el pago (null si es aumento)']
+}
+
+// =========================================================
+// ACTIVOS FIJOS (para el balance)
+// =========================================================
+
+Table Tipo_Bien {
+  Id_Tipo_Bien integer [primary key]
+  Nombre_Tipo_Bien varchar [unique, note: 'INMUEBLE, VEHICULO, BIENES NEGOCIO...']
+}
+
+Table Activo {
+  Id_Activo integer [primary key]
+  Id_Tipo_Bien integer
+  Descripcion_Activo varchar
+  Valor_Activo numeric
+}
+
+// =========================================================
+// GASTOS EXTRA Y PRORRATEO MENSUAL
+// =========================================================
+
+Table Gasto_Extra {
+  Id_Gasto_Extra integer [primary key]
+  Descripcion_Gasto_Extra varchar [note: 'COMTECO, TIGO, ELFEC...']
+  Precio_Mensual_Gasto_Extra numeric
+}
+
+// Cuantas horas uso cada producto ese mes (una fila por producto/mes)
+Table Horas_Producto_Mes {
+  Id_Horas_Producto_Mes integer [primary key]
+  Id_Producto_Terminado integer
+  Anio_Mes varchar [note: 'ej 2026-05']
+  Horas_Producto_Mes numeric [note: 'horas que ese producto uso ese mes']
+}
+
+// El reparto de cada gasto extra individual (foto congelada del cierre de mes)
+Table Prorrateo_Mensual {
+  Id_Prorrateo integer [primary key]
+  Id_Horas_Producto_Mes integer
+  Id_Gasto_Extra integer
+  Gasto_Extra_Asignado numeric [note: 'lo que le toco a este producto de este gasto']
+}
+
+// =========================================================
+// MOVIMIENTOS DE INVENTARIO (mermas, ajustes, devoluciones, reprocesos)
+// Principio: nunca se borra, se registra el evento. Reproceso = dos registros
+// (salida de un lote + entrada a otro) enlazados por Ref_Reproceso.
+// =========================================================
+
+Table Movimiento_Inventario {
+  Id_Movimiento_Inventario integer [primary key]
+  Fecha_Movimiento_Inventario date
+  Tipo_Movimiento_Inventario varchar [note: 'MERMA, AJUSTE, DEVOLUCION, REPROCESO']
+  Sentido_Movimiento_Inventario varchar [note: 'SALIDA o ENTRADA (resta o suma al lote)']
+  Origen_Lote varchar [note: 'COMPRA, PRODUCCION, PRODUCCION_INTERMEDIO']
+  Id_Compra integer [null, note: 'lote de MP afectado']
+  Id_Produccion integer [null, note: 'lote de PT afectado']
+  Id_Produccion_Intermedio integer [null, note: 'lote de PI afectado']
+  Cantidad_Movimiento_Inventario numeric
+  Motivo_Movimiento_Inventario varchar [note: 'se echo a perder, se rompio, error de carga...']
+  Ref_Reproceso integer [null, note: 'agrupa los 2 registros de un reproceso (salida+entrada)']
+}
+
+// =========================================================
+// BALANCE (foto semanal congelada)
+// =========================================================
+
+Table Balance {
+  Id_Balance integer [primary key]
+  Fecha_Balance date [note: 'cuando se tomo la foto']
+
+  // Activos liquidos y fijos
+  Total_Efectivo numeric [note: 'suma de saldos de todas las cuentas']
+  Total_Inmuebles numeric
+  Total_Equipos numeric
+  Total_Otros_Activos numeric
+
+  // Inventarios valorizados
+  Valor_Stock_Materia_Prima numeric [note: 'restante x precio de compra']
+  Valor_Stock_Producto_Terminado numeric [note: 'restante x precio recomendado venta']
+
+  // Pasivos
+  Total_Deudas numeric [note: 'suma de saldos de deudas']
+
+  // Resultado de la semana
+  Ventas_Semana numeric
+  Compras_Semana numeric
+  Gastos_Semana numeric
+
+  // Los 3 escenarios
+  Escenario_A numeric [note: 'todo vendible + cuentas + ahorros']
+  Escenario_B numeric [note: 'stock MP+PT + banco + fabrica + casa']
+  Escenario_C numeric [note: 'solo cuentas liquidas']
+
+  Patrimonio numeric [note: 'activos - pasivos']
+}
+
+// El detalle de productos en cada foto de balance (que habia y cuanto)
+Table Balance_Detalle_Producto {
+  Id_Balance_Detalle integer [primary key]
+  Id_Balance integer
+  Id_Producto_Terminado integer
+  Cantidad_En_Stock numeric
+  Valor_En_Stock numeric
+}
+
+// =========================================================
+// RELACIONES
+// =========================================================
+
+// Materia prima / compras
+Ref: Compra.Id_Materia_Prima > Materia_Prima.Id_Materia_Prima
+Ref: Compra.Id_Movimiento > Movimiento.Id_Movimiento
+
+// Trabajadores
+Ref: Registro_Trabajador.Id_Trabajador > Trabajador.Id_Trabajador
+Ref: Registro_Trabajador.Id_Movimiento > Movimiento.Id_Movimiento
+
+// Producto intermedio
+Ref: Produccion_Intermedio.Id_Producto_Intermedio > Producto_Intermedio.Id_Producto_Intermedio
+Ref: Detalle_PI_Materia_Prima.Id_Produccion_Intermedio > Produccion_Intermedio.Id_Produccion_Intermedio
+Ref: Detalle_PI_Materia_Prima.Id_Compra > Compra.Id_Compra
+Ref: Detalle_PI_Trabajo.Id_Produccion_Intermedio > Produccion_Intermedio.Id_Produccion_Intermedio
+Ref: Detalle_PI_Trabajo.Id_Registro_Trabajador > Registro_Trabajador.Id_Registro_Trabajador
+Ref: Detalle_PI_Intermedio.Id_Produccion_Intermedio > Produccion_Intermedio.Id_Produccion_Intermedio
+Ref: Detalle_PI_Intermedio.Id_Produccion_Intermedio_Origen > Produccion_Intermedio.Id_Produccion_Intermedio
+
+// Producto terminado
+Ref: Produccion.Id_Producto_Terminado > Producto_Terminado.Id_Producto_Terminado
+Ref: Detalle_Prod_Intermedio.Id_Produccion > Produccion.Id_Produccion
+Ref: Detalle_Prod_Intermedio.Id_Produccion_Intermedio > Produccion_Intermedio.Id_Produccion_Intermedio
+Ref: Detalle_Prod_Materia_Prima.Id_Produccion > Produccion.Id_Produccion
+Ref: Detalle_Prod_Materia_Prima.Id_Compra > Compra.Id_Compra
+Ref: Detalle_Prod_Trabajador.Id_Produccion > Produccion.Id_Produccion
+Ref: Detalle_Prod_Trabajador.Id_Registro_Trabajador > Registro_Trabajador.Id_Registro_Trabajador
+
+// Clientes
+Ref: Cliente.Id_Sector > Sector.Id_Sector
+
+// Ventas
+Ref: Venta.Id_Cliente > Cliente.Id_Cliente
+Ref: Detalle_Venta.Id_Venta > Venta.Id_Venta
+Ref: Detalle_Venta.Id_Produccion > Produccion.Id_Produccion
+Ref: Detalle_Venta.Id_Movimiento > Movimiento.Id_Movimiento
+
+// Finanzas
+Ref: Movimiento.Id_Cuenta_Origen > Cuenta.Id_Cuenta
+Ref: Movimiento.Id_Cuenta_Destino > Cuenta.Id_Cuenta
+Ref: Movimiento.Id_Grupo_Movimiento > Grupo_Movimiento.Id_Grupo_Movimiento
+
+// Deudas
+Ref: Movimiento_Deuda.Id_Deuda > Deuda.Id_Deuda
+Ref: Movimiento_Deuda.Id_Cuenta_Pago > Cuenta.Id_Cuenta
+
+// Activos
+Ref: Activo.Id_Tipo_Bien > Tipo_Bien.Id_Tipo_Bien
+
+// Gastos extra / prorrateo
+Ref: Horas_Producto_Mes.Id_Producto_Terminado > Producto_Terminado.Id_Producto_Terminado
+Ref: Prorrateo_Mensual.Id_Horas_Producto_Mes > Horas_Producto_Mes.Id_Horas_Producto_Mes
+Ref: Prorrateo_Mensual.Id_Gasto_Extra > Gasto_Extra.Id_Gasto_Extra
+
+// Movimientos de inventario
+Ref: Movimiento_Inventario.Id_Compra > Compra.Id_Compra
+Ref: Movimiento_Inventario.Id_Produccion > Produccion.Id_Produccion
+Ref: Movimiento_Inventario.Id_Produccion_Intermedio > Produccion_Intermedio.Id_Produccion_Intermedio
+
+// Balance
+Ref: Balance_Detalle_Producto.Id_Balance > Balance.Id_Balance
+Ref: Balance_Detalle_Producto.Id_Producto_Terminado > Producto_Terminado.Id_Producto_Terminado
