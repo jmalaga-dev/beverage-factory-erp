@@ -35,3 +35,6 @@ Thumbs.db
 # Carpetas de editores
 .vscode/
 .idea/
+
+# Scripts de prueba (no son parte del backend)
+backend/pruebas/
