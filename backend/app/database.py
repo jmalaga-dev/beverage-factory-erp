@@ -28,7 +28,7 @@ DATABASE_URL = (
 )
 
 # El "engine": el motor que mantiene la conexion con PostgreSQL
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=False)
 
 # La "fabrica de sesiones": cada operacion con la base usa una sesion
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

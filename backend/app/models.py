@@ -199,9 +199,31 @@ class Registro_Trabajador(Base):
     Horas_Registro_Trabajador = Column(Numeric, nullable=False)
     Horas_Restante_Registro_Trabajador = Column(Numeric)
     Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
+    Id_Pago_Trabajador = Column(Integer, ForeignKey("Pago_Trabajador.Id_Pago_Trabajador"), nullable=True)  # NUEVO
 
     trabajador = relationship("Trabajador", back_populates="registros")
     movimiento = relationship("Movimiento")
+    pago = relationship("Pago_Trabajador", back_populates="jornadas")  # NUEVO
+
+
+# =========================================================
+# PAGO DE HORAS DE TRABAJO
+# =========================================================
+
+class Pago_Trabajador(Base):
+    __tablename__ = "Pago_Trabajador"
+
+    Id_Pago_Trabajador = Column(Integer, primary_key=True)
+    Id_Trabajador = Column(Integer, ForeignKey("Trabajador.Id_Trabajador"), nullable=False)
+    Fecha_Pago_Trabajador = Column(Date, nullable=False)
+    Monto_Sugerido_Pago = Column(Numeric)
+    Monto_Real_Pago = Column(Numeric, nullable=False)
+    Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
+
+    trabajador = relationship("Trabajador")
+    movimiento = relationship("Movimiento")
+    # Las jornadas que cubre este pago (la relacion inversa)
+    jornadas = relationship("Registro_Trabajador", back_populates="pago")
 
 
 # =========================================================
@@ -216,6 +238,7 @@ class Produccion_Intermedio(Base):
     Fecha_Produccion_Intermedio = Column(Date, nullable=False)
     Cantidad_Producida = Column(Numeric, nullable=False)
     Cantidad_Restante_Producida = Column(Numeric, nullable=False)
+    Costo_Unitario_Produccion_Intermedio = Column(Numeric)  # NUEVO
 
     producto_intermedio = relationship("Producto_Intermedio", back_populates="producciones")
     detalle_mp = relationship("Detalle_PI_Materia_Prima", back_populates="produccion")
