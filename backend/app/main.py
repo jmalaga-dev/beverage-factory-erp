@@ -15,10 +15,21 @@ from decimal import Decimal
 
 from app.models import Cliente, Cuenta, Materia_Prima, Compra, Producto_Terminado, Produccion
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Fabrica V2 API",
     description="API de gestion para la fabrica de bebidas",
     version="1.0.0",
+)
+
+# Permitir que el frontend (que corre en otro puerto) pueda pedir datos a esta API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],   # permite GET, POST, etc.
+    allow_headers=["*"],
 )
 
 
