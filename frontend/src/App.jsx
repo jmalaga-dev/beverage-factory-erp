@@ -1,32 +1,28 @@
-import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import './App.css'
+import PaginaClientes from './paginas/PaginaClientes'
+import PaginaCompras from './paginas/PaginaCompras'
 
 function App() {
-  // Estado: aqui guardaremos la lista de clientes que venga de la API
-  const [clientes, setClientes] = useState([])
-
-  // useEffect: se ejecuta cuando el componente aparece por primera vez.
-  // Aqui pedimos los clientes a la API.
-  useEffect(() => {
-    fetch('http://127.0.0.1:8000/clientes')        // pide a la API
-      .then((respuesta) => respuesta.json())        // convierte la respuesta a JSON
-      .then((datos) => setClientes(datos))          // guarda los clientes en el estado
-      .catch((error) => console.error('Error al cargar clientes:', error))
-  }, [])  // el [] vacio significa "solo una vez, al aparecer"
-
   return (
-    <div>
-      <h1>Fábrica V2</h1>
-      <h2>Clientes</h2>
+    <BrowserRouter>
+      <div>
+        <h1>Fábrica V2</h1>
 
-      <ul>
-        {clientes.map((cliente) => (
-          <li key={cliente.id_cliente}>
-            {cliente.nombre} — celular: {cliente.celular || 'sin dato'}
-          </li>
-        ))}
-      </ul>
-    </div>
+        {/* Menú de navegación */}
+        <nav>
+          <Link to="/clientes">Clientes</Link>
+          {' | '}
+          <Link to="/compras">Compras</Link>
+        </nav>
+
+        {/* Aquí se muestra la pantalla según la ruta */}
+        <Routes>
+          <Route path="/clientes" element={<PaginaClientes />} />
+          <Route path="/compras" element={<PaginaCompras />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   )
 }
 

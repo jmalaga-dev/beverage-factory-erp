@@ -50,6 +50,8 @@ class CompraEntrada(BaseModel):
 
 # ---------- ENDPOINT: registrar una compra ----------
 
+from datetime import date   # asegúrate de tener este import arriba
+
 @app.post("/compras")
 def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
     """
@@ -64,7 +66,7 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
             id_cuenta=datos.id_cuenta,
             cantidad=Decimal(str(datos.cantidad)),
             precio_total=Decimal(str(datos.precio_total)),
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),   # si no vino fecha, usa hoy
         )
         return {
             "mensaje": "Compra registrada",
@@ -471,3 +473,59 @@ def crear_balance(datos: BalanceEntrada, sesion: Session = Depends(get_sesion)):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+from app.models import Sector
+
+@app.get("/sectores")
+def listar_sectores(sesion: Session = Depends(get_sesion)):
+    """Devuelve la lista de sectores (para el desplegable)."""
+    sectores = sesion.query(Sector).all()
+    return [
+        {"id_sector": s.Id_Sector, "nombre": s.Nombre_Sector}
+        for s in sectores
+    ]
+
+from sqlalchemy import func
+
+@app.get("/stock-materia-prima")
+def stock_materia_prima(sesion: Session = Depends(get_sesion)):
+    """Stock general de materia prima: suma el restante de todos los lotes por cada materia."""
+    filas = (
+        sesion.query(
+            Materia_Prima.Id_Materia_Prima,
+            Materia_Prima.Descripcion_Materia_Prima,
+            Materia_Prima.Unidad_Materia_Prima,
+            func.coalesce(func.sum(Compra.Cantidad_Restante_Compra), 0).label("total"),
+        )
+        .outerjoin(Compra, Compra.Id_Materia_Prima == Materia_Prima.Id_Materia_Prima)
+        .group_by(
+            Materia_Prima.Id_Materia_Prima,
+            Materia_Prima.Descripcion_Materia_Prima,
+            Materia_Prima.Unidad_Materia_Prima,
+        )
+        .all()
+    )
+    return [
+        {
+            "id_materia_prima": f.Id_Materia_Prima,
+            "descripcion": f.Descripcion_Materia_Prima,
+            "unidad": f.Unidad_Materia_Prima,
+            "stock_total": float(f.total),
+        }
+        for f in filas
+    ]
+
+@app.get("/lotes-compra")
+def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
+    """Lotes de compra con su stock restante (para la tabla por lote)."""
+    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    return [
+        {
+            "id_compra": c.Id_Compra,
+            "id_materia_prima": c.Id_Materia_Prima,
+            "cantidad_restante": float(c.Cantidad_Restante_Compra),
+            "precio_compra": float(c.Precio_Compra),
+            "cantidad_compra": float(c.Cantidad_Compra),
+        }
+        for c in lotes
+    ]
