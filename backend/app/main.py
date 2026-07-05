@@ -13,7 +13,7 @@ from app.servicios.compras import registrar_compra
 
 from decimal import Decimal
 
-from app.models import Cliente, Cuenta, Materia_Prima, Compra, Producto_Terminado, Produccion
+from app.models import Cliente, Cuenta, Materia_Prima, Compra, Producto_Terminado, Produccion, Venta
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,6 +31,16 @@ app.add_middleware(
     allow_methods=["*"],   # permite GET, POST, etc.
     allow_headers=["*"],
 )
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
+
+@app.exception_handler(SQLAlchemyError)
+async def error_bd(request: Request, exc: SQLAlchemyError):
+    # Muestra solo una linea corta en la terminal, no el traceback gigante
+    print(f"ERROR BD en {request.url.path}: {str(exc)[:200]}")
+    return JSONResponse(status_code=500, content={"detail": "Error de base de datos"})
 
 
 @app.get("/")
@@ -124,19 +134,22 @@ def listar_materias_primas(sesion: Session = Depends(get_sesion)):
 
 @app.get("/lotes-producto-terminado")
 def listar_lotes_pt(sesion: Session = Depends(get_sesion)):
-    """Devuelve los lotes de producto terminado con stock disponible (para vender)."""
+    """Lotes de producto terminado con stock, nombre del producto, costo y precio recomendado."""
     lotes = sesion.query(Produccion).filter(
         Produccion.Cantidad_Restante_Produccion > 0
     ).all()
-    return [
-        {
+    resultado = []
+    for p in lotes:
+        producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        resultado.append({
             "id_produccion": p.Id_Produccion,
             "id_producto": p.Id_Producto_Terminado,
+            "nombre_producto": producto.Descripcion_Producto_Terminado if producto else "?",
             "stock": float(p.Cantidad_Restante_Produccion),
             "costo_unitario": float(p.Precio_Unitario_Producto_Terminado or 0),
-        }
-        for p in lotes
-    ]
+            "precio_recomendado": float(producto.Precio_Venta_Recomendado_Producto_Terminado or 0) if producto else 0,
+        })
+    return resultado
 
 from app.servicios.gastos import registrar_gasto
 
@@ -159,7 +172,7 @@ def crear_gasto(datos: GastoEntrada, sesion: Session = Depends(get_sesion)):
             monto=Decimal(str(datos.monto)),
             descripcion=datos.descripcion,
             id_grupo=datos.id_grupo,
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {
             "mensaje": "Gasto registrado",
@@ -202,7 +215,7 @@ def crear_pago(datos: PagoEntrada, sesion: Session = Depends(get_sesion)):
             id_trabajador=datos.id_trabajador,
             id_cuenta=datos.id_cuenta,
             monto_real=Decimal(str(datos.monto_real)),
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {
             "mensaje": "Pago registrado",
@@ -232,11 +245,10 @@ class VentaEntrada(BaseModel):
     fecha: date | None = None
 
 
+# Asegúrate que el POST /ventas ponga fecha de hoy:
 @app.post("/ventas")
 def crear_venta(datos: VentaEntrada, sesion: Session = Depends(get_sesion)):
-    """Registra una venta con varias lineas de producto."""
     try:
-        # Convertir cada linea a los tipos que espera el servicio (Decimal)
         lineas = [
             {
                 "id_produccion": linea.id_produccion,
@@ -246,20 +258,35 @@ def crear_venta(datos: VentaEntrada, sesion: Session = Depends(get_sesion)):
             }
             for linea in datos.lineas
         ]
-
         venta = registrar_venta(
             sesion,
             id_cliente=datos.id_cliente,
             lineas=lineas,
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),   # hoy si no viene
         )
-        return {
-            "mensaje": "Venta registrada",
-            "id_venta": venta.Id_Venta,
-            "lineas": len(lineas),
-        }
+        return {"mensaje": "Venta registrada", "id_venta": venta.Id_Venta, "lineas": len(lineas)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# GET para listar ventas registradas
+@app.get("/ventas")
+def listar_ventas(sesion: Session = Depends(get_sesion)):
+    from app.models import Detalle_Venta
+    ventas = sesion.query(Venta).all()
+    resultado = []
+    for v in ventas:
+        cliente = sesion.get(Cliente, v.Id_Cliente)
+        detalles = sesion.query(Detalle_Venta).filter_by(Id_Venta=v.Id_Venta).all()
+        total = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+        resultado.append({
+            "id_venta": v.Id_Venta,
+            "cliente": cliente.Nombre_Cliente if cliente else "?",
+            "fecha": str(v.Fecha_Venta),
+            "lineas": len(detalles),
+            "total": round(total, 2),
+        })
+    return resultado
     
 
 from app.servicios.trabajadores import registrar_jornada
@@ -285,7 +312,7 @@ def crear_jornada(datos: JornadaEntrada, sesion: Session = Depends(get_sesion)):
             sesion,
             id_trabajador=datos.id_trabajador,
             horas=Decimal(str(datos.horas)),
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {"mensaje": "Jornada registrada", "id_jornada": jornada.Id_Registro_Trabajador}
     except ValueError as e:
@@ -360,7 +387,7 @@ def crear_produccion_intermedia(datos: ProduccionIntermediaEntrada, sesion: Sess
             insumos_mp=mp,
             insumos_trabajo=trabajo,
             insumos_intermedio=intermedio,
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {
             "mensaje": "Produccion intermedia creada",
@@ -395,7 +422,7 @@ def crear_produccion_terminada(datos: ProduccionTerminadoEntrada, sesion: Sessio
             insumos_intermedio=intermedio,
             insumos_mp=mp,
             insumos_trabajo=trabajo,
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {
             "mensaje": "Produccion terminada creada",
@@ -432,7 +459,7 @@ def crear_movimiento_inventario(datos: MovimientoInventarioEntrada, sesion: Sess
             id_compra=datos.id_compra,
             id_produccion=datos.id_produccion,
             id_prod_intermedio=datos.id_prod_intermedio,
-            fecha=datos.fecha,
+            fecha=datos.fecha or date.today(),
         )
         return {"mensaje": "Movimiento de inventario registrado", "id": mov.Id_Movimiento_Inventario}
     except ValueError as e:
@@ -517,15 +544,258 @@ def stock_materia_prima(sesion: Session = Depends(get_sesion)):
 
 @app.get("/lotes-compra")
 def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
-    """Lotes de compra con su stock restante (para la tabla por lote)."""
+    """Lotes de compra con stock, incluyendo el nombre de la materia prima."""
     lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
-    return [
-        {
+    resultado = []
+    for c in lotes:
+        mp = sesion.get(Materia_Prima, c.Id_Materia_Prima)
+        resultado.append({
             "id_compra": c.Id_Compra,
             "id_materia_prima": c.Id_Materia_Prima,
+            "nombre_materia": mp.Descripcion_Materia_Prima if mp else "?",
             "cantidad_restante": float(c.Cantidad_Restante_Compra),
             "precio_compra": float(c.Precio_Compra),
             "cantidad_compra": float(c.Cantidad_Compra),
-        }
-        for c in lotes
-    ]
+        })
+    return resultado
+
+from app.models import Trabajador, Producto_Terminado, Producto_Intermedio, Grupo_Movimiento, Gasto_Extra
+
+# ---------- MATERIA PRIMA ----------
+@app.get("/materias-primas")  # (ya lo tienes, verifica que exista)
+def listar_materias_primas(sesion: Session = Depends(get_sesion)):
+    ms = sesion.query(Materia_Prima).all()
+    return [{"id_materia_prima": m.Id_Materia_Prima, "descripcion": m.Descripcion_Materia_Prima, "unidad": m.Unidad_Materia_Prima} for m in ms]
+
+class MateriaPrimaEntrada(BaseModel):
+    descripcion: str
+    unidad: str
+
+@app.post("/materias-primas")
+def crear_materia_prima(datos: MateriaPrimaEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.descripcion.strip():
+        raise HTTPException(status_code=400, detail="La descripción es obligatoria")
+    m = Materia_Prima(Descripcion_Materia_Prima=datos.descripcion, Unidad_Materia_Prima=datos.unidad)
+    sesion.add(m); sesion.commit()
+    return {"mensaje": "Materia prima creada", "id": m.Id_Materia_Prima}
+
+# ---------- TRABAJADOR ----------
+@app.get("/trabajadores")
+def listar_trabajadores(sesion: Session = Depends(get_sesion)):
+    ts = sesion.query(Trabajador).all()
+    return [{"id_trabajador": t.Id_Trabajador, "nombre": t.Nombre_Trabajador, "pago": float(t.Pago_Trabajador or 0), "horas_base": float(t.Horas_Base_Trabajador or 0)} for t in ts]
+
+class TrabajadorEntrada(BaseModel):
+    nombre: str
+    pago: float
+    horas_base: float | None = None
+
+@app.post("/trabajadores")
+def crear_trabajador(datos: TrabajadorEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    t = Trabajador(Nombre_Trabajador=datos.nombre, Pago_Trabajador=Decimal(str(datos.pago)),
+                   Horas_Base_Trabajador=Decimal(str(datos.horas_base)) if datos.horas_base else None)
+    sesion.add(t); sesion.commit()
+    return {"mensaje": "Trabajador creado", "id": t.Id_Trabajador}
+
+# ---------- PRODUCTO TERMINADO ----------
+@app.get("/productos-terminados")
+def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
+    ps = sesion.query(Producto_Terminado).all()
+    return [{"id_producto_terminado": p.Id_Producto_Terminado, "descripcion": p.Descripcion_Producto_Terminado, "precio_recomendado": float(p.Precio_Venta_Recomendado_Producto_Terminado or 0)} for p in ps]
+
+class ProductoTerminadoEntrada(BaseModel):
+    descripcion: str
+    precio_recomendado: float | None = None
+
+@app.post("/productos-terminados")
+def crear_producto_terminado(datos: ProductoTerminadoEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.descripcion.strip():
+        raise HTTPException(status_code=400, detail="La descripción es obligatoria")
+    p = Producto_Terminado(Descripcion_Producto_Terminado=datos.descripcion,
+                           Precio_Venta_Recomendado_Producto_Terminado=Decimal(str(datos.precio_recomendado)) if datos.precio_recomendado else None)
+    sesion.add(p); sesion.commit()
+    return {"mensaje": "Producto terminado creado", "id": p.Id_Producto_Terminado}
+
+# ---------- PRODUCTO INTERMEDIO ----------
+@app.get("/productos-intermedios")
+def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
+    ps = sesion.query(Producto_Intermedio).all()
+    return [{"id_producto_intermedio": p.Id_Producto_Intermedio, "descripcion": p.Descripcion_Producto_Intermedio, "litros": float(p.Litros_Botella_Final or 0)} for p in ps]
+
+class ProductoIntermedioEntrada(BaseModel):
+    descripcion: str
+    litros: float | None = None
+
+@app.post("/productos-intermedios")
+def crear_producto_intermedio(datos: ProductoIntermedioEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.descripcion.strip():
+        raise HTTPException(status_code=400, detail="La descripción es obligatoria")
+    p = Producto_Intermedio(Descripcion_Producto_Intermedio=datos.descripcion,
+                            Litros_Botella_Final=Decimal(str(datos.litros)) if datos.litros else None)
+    sesion.add(p); sesion.commit()
+    return {"mensaje": "Producto intermedio creado", "id": p.Id_Producto_Intermedio}
+
+# ---------- GRUPO DE MOVIMIENTO ----------
+@app.get("/grupos")
+def listar_grupos(sesion: Session = Depends(get_sesion)):
+    gs = sesion.query(Grupo_Movimiento).all()
+    return [{"id_grupo": g.Id_Grupo_Movimiento, "nombre": g.Nombre_Grupo_Movimiento} for g in gs]
+
+class GrupoEntrada(BaseModel):
+    nombre: str
+
+@app.post("/grupos")
+def crear_grupo(datos: GrupoEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    existente = sesion.query(Grupo_Movimiento).filter(Grupo_Movimiento.Nombre_Grupo_Movimiento.ilike(datos.nombre.strip())).first()
+    if existente:
+        return {"mensaje": "Ya existía", "id": existente.Id_Grupo_Movimiento}
+    g = Grupo_Movimiento(Nombre_Grupo_Movimiento=datos.nombre.strip())
+    sesion.add(g); sesion.commit()
+    return {"mensaje": "Grupo creado", "id": g.Id_Grupo_Movimiento}
+
+# ---------- GASTO EXTRA ----------
+@app.get("/gastos-extra")
+def listar_gastos_extra(sesion: Session = Depends(get_sesion)):
+    gs = sesion.query(Gasto_Extra).all()
+    return [{"id_gasto_extra": g.Id_Gasto_Extra, "descripcion": g.Descripcion_Gasto_Extra, "precio_mensual": float(g.Precio_Mensual_Gasto_Extra or 0)} for g in gs]
+
+class GastoExtraEntrada(BaseModel):
+    descripcion: str
+    precio_mensual: float
+
+@app.post("/gastos-extra")
+def crear_gasto_extra(datos: GastoExtraEntrada, sesion: Session = Depends(get_sesion)):
+    if not datos.descripcion.strip():
+        raise HTTPException(status_code=400, detail="La descripción es obligatoria")
+    g = Gasto_Extra(Descripcion_Gasto_Extra=datos.descripcion, Precio_Mensual_Gasto_Extra=Decimal(str(datos.precio_mensual)))
+    sesion.add(g); sesion.commit()
+    return {"mensaje": "Gasto extra creado", "id": g.Id_Gasto_Extra}
+
+from app.models import Registro_Trabajador
+
+@app.get("/jornadas")
+def listar_jornadas(sesion: Session = Depends(get_sesion)):
+    jornadas = sesion.query(Registro_Trabajador).all()
+    resultado = []
+    for j in jornadas:
+        trabajador = sesion.get(Trabajador, j.Id_Trabajador)
+        resultado.append({
+            "id_jornada": j.Id_Registro_Trabajador,
+            "id_trabajador": j.Id_Trabajador,
+            "nombre_trabajador": trabajador.Nombre_Trabajador if trabajador else "?",
+            "fecha": str(j.Fecha_Registro_Trabajador),
+            "horas": float(j.Horas_Registro_Trabajador),
+            "horas_restantes": float(j.Horas_Restante_Registro_Trabajador or 0),  # NUEVO
+            "pagada": j.Id_Pago_Trabajador is not None,
+        })
+    return resultado
+
+
+from app.models import Produccion_Intermedio
+from app.models import Producto_Intermedio 
+
+@app.get("/producciones-intermedias")
+def listar_producciones_intermedias(sesion: Session = Depends(get_sesion)):
+    """Lotes de producción intermedia con su stock restante y costo."""
+    prods = sesion.query(Produccion_Intermedio).filter(
+        Produccion_Intermedio.Cantidad_Restante_Producida > 0
+    ).all()
+    resultado = []
+    for p in prods:
+        producto = sesion.get(Producto_Intermedio, p.Id_Producto_Intermedio)
+        resultado.append({
+            "id_produccion_intermedio": p.Id_Produccion_Intermedio,
+            "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
+            "cantidad_restante": float(p.Cantidad_Restante_Producida),
+            "costo_unitario": float(p.Costo_Unitario_Produccion_Intermedio or 0),
+        })
+    return resultado
+
+@app.get("/stock-intermedio-general")
+def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
+    """Stock consolidado de producto intermedio: suma todos los lotes por producto,
+    con costo unitario promedio ponderado (prorrateado) de lo que queda."""
+    prods = sesion.query(Produccion_Intermedio).filter(
+        Produccion_Intermedio.Cantidad_Restante_Producida > 0
+    ).all()
+
+    # Agrupar por producto intermedio
+    resumen = {}
+    for p in prods:
+        pid = p.Id_Producto_Intermedio
+        if pid not in resumen:
+            producto = sesion.get(Producto_Intermedio, pid)
+            resumen[pid] = {
+                "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
+                "stock_total": 0,
+                "valor_total": 0,   # para el promedio ponderado
+            }
+        cant = float(p.Cantidad_Restante_Producida)
+        costo = float(p.Costo_Unitario_Produccion_Intermedio or 0)
+        resumen[pid]["stock_total"] += cant
+        resumen[pid]["valor_total"] += cant * costo   # cantidad x su costo
+
+    # Armar la respuesta con el costo promedio ponderado
+    resultado = []
+    for pid, datos in resumen.items():
+        stock = datos["stock_total"]
+        costo_prom = datos["valor_total"] / stock if stock > 0 else 0
+        resultado.append({
+            "id_producto_intermedio": pid,
+            "descripcion": datos["descripcion"],
+            "stock_total": stock,
+            "costo_promedio": round(costo_prom, 4),
+        })
+    return resultado
+
+# GET: lotes de produccion terminada con stock (por lote)
+@app.get("/producciones-terminadas")
+def listar_producciones_terminadas(sesion: Session = Depends(get_sesion)):
+    """Lotes de producto terminado con stock, para la tabla por lote."""
+    prods = sesion.query(Produccion).filter(
+        Produccion.Cantidad_Restante_Produccion > 0
+    ).all()
+    resultado = []
+    for p in prods:
+        producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        resultado.append({
+            "id_produccion": p.Id_Produccion,
+            "descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
+            "cantidad_restante": float(p.Cantidad_Restante_Produccion),
+            "costo_unitario": float(p.Precio_Unitario_Producto_Terminado or 0),
+        })
+    return resultado
+
+
+# GET: stock consolidado de producto terminado (general, con promedio ponderado)
+@app.get("/stock-terminado-general")
+def stock_terminado_general(sesion: Session = Depends(get_sesion)):
+    """Stock consolidado de producto terminado: suma lotes por producto, costo promedio ponderado."""
+    prods = sesion.query(Produccion).filter(
+        Produccion.Cantidad_Restante_Produccion > 0
+    ).all()
+    resumen = {}
+    for p in prods:
+        pid = p.Id_Producto_Terminado
+        if pid not in resumen:
+            producto = sesion.get(Producto_Terminado, pid)
+            resumen[pid] = {"descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
+                            "stock_total": 0, "valor_total": 0}
+        cant = float(p.Cantidad_Restante_Produccion)
+        costo = float(p.Precio_Unitario_Producto_Terminado or 0)
+        resumen[pid]["stock_total"] += cant
+        resumen[pid]["valor_total"] += cant * costo
+    resultado = []
+    for pid, d in resumen.items():
+        stock = d["stock_total"]
+        resultado.append({
+            "id_producto_terminado": pid,
+            "descripcion": d["descripcion"],
+            "stock_total": stock,
+            "costo_promedio": round(d["valor_total"] / stock, 4) if stock > 0 else 0,
+        })
+    return resultado
