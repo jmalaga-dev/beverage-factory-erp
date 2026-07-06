@@ -799,3 +799,141 @@ def stock_terminado_general(sesion: Session = Depends(get_sesion)):
             "costo_promedio": round(d["valor_total"] / stock, 4) if stock > 0 else 0,
         })
     return resultado
+
+@app.post("/pagos")
+def crear_pago(datos: PagoEntrada, sesion: Session = Depends(get_sesion)):
+    try:
+        pago = registrar_pago_semanal(
+            sesion,
+            id_trabajador=datos.id_trabajador,
+            id_cuenta=datos.id_cuenta,
+            monto_real=Decimal(str(datos.monto_real)),
+            fecha=datos.fecha or date.today(),
+        )
+        return {"mensaje": "Pago registrado", "id_pago": pago.Id_Pago_Trabajador,
+                "sugerido": float(pago.Monto_Sugerido_Pago), "real": float(pago.Monto_Real_Pago)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
+@app.post("/gastos")
+def crear_gasto(datos: GastoEntrada, sesion: Session = Depends(get_sesion)):
+    try:
+        mov = registrar_gasto(
+            sesion,
+            id_cuenta=datos.id_cuenta,
+            monto=Decimal(str(datos.monto)),
+            descripcion=datos.descripcion,
+            id_grupo=datos.id_grupo,
+            fecha=datos.fecha or date.today(),
+        )
+        return {"mensaje": "Gasto registrado", "id_movimiento": mov.Id_Movimiento}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
+@app.post("/movimientos-inventario")
+def crear_movimiento_inventario(datos: MovimientoInventarioEntrada, sesion: Session = Depends(get_sesion)):
+    try:
+        mov = registrar_movimiento_inventario(
+            sesion,
+            tipo=datos.tipo, sentido=datos.sentido, origen_lote=datos.origen_lote,
+            cantidad=Decimal(str(datos.cantidad)), motivo=datos.motivo,
+            id_compra=datos.id_compra, id_produccion=datos.id_produccion,
+            id_prod_intermedio=datos.id_prod_intermedio,
+            fecha=datos.fecha or date.today(),
+        )
+        return {"mensaje": "Movimiento registrado", "id": mov.Id_Movimiento_Inventario}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+from app.models import Horas_Producto_Mes
+
+@app.get("/horas-producto-mes/{anio_mes}")
+def ver_horas_producto_mes(anio_mes: str, sesion: Session = Depends(get_sesion)):
+    """Qué productos usaron la fábrica ese mes y cuántas horas cada uno."""
+    filas = sesion.query(Horas_Producto_Mes).filter_by(Anio_Mes=anio_mes).all()
+    resultado = []
+    total = 0
+    for f in filas:
+        producto = sesion.get(Producto_Terminado, f.Id_Producto_Terminado)
+        horas = float(f.Horas_Producto_Mes)
+        total += horas
+        resultado.append({
+            "producto": producto.Descripcion_Producto_Terminado if producto else "?",
+            "horas": horas,
+        })
+    return {"total_horas": total, "detalle": resultado}
+
+
+@app.get("/gastos-extra-total")
+def ver_gastos_extra_total(sesion: Session = Depends(get_sesion)):
+    """Lista de gastos extra mensuales y su total."""
+    gastos = sesion.query(Gasto_Extra).all()
+    total = sum(float(g.Precio_Mensual_Gasto_Extra or 0) for g in gastos)
+    detalle = [{"descripcion": g.Descripcion_Gasto_Extra, "precio": float(g.Precio_Mensual_Gasto_Extra or 0)} for g in gastos]
+    return {"total": total, "detalle": detalle}
+
+from app.models import Balance
+
+# GET: estado ACTUAL sin guardar (vista previa con desglose)
+@app.get("/balance-actual")
+def balance_actual(sesion: Session = Depends(get_sesion)):
+    """Calcula el estado actual con desglose completo, SIN guardar la foto."""
+    from sqlalchemy import func
+    from app.models import Deuda
+
+    # Efectivo: suma de saldos de cuentas
+    efectivo = sesion.query(func.coalesce(func.sum(Cuenta.Saldo_Actual_Cuenta), 0)).scalar()
+
+    # Stock materia prima valorizado
+    compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    stock_mp = sum(float(c.Cantidad_Restante_Compra) * (float(c.Precio_Compra) / float(c.Cantidad_Compra)) for c in compras)
+
+    # Stock producto terminado valorizado (a precio recomendado)
+    producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > 0).all()
+    stock_pt = 0
+    for p in producciones:
+        prod = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        precio = float(prod.Precio_Venta_Recomendado_Producto_Terminado or 0) if prod else 0
+        stock_pt += float(p.Cantidad_Restante_Produccion) * precio
+
+    # Deudas
+    deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
+
+    efectivo = float(efectivo); deudas = float(deudas)
+    escenario_c = efectivo - deudas
+    escenario_b = efectivo + stock_mp + stock_pt - deudas
+    escenario_a = escenario_b  # sin activos fijos por ahora (se suman si los hay)
+
+    return {
+        "efectivo": round(efectivo, 2),
+        "stock_materia_prima": round(stock_mp, 2),
+        "stock_producto_terminado": round(stock_pt, 2),
+        "deudas": round(deudas, 2),
+        "escenario_c": round(escenario_c, 2),
+        "escenario_b": round(escenario_b, 2),
+        "escenario_a": round(escenario_a, 2),
+        "patrimonio": round(escenario_a, 2),
+    }
+
+
+# GET: última foto guardada
+@app.get("/balance-ultimo")
+def balance_ultimo(sesion: Session = Depends(get_sesion)):
+    """Devuelve la última foto de balance guardada, con desglose."""
+    ultimo = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).first()
+    if ultimo is None:
+        return None
+    return {
+        "id_balance": ultimo.Id_Balance,
+        "fecha": str(ultimo.Fecha_Balance),
+        "efectivo": float(ultimo.Total_Efectivo or 0),
+        "stock_materia_prima": float(ultimo.Valor_Stock_Materia_Prima or 0),
+        "stock_producto_terminado": float(ultimo.Valor_Stock_Producto_Terminado or 0),
+        "deudas": float(ultimo.Total_Deudas or 0),
+        "escenario_c": float(ultimo.Escenario_C or 0),
+        "escenario_b": float(ultimo.Escenario_B or 0),
+        "escenario_a": float(ultimo.Escenario_A or 0),
+        "patrimonio": float(ultimo.Patrimonio or 0),
+    }

@@ -1,85 +1,170 @@
-# Decisiones de diseño y mejoras futuras — Fábrica V2
+# Decisiones de diseño — Fábrica V2 (MVP)
 
-Este documento registra decisiones de diseño tomadas durante el desarrollo,
-especialmente aquellas donde se eligió una solución más simple para el MVP
-y se dejó anotada una versión más completa para el futuro.
+Este documento registra las decisiones de diseño y arquitectura del MVP: qué se
+construyó y por qué. Las mejoras y funcionalidades pospuestas para versiones
+futuras están en un documento aparte: `MEJORAS_FUTURAS.md`.
 
 ---
 
-## Costeo del trabajo en producción
+## 1. STACK Y ARQUITECTURA
 
-**Decisión actual (MVP) — "Camino 1":**
-El costo del trabajo en una producción se calcula con la **tarifa pactada**
-del trabajador (`Pago_Trabajador` de la tabla `Trabajador`), no con el pago
-real semanal.
+- **Base de datos:** PostgreSQL. Elegido sobre Access por escalabilidad,
+  integridad referencial y valor profesional.
+- **Backend:** Python con SQLAlchemy (ORM) + FastAPI (API REST).
+- **Frontend:** React con Vite (JavaScript, no TypeScript, para el MVP).
+- **Reportería (futuro):** Power BI conectado a PostgreSQL.
+- Arquitectura por capas: Frontend (React) → API (FastAPI) → Servicios (lógica de
+  negocio) → Base de datos. Los servicios son el corazón estable; hoy los llaman
+  los endpoints, y son reutilizables entre distintos clientes (web, móvil, BI).
+- Migración desde una herramienta previa en Excel/VBA que se volvió lenta e
+  inescalable por mezclar frontend, lógica y datos en hojas de cálculo.
+
+---
+
+## 2. DISEÑO DE BASE DE DATOS
+
+Principios aplicados en las 31 tablas:
+
+- **Trazabilidad por lote** en toda la cadena: compra → producto intermedio →
+  producto terminado → venta. Permite rastrear qué se produjo y vendió con cada
+  lote de insumo (clave en alimentos/bebidas).
+- **Libro de movimientos único** para el flujo de caja: los saldos se derivan de
+  los movimientos registrados, no se guardan sueltos. Garantiza consistencia y
+  auditabilidad (como funciona un banco).
+- **Inmutabilidad del histórico:** mermas, ajustes, devoluciones y reprocesos se
+  registran como eventos nuevos, nunca se borra ni sobrescribe.
+- **Sin datos duplicados:** los datos derivados (totales, márgenes) se calculan
+  vía JOIN o al vuelo, no se almacenan.
+- **Relaciones por Id**, no por código.
+- **Tipos `numeric`** para cantidades y dinero (precisión exacta; evita el error
+  de punto flotante como el 1.4e-17). SQLAlchemy los maneja como `Decimal`.
+- **Celulares como varchar** (texto), no número.
+- Códigos QR se generan en el backend cuando se necesiten, no se guardan en BD.
+
+---
+
+## 3. COSTEO
+
+### 3.1 Materia prima — Filosofía B (costo real del lote)
+El costo de la materia prima se toma al **precio real del lote** de compra
+(`Precio_Compra / Cantidad_Compra`). Si se corrige un lote, se recalcula, porque
+el dato es directo y conocido al producir.
+
+### 3.2 Trabajo — tarifa pactada al producir (Camino 1)
+El costo del trabajo en una producción se calcula con la **tarifa pactada** del
+trabajador (`Pago_Trabajador`), no con el pago real semanal.
 
 Razones:
-- La tarifa pactada existe y es conocida en el momento de producir.
-- El pago real ocurre *después* (semanalmente) y puede diferir del estimado.
-- Esto da un costo unitario inmediato y completo al producir, sin esperar al pago.
-- Las diferencias entre pago estimado y real (ej. pagar 850 en vez de 820, o
-  redondear 800.02 a 800) se tratan como un ajuste a nivel de flujo de caja
-  general, NO se reparten producto por producto.
+- La tarifa pactada existe y es conocida al momento de producir.
+- El pago real ocurre después (semanalmente) y puede diferir.
+- Da un costo unitario inmediato y completo al producir, sin esperar al pago.
+- Las diferencias entre estimado y real se tratan como ajuste a nivel de flujo de
+  caja general, NO se reparten producto por producto.
 
-Consecuencia: el costo de producción es un **estimado estable**, suficiente
-para decidir rentabilidad entre productos, que es el objetivo principal.
+Consecuencia: el costo de producción es un estimado estable, suficiente para
+decidir rentabilidad entre productos, que es el objetivo principal.
 
-**Mejora futura — "Camino 2" (recálculo fiel):**
-Cuando se registra el pago real semanal, recalcular el costo unitario de todas
-las producciones de esa semana que usaron las horas de ese trabajador,
-repartiendo la diferencia (pago real vs. tarifa pactada) proporcionalmente
-entre las producciones según las horas que cada una consumió.
+(El recálculo fiel — "Camino 2" — está documentado en MEJORAS_FUTURAS.md.)
 
-Complejidad: alta. Las horas de una jornada pueden repartirse entre varias
-producciones, lo que obliga a un reparto proporcional fino. Por eso se pospone.
+### 3.3 Costeo en cadena
+El costo se propaga a lo largo de la cadena: un producto intermedio guarda su
+`Costo_Unitario`, y cuando otro intermedio o un terminado lo consume, hereda ese
+costo (cantidad × costo unitario). Así el costo del terminado refleja todos sus
+insumos: materia prima (precio de lote) + trabajo (tarifa pactada) + intermedios
+(su costo unitario).
 
-Nota: esto NO afecta el costeo de la materia prima, que sí usa el costo real
-del lote (Filosofía B) porque ahí el dato es directo y conocido al producir.
+### 3.4 Valoración de stock — promedio ponderado
+Cuando hay varios lotes del mismo producto con distinto costo, el stock
+consolidado se valora con **promedio ponderado** (suma de cantidad×costo de cada
+lote, dividido entre el total). Refleja el costo real mezclado, no un promedio
+simple.
 
 ---
 
-## Otras notas pendientes (de conversaciones previas)
+## 4. FLUJO DE OPERACIONES (patrón de los servicios)
 
-- **Base de datos de proveedores:** agregar una tabla `Proveedor` y un
-  `Id_Proveedor` en `Compra`, para comparar precios de la misma materia prima
-  entre proveedores y decidir cuál conviene.
+Cada servicio de negocio sigue el patrón: **validar TODO antes de tocar nada** →
+ejecutar de forma atómica (try/commit) → rollback si algo falla. Esto garantiza
+que operaciones que afectan varias tablas (dinero + inventario) pasen completas o
+no pasen (integridad).
 
-- **Unir las islas (productivo / financiero):** los vínculos `Id_Movimiento`
-  en Compra, Detalle_Venta y Registro_Trabajador ya existen como FK opcionales.
-  El backend debe llenarlos consistentemente al registrar cada operación.
+Operaciones construidas (con backend, API y pantalla):
+- Compra de materia prima (valida saldo, crea movimiento SALIDA, descuenta cuenta).
+- Registro de jornada de trabajo (solo horas, no mueve dinero).
+- Pago semanal a trabajador (calcula sugerido = horas pendientes × tarifa; paga
+  monto real que puede diferir; marca jornadas como pagadas sin borrarlas).
+- Producción intermedia y terminada (consumen listas de insumos: materia prima +
+  trabajo + intermedios; validan stock de cada lote; calculan costo unitario).
+- Venta (varias líneas; cada línea vende de un lote, a precio real, cobrada a una
+  cuenta que puede ser distinta por producto; sube saldo, descuenta stock).
+- Gasto (salida de una cuenta, con grupo validado; sin inventario).
+- Movimiento de inventario (merma/ajuste/devolución sobre lote de MP, intermedio
+  o terminado; sentido según tipo: merma resta, devolución suma, ajuste elige).
+- Balance (foto congelada: efectivo, stocks valorizados, deudas, escenarios,
+  patrimonio).
+- Prorrateo mensual (reparte gastos extra entre productos según horas).
 
-- **Informe comparativo entre balances:** generar automáticamente un reporte
-  que compare dos fotos de Balance semanales y resalte qué cambió (costos,
-  patrimonio, stock). Clave dado que se eligió Filosofía B para el costo de
-  materia prima.
+---
 
+## 5. LISTAS VALIDADAS (catálogos)
 
-## Reparto de pagos por prioridad de cuentas (pendiente — capa de orquestación)
+Sectores, grupos de movimiento, materias primas, productos, etc. son listas
+validadas en tablas aparte. Al registrar (un cliente, un gasto), se **elige** de
+la lista existente, no se escribe libre. Esto evita duplicados por variantes
+("Av. Simón" vs "AV Simon"). La creación de sectores/grupos normaliza con
+`ilike` + `strip` para atrapar duplicados por mayúsculas/espacios.
 
-Los gastos, compras y pagos pueden cubrirse con dinero de varias fuentes, siguiendo
-una logica de aportes + prioridad que se construira como una capa POR ENCIMA de las
-operaciones base (probablemente en el frontend o en una capa de orquestacion). Las
-operaciones base (registrar un gasto/compra/pago desde UNA cuenta) ya existen y son
-el ladrillo que esta capa invocara varias veces.
+---
 
-Logica a implementar:
-1. Aportes explicitos primero: montos fijos que alguien (conyuge, banco) pone para
-   cubrir parte del total. Son input manual del momento.
-2. El faltante (total - aportes) se cubre desde las cuentas siguiendo un ORDEN DE
-   PRIORIDAD que depende del tipo de operacion:
-   - Gastos familiares: primero Billetera Casa, luego Billetera Fabrica.
-   - Compras de materia prima y pagos a trabajadores: primero Billetera Fabrica,
-     luego Billetera Casa.
-   - Ventas (ingreso): reparto 70/30 (70% Fabrica, 30% Casa) una vez recuperado
-     lo invertido.
-3. La capa calcula cuanto sacar de cada cuenta y luego llama a la operacion base
-   correspondiente una vez por cada fuente.
+## 6. MANEJO DE TIPOS EN LA FRONTERA WEB↔BD
 
-Ejemplo (gasto familiar): gastos suman 40 Bs. Conyuge aporta 15, banco aporta 5
-(= 20 puestos). Faltan 20: se sacan de Billetera Casa (prioridad), y solo si no
-alcanza, de Billetera Fabrica.
+El frontend envía números como `float` (JSON), pero la BD usa `Decimal` (numeric).
+Cada endpoint convierte en la frontera con `Decimal(str(valor))` — el `str()`
+intermedio evita arrastrar el error de punto flotante. Es el "peaje" de la
+frontera; se aplica a todo endpoint que reciba cantidades o montos.
 
-Razon de separarlo: la operacion base (sacar dinero de UNA cuenta) es reutilizable
-entre gastos, compras y pagos; la logica de prioridad cambia segun el caso pero
-todas terminan llamando a esa misma base. Mantenerlas separadas facilita pruebas
-y evita duplicar codigo.
+Además, los endpoints que crean registros con fecha usan `fecha or date.today()`:
+si el frontend no envía fecha, se usa la de hoy (evita el error de NOT NULL en las
+columnas de fecha).
+
+---
+
+## 7. CORS Y DOS SERVIDORES
+
+Frontend (localhost:5173) y backend (localhost:8000) corren por separado y se
+comunican por HTTP. El backend habilita CORS para aceptar peticiones del frontend.
+Nota de depuración: cuando un endpoint crashea (error 500), el navegador a veces
+reporta "CORS" aunque la causa real sea otra — la terminal del backend es la
+fuente de verdad del error.
+
+---
+
+## 8. VERSIONADO Y DATOS
+
+- Control de versiones con Git desde el inicio. Se versiona el **código**, NO los
+  datos (que viven en PostgreSQL) ni `node_modules` ni `.env` (credenciales).
+- El diseño de la BD se hizo primero (en dbdiagram.io) antes de codear —
+  "diseñar antes de construir" fue clave para avanzar rápido.
+- Los datos reales del Excel se migrarán al final, con pruebas de paridad.
+
+---
+
+## 9. ESTRUCTURA DEL PROYECTO
+
+```
+Git/                          (raíz del repositorio)
+├── fabrica_v2_postgres.sql   (esquema base, 31 tablas)
+├── DECISIONES_DISENO.md      (este archivo)
+├── MEJORAS_FUTURAS.md        (mejoras para próximas versiones)
+├── backend/
+│   ├── .env                  (credenciales, NO versionado)
+│   ├── migraciones/          (cambios incrementales a la BD, numerados)
+│   └── app/
+│       ├── database.py, models.py, dependencias.py, main.py
+│       └── servicios/        (lógica de negocio, un archivo por área)
+└── frontend/
+    ├── (config de Vite, package.json, etc.)
+    └── src/
+        ├── App.jsx           (coordinador + rutas de React Router)
+        └── paginas/          (una pantalla por archivo)
+```
