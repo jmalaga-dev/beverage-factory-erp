@@ -202,6 +202,24 @@ Generar códigos QR (en el backend, no se guardan en BD) para etiquetar físicam
 los sacos/lotes de materia prima y productos. Escaneas el QR de un saco y el
 sistema te dice qué es y de qué lote. Útil para trazabilidad física en la fábrica.
 
+
+### 7.2 Activos fijos (patrimonio)
+Registrar activos como casa, vehículo, equipos, para que sumen al patrimonio en
+el balance (escenario A). La tabla Activo y Tipo_Bien existen en el diseño. Falta
+backend (crear activo con su tipo y valor) y pantalla. El balance ya tiene el
+espacio para sumarlos (total_activos_fijos).
+
+### 7.3 Pago/amortización de deudas
+Complementa el módulo de deudas (7.0): pagar una deuda eligiendo de qué cuenta
+sale el dinero, bajando el saldo de la deuda y descontando la cuenta. Usa la
+lógica de reparto por prioridad (sección 2). El balance ya resta las deudas.
+
+### 7.4 Columnas de balance para fotos históricas
+Ya se agregaron Valor_Stock_Intermedio y Valor_Horas_Standby al balance (migración
+003). Si se agregan más conceptos al balance en el futuro, recordar: agregarlos
+como columnas para que las fotos históricas los guarden y la comparación temporal
+sea completa.
+
 ---
 
 ## 8. INTEGRACIONES Y DESPLIEGUE
