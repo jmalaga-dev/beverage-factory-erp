@@ -20,6 +20,63 @@ from app.models import (
 )
 
 
+def calcular_estado_actual(sesion):
+    """
+    Calcula el estado actual de la fabrica con desglose completo,
+    SIN guardar nada (vista previa). Devuelve un dict listo para la API.
+
+    NOTA: aqui escenario_a == escenario_b porque esta vista previa aun no
+    suma activos fijos; la foto guardada (tomar_balance) si los incluye.
+    """
+    # Efectivo: suma de saldos de cuentas
+    efectivo = sesion.query(func.coalesce(func.sum(Cuenta.Saldo_Actual_Cuenta), 0)).scalar()
+
+    # Stock materia prima valorizado (restante x precio unitario del lote)
+    compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    stock_mp = sum(float(c.Cantidad_Restante_Compra) * (float(c.Precio_Compra) / float(c.Cantidad_Compra)) for c in compras)
+
+    # Stock de producto INTERMEDIO valorizado (a su costo unitario)
+    prods_int = sesion.query(Produccion_Intermedio).filter(Produccion_Intermedio.Cantidad_Restante_Producida > 0).all()
+    stock_int = sum(float(p.Cantidad_Restante_Producida) * float(p.Costo_Unitario_Produccion_Intermedio or 0) for p in prods_int)
+
+    # Horas de trabajo en stand-by (pagadas/registradas pero no consumidas)
+    jornadas = sesion.query(Registro_Trabajador).filter(Registro_Trabajador.Horas_Restante_Registro_Trabajador > 0).all()
+    valor_horas = 0
+    for j in jornadas:
+        trab = sesion.get(Trabajador, j.Id_Trabajador)
+        valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(trab.Pago_Trabajador or 0) if trab else 0
+
+    # Stock producto terminado valorizado (a precio recomendado)
+    producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > 0).all()
+    stock_pt = 0
+    for p in producciones:
+        prod = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        precio = float(prod.Precio_Venta_Recomendado_Producto_Terminado or 0) if prod else 0
+        stock_pt += float(p.Cantidad_Restante_Produccion) * precio
+
+    # Deudas
+    deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
+
+    efectivo = float(efectivo)
+    deudas = float(deudas)
+    escenario_c = efectivo - deudas
+    escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
+    escenario_a = escenario_b  # sin activos fijos por ahora (se suman si los hay)
+
+    return {
+        "efectivo": round(efectivo, 2),
+        "stock_materia_prima": round(stock_mp, 2),
+        "stock_producto_terminado": round(stock_pt, 2),
+        "deudas": round(deudas, 2),
+        "escenario_c": round(escenario_c, 2),
+        "escenario_b": round(escenario_b, 2),
+        "escenario_a": round(escenario_a, 2),
+        "patrimonio": round(escenario_a, 2),
+        "stock_producto_intermedio": round(stock_int, 2),
+        "valor_horas_standby": round(valor_horas, 2),
+    }
+
+
 def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
     """
     Toma una foto del balance actual de la fabrica.
