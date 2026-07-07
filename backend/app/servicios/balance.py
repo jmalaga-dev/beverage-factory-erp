@@ -15,7 +15,8 @@ from app.models import (
     Balance, Balance_Detalle_Producto,
     Cuenta, Deuda, Activo, Tipo_Bien,
     Compra, Produccion, Producto_Terminado,
-    Movimiento,
+    Movimiento, Produccion_Intermedio,
+    Registro_Trabajador, Trabajador,
 )
 
 
@@ -56,6 +57,25 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         for c in compras:
             precio_unit = c.Precio_Compra / c.Cantidad_Compra
             valor_stock_mp += c.Cantidad_Restante_Compra * precio_unit
+
+        # Stock de producto intermedio valorizado (a su costo unitario)
+        prods_int = sesion.query(Produccion_Intermedio).filter(
+            Produccion_Intermedio.Cantidad_Restante_Producida > 0
+        ).all()
+        valor_stock_intermedio = sum(
+            p.Cantidad_Restante_Producida * (p.Costo_Unitario_Produccion_Intermedio or 0)
+            for p in prods_int
+        )
+
+        # Horas de trabajo en stand-by (registradas pero no consumidas)
+        jornadas_pend = sesion.query(Registro_Trabajador).filter(
+            Registro_Trabajador.Horas_Restante_Registro_Trabajador > 0
+        ).all()
+        valor_horas_standby = 0
+        for j in jornadas_pend:
+            trab = sesion.get(Trabajador, j.Id_Trabajador)
+            if trab:
+                valor_horas_standby += j.Horas_Restante_Registro_Trabajador * (trab.Pago_Trabajador or 0)
 
         # Stock de producto terminado: restante x precio recomendado de venta
         producciones = sesion.query(Produccion).filter(
@@ -106,8 +126,8 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         # ===== ESCENARIOS y PATRIMONIO =====
         total_activos_fijos = total_inmuebles + total_equipos + total_otros
         escenario_c = total_efectivo - total_deudas
-        escenario_b = total_efectivo + valor_stock_mp + valor_stock_pt - total_deudas
-        escenario_a = total_efectivo + valor_stock_mp + valor_stock_pt + total_activos_fijos - total_deudas
+        escenario_b = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby - total_deudas
+        escenario_a = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby + total_activos_fijos - total_deudas
         patrimonio = escenario_a   # patrimonio = mejor escenario (todo el activo - pasivo)
 
         # ===== CREAR LA FOTO =====
@@ -127,6 +147,8 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             Escenario_B=escenario_b,
             Escenario_C=escenario_c,
             Patrimonio=patrimonio,
+            Valor_Stock_Intermedio=valor_stock_intermedio,
+            Valor_Horas_Standby=valor_horas_standby,
         )
         sesion.add(balance)
         sesion.flush()  # para obtener el Id_Balance

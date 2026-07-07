@@ -460,6 +460,8 @@ class Balance(Base):
     Escenario_B = Column(Numeric)
     Escenario_C = Column(Numeric)
     Patrimonio = Column(Numeric)
+    Valor_Stock_Intermedio = Column(Numeric)       # NUEVO
+    Valor_Horas_Standby = Column(Numeric)           # NUEVO
 
     detalles = relationship("Balance_Detalle_Producto", back_populates="balance")
 

@@ -890,6 +890,19 @@ def balance_actual(sesion: Session = Depends(get_sesion)):
     compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
     stock_mp = sum(float(c.Cantidad_Restante_Compra) * (float(c.Precio_Compra) / float(c.Cantidad_Compra)) for c in compras)
 
+    # Stock de producto INTERMEDIO valorizado (a su costo unitario)
+    from app.models import Produccion_Intermedio
+    prods_int = sesion.query(Produccion_Intermedio).filter(Produccion_Intermedio.Cantidad_Restante_Producida > 0).all()
+    stock_int = sum(float(p.Cantidad_Restante_Producida) * float(p.Costo_Unitario_Produccion_Intermedio or 0) for p in prods_int)
+
+    # Horas de trabajo en stand-by (pagadas/registradas pero no consumidas)
+    from app.models import Registro_Trabajador, Trabajador
+    jornadas = sesion.query(Registro_Trabajador).filter(Registro_Trabajador.Horas_Restante_Registro_Trabajador > 0).all()
+    valor_horas = 0
+    for j in jornadas:
+        trab = sesion.get(Trabajador, j.Id_Trabajador)
+        valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(trab.Pago_Trabajador or 0) if trab else 0
+
     # Stock producto terminado valorizado (a precio recomendado)
     producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > 0).all()
     stock_pt = 0
@@ -903,7 +916,7 @@ def balance_actual(sesion: Session = Depends(get_sesion)):
 
     efectivo = float(efectivo); deudas = float(deudas)
     escenario_c = efectivo - deudas
-    escenario_b = efectivo + stock_mp + stock_pt - deudas
+    escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
     escenario_a = escenario_b  # sin activos fijos por ahora (se suman si los hay)
 
     return {
@@ -915,6 +928,8 @@ def balance_actual(sesion: Session = Depends(get_sesion)):
         "escenario_b": round(escenario_b, 2),
         "escenario_a": round(escenario_a, 2),
         "patrimonio": round(escenario_a, 2),
+        "stock_producto_intermedio": round(stock_int, 2),
+        "valor_horas_standby": round(valor_horas, 2),
     }
 
 
@@ -930,6 +945,8 @@ def balance_ultimo(sesion: Session = Depends(get_sesion)):
         "fecha": str(ultimo.Fecha_Balance),
         "efectivo": float(ultimo.Total_Efectivo or 0),
         "stock_materia_prima": float(ultimo.Valor_Stock_Materia_Prima or 0),
+        "stock_producto_intermedio": float(ultimo.Valor_Stock_Intermedio or 0),
+        "valor_horas_standby": float(ultimo.Valor_Horas_Standby or 0),
         "stock_producto_terminado": float(ultimo.Valor_Stock_Producto_Terminado or 0),
         "deudas": float(ultimo.Total_Deudas or 0),
         "escenario_c": float(ultimo.Escenario_C or 0),

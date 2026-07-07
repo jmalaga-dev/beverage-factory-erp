@@ -44,6 +44,8 @@ function PaginaBalance() {
   const filas = [
     ['Efectivo', 'efectivo'],
     ['Stock materia prima', 'stock_materia_prima'],
+    ['Stock producto intermedio', 'stock_producto_intermedio'],
+    ['Horas en stand-by', 'valor_horas_standby'],
     ['Stock producto terminado', 'stock_producto_terminado'],
     ['Deudas', 'deudas'],
     ['Escenario C (solo efectivo)', 'escenario_c'],
