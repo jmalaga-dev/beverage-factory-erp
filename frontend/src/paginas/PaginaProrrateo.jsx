@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaProrrateo() {
   const [anioMes, setAnioMes] = useState('')
@@ -8,29 +9,19 @@ function PaginaProrrateo() {
 
   // Cargar los gastos extra (no dependen del mes)
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/gastos-extra-total')
-      .then((r) => r.json()).then(setGastos).catch(console.error)
+    apiGet('/gastos-extra-total').then(setGastos).catch(console.error)
   }, [])
 
   // Cuando cambia el mes, cargar las horas de ese mes
   function verMes(mes) {
     setAnioMes(mes)
     if (mes.trim() === '') { setHoras(null); return }
-    fetch(`http://127.0.0.1:8000/horas-producto-mes/${mes}`)
-      .then((r) => r.json()).then(setHoras).catch(console.error)
+    apiGet(`/horas-producto-mes/${mes}`).then(setHoras).catch(console.error)
   }
 
   function calcular() {
     if (anioMes.trim() === '') { setMensaje('Indica el mes'); return }
-    fetch('http://127.0.0.1:8000/prorrateos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anio_mes: anioMes }),
-    })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
+    apiPost('/prorrateos', { anio_mes: anioMes })
       .then((data) => setMensaje(`Prorrateo calculado: ${data.asignaciones} asignaciones`))
       .catch((e) => setMensaje(e.message))
   }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaMermas() {
   const [lotesMP, setLotesMP] = useState([])
@@ -14,12 +15,9 @@ function PaginaMermas() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/lotes-compra')
-      .then((r) => r.json()).then(setLotesMP).catch(console.error)
-    fetch('http://127.0.0.1:8000/producciones-intermedias')
-      .then((r) => r.json()).then(setLotesInt).catch(console.error)
-    fetch('http://127.0.0.1:8000/producciones-terminadas')
-      .then((r) => r.json()).then(setLotesTerm).catch(console.error)
+    apiGet('/lotes-compra').then(setLotesMP).catch(console.error)
+    apiGet('/producciones-intermedias').then(setLotesInt).catch(console.error)
+    apiGet('/producciones-terminadas').then(setLotesTerm).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -62,15 +60,7 @@ function PaginaMermas() {
       id_produccion: origen === 'PRODUCCION' ? parseInt(idLote) : null,
     }
 
-    fetch('http://127.0.0.1:8000/movimientos-inventario', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
+    apiPost('/movimientos-inventario', body)
       .then(() => {
         setMensaje('Movimiento de inventario registrado')
         setIdLote(''); setCantidad(''); setMotivo('')

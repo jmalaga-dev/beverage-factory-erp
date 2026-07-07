@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaPagos() {
   const [trabajadores, setTrabajadores] = useState([])
@@ -12,10 +13,8 @@ function PaginaPagos() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/trabajadores')
-      .then((r) => r.json()).then(setTrabajadores).catch(console.error)
-    fetch('http://127.0.0.1:8000/cuentas')
-      .then((r) => r.json()).then(setCuentas).catch(console.error)
+    apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
+    apiGet('/cuentas').then(setCuentas).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -27,11 +26,7 @@ function PaginaPagos() {
     setMontoReal('')
     if (id === '') return
 
-    fetch(`http://127.0.0.1:8000/trabajadores/${id}/pago-sugerido`)
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
+    apiGet(`/trabajadores/${id}/pago-sugerido`)
       .then((data) => {
         setSugerido(data.monto_sugerido)
         setJornadasPendientes(data.jornadas_pendientes)
@@ -45,19 +40,11 @@ function PaginaPagos() {
       setMensaje('Elige trabajador, cuenta y monto')
       return
     }
-    fetch('http://127.0.0.1:8000/pagos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_trabajador: parseInt(idTrabajador),
-        id_cuenta: parseInt(idCuenta),
-        monto_real: parseFloat(montoReal),
-      }),
+    apiPost('/pagos', {
+      id_trabajador: parseInt(idTrabajador),
+      id_cuenta: parseInt(idCuenta),
+      monto_real: parseFloat(montoReal),
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then((data) => {
         setMensaje(`Pago registrado. Sugerido: ${data.sugerido}, pagado: ${data.real}`)
         setIdTrabajador('')

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaVentas() {
   const [clientes, setClientes] = useState([])
@@ -20,14 +21,10 @@ function PaginaVentas() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/clientes')
-      .then((r) => r.json()).then(setClientes).catch(console.error)
-    fetch('http://127.0.0.1:8000/lotes-producto-terminado')
-      .then((r) => r.json()).then(setLotes).catch(console.error)
-    fetch('http://127.0.0.1:8000/cuentas')
-      .then((r) => r.json()).then(setCuentas).catch(console.error)
-    fetch('http://127.0.0.1:8000/ventas')
-      .then((r) => r.json()).then(setVentas).catch(console.error)
+    apiGet('/clientes').then(setClientes).catch(console.error)
+    apiGet('/lotes-producto-terminado').then(setLotes).catch(console.error)
+    apiGet('/cuentas').then(setCuentas).catch(console.error)
+    apiGet('/ventas').then(setVentas).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -53,18 +50,10 @@ function PaginaVentas() {
     if (idCliente === '') { setMensaje('Elige un cliente'); return }
     if (lineas.length === 0) { setMensaje('Agrega al menos una línea'); return }
 
-    fetch('http://127.0.0.1:8000/ventas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_cliente: parseInt(idCliente),
-        lineas: lineas,
-      }),
+    apiPost('/ventas', {
+      id_cliente: parseInt(idCliente),
+      lineas: lineas,
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then(() => {
         setMensaje('Venta registrada correctamente')
         setIdCliente('')

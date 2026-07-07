@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 // Componente reutilizable: un catálogo genérico de crear + listar
 function Catalogo({ titulo, endpoint, campos, camposTabla }) {
@@ -7,8 +8,7 @@ function Catalogo({ titulo, endpoint, campos, camposTabla }) {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch(`http://127.0.0.1:8000/${endpoint}`)
-      .then((r) => r.json()).then(setItems).catch(console.error)
+    apiGet(`/${endpoint}`).then(setItems).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -30,15 +30,7 @@ function Catalogo({ titulo, endpoint, campos, camposTabla }) {
       body[campo.nombre] = v || null
     }
 
-    fetch(`http://127.0.0.1:8000/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
+    apiPost(`/${endpoint}`, body)
       .then(() => {
         setMensaje(`${titulo} creado`)
         setValores({})

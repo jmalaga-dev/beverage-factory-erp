@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaBalance() {
   const [actual, setActual] = useState(null)
@@ -6,25 +7,15 @@ function PaginaBalance() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/balance-actual')
-      .then((r) => r.json()).then(setActual).catch(console.error)
-    fetch('http://127.0.0.1:8000/balance-ultimo')
-      .then((r) => r.json()).then(setUltimo).catch(console.error)
+    apiGet('/balance-actual').then(setActual).catch(console.error)
+    apiGet('/balance-ultimo').then(setUltimo).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
 
   function tomarBalance() {
     const hoy = new Date().toISOString().slice(0, 10)
-    fetch('http://127.0.0.1:8000/balances', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fecha_balance: hoy, dias_semana: 7 }),
-    })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
+    apiPost('/balances', { fecha_balance: hoy, dias_semana: 7 })
       .then(() => {
         setMensaje('Foto tomada. Ahora esta es la última foto.')
         cargar()   // recargar para que la nueva foto sea la "última"

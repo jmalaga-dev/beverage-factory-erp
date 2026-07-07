@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaCompras() {
   const [materias, setMaterias] = useState([])
@@ -16,14 +17,10 @@ function PaginaCompras() {
 
   // Cargar todos los datos que la pantalla necesita
   function cargarDatos() {
-    fetch('http://127.0.0.1:8000/materias-primas')
-      .then((r) => r.json()).then(setMaterias).catch(console.error)
-    fetch('http://127.0.0.1:8000/cuentas')
-      .then((r) => r.json()).then(setCuentas).catch(console.error)
-    fetch('http://127.0.0.1:8000/stock-materia-prima')
-      .then((r) => r.json()).then(setStockGeneral).catch(console.error)
-    fetch('http://127.0.0.1:8000/lotes-compra')
-      .then((r) => r.json()).then(setLotes).catch(console.error)
+    apiGet('/materias-primas').then(setMaterias).catch(console.error)
+    apiGet('/cuentas').then(setCuentas).catch(console.error)
+    apiGet('/stock-materia-prima').then(setStockGeneral).catch(console.error)
+    apiGet('/lotes-compra').then(setLotes).catch(console.error)
   }
 
   useEffect(() => {
@@ -36,24 +33,12 @@ function PaginaCompras() {
       return
     }
 
-    fetch('http://127.0.0.1:8000/compras', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_materia_prima: parseInt(idMateria),
-        id_cuenta: parseInt(idCuenta),
-        cantidad: parseFloat(cantidad),
-        precio_total: parseFloat(precioTotal),
-      }),
+    apiPost('/compras', {
+      id_materia_prima: parseInt(idMateria),
+      id_cuenta: parseInt(idCuenta),
+      cantidad: parseFloat(cantidad),
+      precio_total: parseFloat(precioTotal),
     })
-      .then((r) => {
-        if (!r.ok) {
-          return r.json().then((err) => {
-            throw new Error(err.detail || 'Error al registrar compra')
-          })
-        }
-        return r.json()
-      })
       .then(() => {
         setMensaje('Compra registrada correctamente')
         setIdMateria('')

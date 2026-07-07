@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaProduccionIntermedia() {
   // Datos para los desplegables
@@ -34,17 +35,13 @@ function PaginaProduccionIntermedia() {
   
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/productos-intermedios')
-      .then((r) => r.json()).then(setProductos).catch(console.error)   // catálogo para el desplegable "a producir"
-    fetch('http://127.0.0.1:8000/lotes-compra')
-      .then((r) => r.json()).then(setLotes).catch(console.error)
-    fetch('http://127.0.0.1:8000/jornadas')
-      .then((r) => r.json()).then((datos) => setJornadas(datos.filter((j) => j.horas_restantes > 0)))
+    apiGet('/productos-intermedios').then(setProductos).catch(console.error)   // catálogo para el desplegable "a producir"
+    apiGet('/lotes-compra').then(setLotes).catch(console.error)
+    apiGet('/jornadas')
+      .then((datos) => setJornadas(datos.filter((j) => j.horas_restantes > 0)))
       .catch(console.error)
-    fetch('http://127.0.0.1:8000/producciones-intermedias')
-      .then((r) => r.json()).then(setProducciones).catch(console.error)   // lotes producidos con stock
-    fetch('http://127.0.0.1:8000/stock-intermedio-general')
-      .then((r) => r.json()).then(setStockGeneral).catch(console.error)
+    apiGet('/producciones-intermedias').then(setProducciones).catch(console.error)   // lotes producidos con stock
+    apiGet('/stock-intermedio-general').then(setStockGeneral).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -118,21 +115,13 @@ function PaginaProduccionIntermedia() {
     const trabajo = insumosTrabajo.map((x) => [x.id_registro, x.horas])
     const intermedio = insumosIntermedio.map((x) => [x.id_prod, x.cantidad])
 
-    fetch('http://127.0.0.1:8000/producciones-intermedias', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_producto_intermedio: parseInt(idProducto),
-        cantidad_producida: parseFloat(cantidad),
-        insumos_mp: mp,
-        insumos_trabajo: trabajo,
-        insumos_intermedio: intermedio,
-      }),
+    apiPost('/producciones-intermedias', {
+      id_producto_intermedio: parseInt(idProducto),
+      cantidad_producida: parseFloat(cantidad),
+      insumos_mp: mp,
+      insumos_trabajo: trabajo,
+      insumos_intermedio: intermedio,
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then((data) => {
         setMensaje(`Producción creada. Costo unitario: ${data.costo_unitario} Bs`)
         // limpiar todo

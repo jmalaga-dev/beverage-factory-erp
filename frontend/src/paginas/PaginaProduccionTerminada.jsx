@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaProduccionTerminada() {
   const [productos, setProductos] = useState([])
@@ -27,18 +28,13 @@ function PaginaProduccionTerminada() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/productos-terminados')
-      .then((r) => r.json()).then(setProductos).catch(console.error)
-    fetch('http://127.0.0.1:8000/producciones-intermedias')
-      .then((r) => r.json()).then(setIntermedios).catch(console.error)
-    fetch('http://127.0.0.1:8000/lotes-compra')
-      .then((r) => r.json()).then(setLotes).catch(console.error)
-    fetch('http://127.0.0.1:8000/jornadas')
-      .then((r) => r.json()).then((d) => setJornadas(d.filter((j) => j.horas_restantes > 0))).catch(console.error)
-    fetch('http://127.0.0.1:8000/producciones-terminadas')
-      .then((r) => r.json()).then(setPorLote).catch(console.error)
-    fetch('http://127.0.0.1:8000/stock-terminado-general')
-      .then((r) => r.json()).then(setStockGeneral).catch(console.error)
+    apiGet('/productos-terminados').then(setProductos).catch(console.error)
+    apiGet('/producciones-intermedias').then(setIntermedios).catch(console.error)
+    apiGet('/lotes-compra').then(setLotes).catch(console.error)
+    apiGet('/jornadas')
+      .then((d) => setJornadas(d.filter((j) => j.horas_restantes > 0))).catch(console.error)
+    apiGet('/producciones-terminadas').then(setPorLote).catch(console.error)
+    apiGet('/stock-terminado-general').then(setStockGeneral).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -87,21 +83,13 @@ function PaginaProduccionTerminada() {
       setMensaje('Agrega al menos un insumo'); return
     }
 
-    fetch('http://127.0.0.1:8000/producciones-terminadas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_producto_terminado: parseInt(idProducto),
-        cantidad_producida: parseFloat(cantidad),
-        insumos_intermedio: insumosIntermedio.map((x) => [x.id_prod, x.cantidad]),
-        insumos_mp: insumosMP.map((x) => [x.id_compra, x.cantidad]),
-        insumos_trabajo: insumosTrabajo.map((x) => [x.id_registro, x.horas]),
-      }),
+    apiPost('/producciones-terminadas', {
+      id_producto_terminado: parseInt(idProducto),
+      cantidad_producida: parseFloat(cantidad),
+      insumos_intermedio: insumosIntermedio.map((x) => [x.id_prod, x.cantidad]),
+      insumos_mp: insumosMP.map((x) => [x.id_compra, x.cantidad]),
+      insumos_trabajo: insumosTrabajo.map((x) => [x.id_registro, x.horas]),
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then((data) => {
         setMensaje(`Producción creada. Costo unitario: ${data.costo_unitario} Bs`)
         setIdProducto(''); setCantidad('')

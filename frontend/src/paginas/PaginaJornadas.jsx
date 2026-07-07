@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaJornadas() {
   const [trabajadores, setTrabajadores] = useState([])
@@ -9,10 +10,8 @@ function PaginaJornadas() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/trabajadores')
-      .then((r) => r.json()).then(setTrabajadores).catch(console.error)
-    fetch('http://127.0.0.1:8000/jornadas')
-      .then((r) => r.json()).then(setJornadas).catch(console.error)
+    apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
+    apiGet('/jornadas').then(setJornadas).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -22,18 +21,10 @@ function PaginaJornadas() {
       setMensaje('Elige trabajador y horas')
       return
     }
-    fetch('http://127.0.0.1:8000/jornadas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_trabajador: parseInt(idTrabajador),
-        horas: parseFloat(horas),
-      }),
+    apiPost('/jornadas', {
+      id_trabajador: parseInt(idTrabajador),
+      horas: parseFloat(horas),
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then(() => {
         setMensaje('Jornada registrada')
         setHoras('')

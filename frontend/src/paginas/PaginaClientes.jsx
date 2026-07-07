@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaClientes() {
   const [clientes, setClientes] = useState([])
@@ -16,15 +17,13 @@ function PaginaClientes() {
   const [mensaje, setMensaje] = useState('')
 
   function cargarClientes() {
-    fetch('http://127.0.0.1:8000/clientes')
-      .then((r) => r.json())
+    apiGet('/clientes')
       .then((datos) => setClientes(datos))
       .catch((e) => console.error('Error al cargar clientes:', e))
   }
 
   function cargarSectores() {
-    fetch('http://127.0.0.1:8000/sectores')
-      .then((r) => r.json())
+    apiGet('/sectores')
       .then((datos) => setSectores(datos))
       .catch((e) => console.error('Error al cargar sectores:', e))
   }
@@ -69,27 +68,15 @@ function PaginaClientes() {
       return
     }
 
-    fetch('http://127.0.0.1:8000/clientes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nombre: nombre,
-        apellido: apellido || null,
-        celular: celular || null,
-        licoreria: licoreria || null,
-        latitud: latitud ? parseFloat(latitud) : null,
-        longitud: longitud ? parseFloat(longitud) : null,
-        id_sector: idSector ? parseInt(idSector) : null,
-      }),
+    apiPost('/clientes', {
+      nombre: nombre,
+      apellido: apellido || null,
+      celular: celular || null,
+      licoreria: licoreria || null,
+      latitud: latitud ? parseFloat(latitud) : null,
+      longitud: longitud ? parseFloat(longitud) : null,
+      id_sector: idSector ? parseInt(idSector) : null,
     })
-      .then((r) => {
-        if (!r.ok) {
-          return r.json().then((err) => {
-            throw new Error(err.detail || 'Error al crear cliente')
-          })
-        }
-        return r.json()
-      })
       .then(() => {
         setMensaje('Cliente creado correctamente')
         setNombre('')

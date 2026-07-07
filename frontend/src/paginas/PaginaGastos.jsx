@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../api'
 
 function PaginaGastos() {
   const [cuentas, setCuentas] = useState([])
@@ -11,10 +12,8 @@ function PaginaGastos() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    fetch('http://127.0.0.1:8000/cuentas')
-      .then((r) => r.json()).then(setCuentas).catch(console.error)
-    fetch('http://127.0.0.1:8000/grupos')
-      .then((r) => r.json()).then(setGrupos).catch(console.error)
+    apiGet('/cuentas').then(setCuentas).catch(console.error)
+    apiGet('/grupos').then(setGrupos).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -24,20 +23,12 @@ function PaginaGastos() {
       setMensaje('Completa cuenta, monto y descripción')
       return
     }
-    fetch('http://127.0.0.1:8000/gastos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_cuenta: parseInt(idCuenta),
-        monto: parseFloat(monto),
-        descripcion: descripcion,
-        id_grupo: idGrupo ? parseInt(idGrupo) : null,
-      }),
+    apiPost('/gastos', {
+      id_cuenta: parseInt(idCuenta),
+      monto: parseFloat(monto),
+      descripcion: descripcion,
+      id_grupo: idGrupo ? parseInt(idGrupo) : null,
     })
-      .then((r) => {
-        if (!r.ok) return r.json().then((e) => { throw new Error(e.detail || 'Error') })
-        return r.json()
-      })
       .then(() => {
         setMensaje('Gasto registrado')
         setMonto('')

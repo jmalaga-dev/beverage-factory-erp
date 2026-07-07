@@ -21,17 +21,17 @@ function App() {
 
         {/* Menú de navegación */}
         <nav>
-          <Link to="/clientes">Clientes</Link>
+          <Link to="/catalogos">Catálogos</Link>
           {' | '}
           <Link to="/compras">Compras</Link>
-          {' | '}
-          <Link to="/catalogos">Catálogos</Link>
           {' | '}
           <Link to="/jornadas">Jornadas</Link>
           {' | '}
           <Link to="/produccion-intermedia">Prod. Intermedia</Link>
           {' | '}
           <Link to="/produccion-terminada">Prod. Terminada</Link>
+          {' | '}
+          <Link to="/clientes">Clientes</Link>
           {' | '}
           <Link to="/ventas">Ventas</Link>
           {' | '}
@@ -40,7 +40,7 @@ function App() {
           <Link to="/gastos">Gastos</Link>
           {' | '}
           <Link to="/mermas">Mermas</Link>
-          
+
           {' | '}
           <Link to="/balance">Balance</Link>
         </nav>
