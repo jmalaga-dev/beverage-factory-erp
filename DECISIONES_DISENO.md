@@ -58,6 +58,14 @@ Principios aplicados en las 31 tablas:
   de ofrecerse para trabajo nuevo.
 - **Sin datos duplicados:** los datos derivados (totales, márgenes) se calculan
   vía JOIN o al vuelo, no se almacenan.
+- **Eventos vs. stock — qué se recalcula y qué se congela:** los movimientos
+  con fecha (compras, ventas, pagos, gastos) son inmutables una vez ocurridos,
+  así que sus totales por período se calculan siempre al vuelo con una query
+  (nunca se guardan aparte, excepto dentro de una foto de Balance). El stock,
+  en cambio, cambia con el tiempo — se vende, se consume — así que su
+  composición en un momento dado solo se puede conocer si se congela en ese
+  momento (ver Balance y Balance_Detalle_Producto); después ya no se puede
+  reconstruir con una query.
 - **Relaciones por Id**, no por código.
 - **Tipos `numeric`** para cantidades y dinero (precisión exacta; evita el error
   de punto flotante como el 1.4e-17). SQLAlchemy los maneja como `Decimal`.
@@ -135,6 +143,13 @@ Operaciones construidas (con backend, API y pantalla):
   patrimonio).
 - Prorrateo mensual (reparte gastos extra entre productos según horas).
 
+**Categorizar una SALIDA sin adivinar:** para separar compras / pagos a
+trabajadores / gastos dentro de los movimientos de dinero (todos
+`Tipo_Movimiento = "SALIDA"`), se usa el vínculo real que cada tabla ya tiene
+con `Movimiento` (`Compra.Id_Movimiento`, `Pago_Trabajador.Id_Movimiento`) en
+vez de adivinar por texto o grupo. Lo que no está vinculado a ninguna de las
+dos es, por descarte, un gasto.
+
 ---
 
 ## 5. LISTAS VALIDADAS (catálogos)
@@ -207,6 +222,7 @@ Git/                          (raíz del repositorio)
     └── src/
         ├── App.jsx           (coordinador + rutas de React Router)
         ├── api.js            (acceso centralizado al backend)
+        ├── formato.js         (fmtMoneda/fmtNumero, separador de miles)
         ├── componentes/       (piezas reutilizables: SelectorBuscable,
         │                       MenuCategoria, TablaFiltrable...)
         └── paginas/          (una pantalla por archivo)

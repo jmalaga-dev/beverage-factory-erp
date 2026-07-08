@@ -14,8 +14,9 @@ from sqlalchemy import func
 from app.config import UMBRAL_STOCK_MINIMO
 from app.models import (
     Balance, Balance_Detalle_Producto,
-    Cuenta, Deuda, Activo, Tipo_Bien,
-    Compra, Produccion, Producto_Terminado,
+    Cliente, Cuenta, Deuda, Activo, Tipo_Bien,
+    Compra, Detalle_Venta, Materia_Prima, Pago_Trabajador, Produccion,
+    Producto_Intermedio, Producto_Terminado, Venta,
     Movimiento, Produccion_Intermedio,
     Registro_Trabajador, Trabajador,
 )
@@ -83,6 +84,117 @@ def calcular_estado_actual(sesion):
         "patrimonio": round(escenario_a, 2),
         "stock_producto_intermedio": round(stock_int, 2),
         "valor_horas_standby": round(valor_horas, 2),
+    }
+
+
+def resumen_desde_ultima_foto(sesion):
+    """
+    Resumen dia a dia de lo que paso en la fabrica desde la ultima foto de
+    balance guardada hasta hoy, SIN necesidad de tomar una foto nueva. Sirve
+    para revisar el avance dia a dia (o notar si algo no se registro) sin
+    esperar al cierre semanal. Si no hay ninguna foto guardada, resume desde
+    el principio.
+
+    Separa compras / pagos a trabajadores / gastos usando el vinculo real
+    (Compra.Id_Movimiento, Pago_Trabajador.Id_Movimiento) en vez de asumir
+    que toda SALIDA es una compra (ese era el bug de 4.1: antes se sumaba
+    todo como "compras_semana" y "gastos_semana" quedaba en cero fijo).
+    """
+    ultimo = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).first()
+    desde = ultimo.Fecha_Balance if ultimo else None
+    hasta = date.today()
+
+    eventos_por_dia = {}
+
+    def agregar(fecha, texto):
+        eventos_por_dia.setdefault(fecha, []).append(texto)
+
+    # ---- Compras ----
+    q = sesion.query(Compra)
+    if desde:
+        q = q.filter(Compra.Fecha_Compra > desde)
+    compras = q.all()
+    total_compras = 0.0
+    ids_movimiento_compra = set()
+    for c in compras:
+        materia = sesion.get(Materia_Prima, c.Id_Materia_Prima)
+        nombre = materia.Descripcion_Materia_Prima if materia else "?"
+        unidad = materia.Unidad_Materia_Prima if materia else ""
+        agregar(c.Fecha_Compra, f"Compra de: {nombre} {float(c.Cantidad_Compra)} {unidad} a {float(c.Precio_Compra)} Bs")
+        total_compras += float(c.Precio_Compra)
+        if c.Id_Movimiento:
+            ids_movimiento_compra.add(c.Id_Movimiento)
+
+    # ---- Pagos a trabajadores ----
+    q = sesion.query(Pago_Trabajador)
+    if desde:
+        q = q.filter(Pago_Trabajador.Fecha_Pago_Trabajador > desde)
+    pagos = q.all()
+    total_pagos = 0.0
+    ids_movimiento_pago = set()
+    for p in pagos:
+        trab = sesion.get(Trabajador, p.Id_Trabajador)
+        nombre = trab.Nombre_Trabajador if trab else "?"
+        agregar(p.Fecha_Pago_Trabajador, f"Pago a: {nombre} {float(p.Monto_Real_Pago)} Bs")
+        total_pagos += float(p.Monto_Real_Pago)
+        if p.Id_Movimiento:
+            ids_movimiento_pago.add(p.Id_Movimiento)
+
+    # ---- Gastos: movimientos SALIDA que no son ni compra ni pago ----
+    q = sesion.query(Movimiento).filter(Movimiento.Tipo_Movimiento == "SALIDA")
+    if desde:
+        q = q.filter(Movimiento.Fecha_Movimiento > desde)
+    total_gastos = 0.0
+    for m in q.all():
+        if m.Id_Movimiento in ids_movimiento_compra or m.Id_Movimiento in ids_movimiento_pago:
+            continue
+        agregar(m.Fecha_Movimiento, f"Gasto: {m.Descripcion_Movimiento} {float(m.Monto_Movimiento)} Bs")
+        total_gastos += float(m.Monto_Movimiento)
+
+    # ---- Producciones intermedias ----
+    q = sesion.query(Produccion_Intermedio)
+    if desde:
+        q = q.filter(Produccion_Intermedio.Fecha_Produccion_Intermedio > desde)
+    for p in q.all():
+        producto = sesion.get(Producto_Intermedio, p.Id_Producto_Intermedio)
+        nombre = producto.Descripcion_Producto_Intermedio if producto else "?"
+        agregar(p.Fecha_Produccion_Intermedio, f"Producto Intermedio: {nombre} {float(p.Cantidad_Producida)}")
+
+    # ---- Producciones terminadas ----
+    q = sesion.query(Produccion)
+    if desde:
+        q = q.filter(Produccion.Fecha_Produccion > desde)
+    for p in q.all():
+        producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        nombre = producto.Descripcion_Producto_Terminado if producto else "?"
+        agregar(p.Fecha_Produccion, f"Producto Terminado: {nombre} {float(p.Cantidad_Producida_Produccion)}")
+
+    # ---- Ventas ----
+    q = sesion.query(Venta)
+    if desde:
+        q = q.filter(Venta.Fecha_Venta > desde)
+    total_ventas = 0.0
+    for v in q.all():
+        cliente = sesion.get(Cliente, v.Id_Cliente)
+        nombre = cliente.Nombre_Cliente if cliente else "?"
+        detalles = sesion.query(Detalle_Venta).filter_by(Id_Venta=v.Id_Venta).all()
+        total_venta = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+        agregar(v.Fecha_Venta, f"Venta a: {nombre} total de {total_venta} Bs")
+        total_ventas += total_venta
+
+    dias = [
+        {"fecha": str(fecha), "eventos": textos}
+        for fecha, textos in sorted(eventos_por_dia.items())
+    ]
+
+    return {
+        "desde": str(desde) if desde else None,
+        "hasta": str(hasta),
+        "ventas": round(total_ventas, 2),
+        "compras": round(total_compras, 2),
+        "gastos": round(total_gastos, 2),
+        "pagos": round(total_pagos, 2),
+        "dias": dias,
     }
 
 
@@ -183,11 +295,37 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             return q.scalar()
 
         ventas_semana = suma_movimientos("ENTRADA", fecha_corte, fecha_balance)
-        # Compras + gastos son ambos SALIDA; aqui los juntamos como salidas de la semana
-        # TODO: si quieres separar compras de gastos, usar el grupo o el vinculo a Compra
-        salidas_semana = suma_movimientos("SALIDA", fecha_corte, fecha_balance)
-        compras_semana = salidas_semana   # aproximacion; refinar con grupos
-        gastos_semana = 0                  # placeholder hasta separar por grupo
+
+        # Compras: usa el vinculo real Compra.Id_Movimiento, no una suposicion.
+        q_compras = sesion.query(Compra)
+        if fecha_corte is not None:
+            q_compras = q_compras.filter(Compra.Fecha_Compra >= fecha_corte)
+        if fecha_balance is not None:
+            q_compras = q_compras.filter(Compra.Fecha_Compra <= fecha_balance)
+        compras_semana_lista = q_compras.all()
+        compras_semana = sum(c.Precio_Compra for c in compras_semana_lista)
+        ids_movimiento_compra = {c.Id_Movimiento for c in compras_semana_lista if c.Id_Movimiento}
+
+        # Pagos a trabajadores: tienen su propio vinculo, no son "gasto".
+        q_pagos = sesion.query(Pago_Trabajador)
+        if fecha_corte is not None:
+            q_pagos = q_pagos.filter(Pago_Trabajador.Fecha_Pago_Trabajador >= fecha_corte)
+        if fecha_balance is not None:
+            q_pagos = q_pagos.filter(Pago_Trabajador.Fecha_Pago_Trabajador <= fecha_balance)
+        pagos_semana_lista = q_pagos.all()
+        pagos_semana = sum(p.Monto_Real_Pago for p in pagos_semana_lista)
+        ids_movimiento_pago = {p.Id_Movimiento for p in pagos_semana_lista if p.Id_Movimiento}
+
+        # Gastos: lo que queda de las SALIDA que no es compra ni pago.
+        q_salidas = sesion.query(Movimiento).filter(Movimiento.Tipo_Movimiento == "SALIDA")
+        if fecha_corte is not None:
+            q_salidas = q_salidas.filter(Movimiento.Fecha_Movimiento >= fecha_corte)
+        if fecha_balance is not None:
+            q_salidas = q_salidas.filter(Movimiento.Fecha_Movimiento <= fecha_balance)
+        gastos_semana = sum(
+            m.Monto_Movimiento for m in q_salidas.all()
+            if m.Id_Movimiento not in ids_movimiento_compra and m.Id_Movimiento not in ids_movimiento_pago
+        )
 
         # ===== ESCENARIOS y PATRIMONIO =====
         total_activos_fijos = total_inmuebles + total_equipos + total_otros
@@ -209,6 +347,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             Ventas_Semana=ventas_semana,
             Compras_Semana=compras_semana,
             Gastos_Semana=gastos_semana,
+            Pagos_Semana=pagos_semana,
             Escenario_A=escenario_a,
             Escenario_B=escenario_b,
             Escenario_C=escenario_c,

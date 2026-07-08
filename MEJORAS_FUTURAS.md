@@ -119,6 +119,14 @@ Caso: registré 8 horas a Juan pero eran de Pedro, o Juan no vino ese día. Nece
 poder editar/anular una jornada (operación de edición, distinta de una merma de
 inventario). Relacionado con la falta general de "editar" (ver 6.1).
 
+**Estado: implementado.** `PATCH /jornadas/{id}` (corrige horas y/o trabajador)
+y `DELETE /jornadas/{id}` (anula, borrado real). Solo permitido si la jornada
+está **intacta**: nada de sus horas se usó en una producción y no está pagada
+— si cualquiera ya pasó, se bloquea (backend y frontend), para no dejar
+inconsistente un costo o un pago ya hechos. En la tabla de Jornadas, los
+botones Editar/Eliminar aparecen al pasar el mouse, solo en filas intactas.
+Se agregó también la columna "Horas restantes".
+
 ### 3.5 Merma automática de residuos bajo el umbral
 El redondeo a cero (3.2) solo esconde de las listas los lotes con resto bajo
 `UMBRAL_STOCK_MINIMO`; la fila en la BD sigue con su resto positivo (no afecta
@@ -137,6 +145,21 @@ umbral. Falta decidir el disparador: ¿en cada consumo?, ¿una acción manual
 En el balance, compras y gastos son ambos movimientos de SALIDA y no se
 distinguen bien. Falta separarlos usando el grupo del movimiento o el vínculo a
 Compra. (TODO marcado en el servicio de balance.)
+
+**Estado: implementado.** El bug real era más grande: los pagos a
+trabajadores también generan un movimiento SALIDA, y antes se sumaban **todos**
+(compras + gastos + pagos) como "compras_semana", con "gastos_semana" fijo en
+cero. Ahora se separan los tres usando el vínculo real (`Compra.Id_Movimiento`,
+`Pago_Trabajador.Id_Movimiento`); lo que sobra de las SALIDA sin esos vínculos
+es, por descarte, el gasto. Migración 005 agrega `Pagos_Semana` a `Balance`
+para que quede simétrico con Ventas/Compras/Gastos.
+
+Además, nuevo endpoint `GET /balance-resumen-semana`: resumen día a día desde
+la última foto guardada hasta hoy (ventas, compras, gastos, pagos + un
+detalle tipo "Compra de: Azúcar 5 kg a 60 Bs" por evento), **sin necesidad de
+tomar una foto nueva** — pensado para revisar el avance diario y notar si
+algo no se registró. En Balance, 4 filas nuevas en la tabla comparativa y un
+desplegable con el detalle día a día (colapsado por defecto).
 
 ### 4.2 Clasificación de activos fijos
 La clasificación inmuebles/equipos/otros se hace buscando palabras en el nombre
@@ -192,6 +215,13 @@ de la misma materia prima entre proveedores y decidir cuál conviene.
 El sistema actual solo tiene crear (POST) y leer (GET). Falta poder editar y
 borrar registros (clientes, catálogos, jornadas, etc.). Es lo que en una API REST
 completa serían los métodos PUT/PATCH/DELETE.
+
+**Nota (aún no implementado en general):** ya hay 3 precedentes puntuales de
+PATCH/DELETE, cada uno acotado a su caso, no una solución genérica:
+`PATCH /trabajadores/{id}/habilitado` (6.5), `PATCH`/`DELETE /jornadas/{id}`
+con guardrail de "intacta" (3.4), y `PATCH`/`DELETE /activos/{id}` (7.2). Ver
+la decisión "PATCH acotado, no edición genérica" en DECISIONES_DISENO.md.
+Sirven de referencia de patrón si se ataca esto en general.
 
 ### 6.2 Buscadores en desplegables largos
 Cuando haya muchas materias primas / productos / clientes, los desplegables
@@ -283,6 +313,18 @@ Registrar activos como casa, vehículo, equipos, para que sumen al patrimonio en
 el balance (escenario A). La tabla Activo y Tipo_Bien existen en el diseño. Falta
 backend (crear activo con su tipo y valor) y pantalla. El balance ya tiene el
 espacio para sumarlos (total_activos_fijos).
+
+**Estado: implementado.** CRUD completo de activos y tipos de bien
+(`rutas/activos.py`), página nueva **Activos** bajo Cierre (crear/editar/dar
+de baja). De paso se corrigió un bug real: la vista previa (`/balance-actual`)
+tenía `escenario_a = escenario_b` fijo, ignorando los activos por completo,
+mientras la foto guardada sí los sumaba — inconsistentes entre sí. Ahora
+ambas calculan igual: A = B + activos fijos. El Escenario A suma **todos**
+los activos sin importar el tipo (sin depender del match de texto frágil que
+usa la foto guardada para inmuebles/equipos/otros — eso sigue igual, ver
+4.2). Balance ganó una fila "Activos fijos" y una tabla-resumen plegable con
+el detalle. De paso se agregó `formato.js` (separador de miles, locale
+es-BO) aplicado en Balance y Activos.
 
 ### 7.3 Pago/amortización de deudas
 Complementa el módulo de deudas (7.0): pagar una deuda eligiendo de qué cuenta

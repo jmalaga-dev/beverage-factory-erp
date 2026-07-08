@@ -457,6 +457,7 @@ class Balance(Base):
     Ventas_Semana = Column(Numeric)
     Compras_Semana = Column(Numeric)
     Gastos_Semana = Column(Numeric)
+    Pagos_Semana = Column(Numeric)                  # NUEVO
     Escenario_A = Column(Numeric)
     Escenario_B = Column(Numeric)
     Escenario_C = Column(Numeric)
