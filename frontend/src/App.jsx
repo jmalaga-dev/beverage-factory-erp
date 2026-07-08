@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './App.css'
+import MenuCategoria from './componentes/MenuCategoria'
 import PaginaClientes from './paginas/PaginaClientes'
 import PaginaCompras from './paginas/PaginaCompras'
 import PaginaCatalogos from './paginas/PaginaCatalogos'
@@ -13,36 +14,43 @@ import PaginaMermas from './paginas/PaginaMermas'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaBalance from './paginas/PaginaBalance'
 
+// Grupos del menu principal: agrupan las paginas por su lugar en el
+// flujo del negocio, en vez de una lista plana de 11 links.
+const categorias = [
+  { titulo: 'Configurar', links: [
+    { to: '/catalogos', label: 'Catálogos' },
+  ] },
+  { titulo: 'Producción', links: [
+    { to: '/compras', label: 'Compras' },
+    { to: '/jornadas', label: 'Jornadas' },
+    { to: '/produccion-intermedia', label: 'Prod. Intermedia' },
+    { to: '/produccion-terminada', label: 'Prod. Terminada' },
+  ] },
+  { titulo: 'Ventas', links: [
+    { to: '/clientes', label: 'Clientes' },
+    { to: '/ventas', label: 'Ventas' },
+  ] },
+  { titulo: 'Finanzas', links: [
+    { to: '/pagos', label: 'Pagos' },
+    { to: '/gastos', label: 'Gastos' },
+  ] },
+  { titulo: 'Cierre', links: [
+    { to: '/mermas', label: 'Mermas' },
+    { to: '/balance', label: 'Balance' },
+  ] },
+]
+
 function App() {
   return (
     <BrowserRouter>
       <div>
         <h1>Fábrica V2</h1>
 
-        {/* Menú de navegación */}
-        <nav>
-          <Link to="/catalogos">Catálogos</Link>
-          {' | '}
-          <Link to="/compras">Compras</Link>
-          {' | '}
-          <Link to="/jornadas">Jornadas</Link>
-          {' | '}
-          <Link to="/produccion-intermedia">Prod. Intermedia</Link>
-          {' | '}
-          <Link to="/produccion-terminada">Prod. Terminada</Link>
-          {' | '}
-          <Link to="/clientes">Clientes</Link>
-          {' | '}
-          <Link to="/ventas">Ventas</Link>
-          {' | '}
-          <Link to="/pagos">Pagos</Link>
-          {' | '}
-          <Link to="/gastos">Gastos</Link>
-          {' | '}
-          <Link to="/mermas">Mermas</Link>
-
-          {' | '}
-          <Link to="/balance">Balance</Link>
+        {/* Menú de navegación agrupado por categorías */}
+        <nav style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {categorias.map((c) => (
+            <MenuCategoria key={c.titulo} titulo={c.titulo} links={c.links} />
+          ))}
         </nav>
 
         {/* Aquí se muestra la pantalla según la ruta */}
