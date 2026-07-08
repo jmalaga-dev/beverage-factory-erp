@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiGet, apiPost } from '../api'
+import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaJornadas() {
@@ -10,6 +10,12 @@ function PaginaJornadas() {
   const [horas, setHoras] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [soloNoPagadas, setSoloNoPagadas] = useState(true)
+
+  // Fila sobre la que esta el mouse (para mostrar sus botones) y fila en edicion
+  const [filaHover, setFilaHover] = useState(null)
+  const [editando, setEditando] = useState(null)
+  const [editTrabajador, setEditTrabajador] = useState('')
+  const [editHoras, setEditHoras] = useState('')
 
   function cargar() {
     apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
@@ -30,6 +36,43 @@ function PaginaJornadas() {
       .then(() => {
         setMensaje('Jornada registrada')
         setHoras('')
+        cargar()
+      })
+      .catch((e) => setMensaje(e.message))
+  }
+
+  function empezarEdicion(j) {
+    setEditando(j.id_jornada)
+    setEditTrabajador(String(j.id_trabajador))
+    setEditHoras(String(j.horas))
+  }
+
+  function cancelarEdicion() {
+    setEditando(null)
+  }
+
+  function guardarEdicion(id) {
+    if (editTrabajador === '' || editHoras === '') {
+      setMensaje('Elige trabajador y horas')
+      return
+    }
+    apiPatch(`/jornadas/${id}`, {
+      id_trabajador: parseInt(editTrabajador),
+      horas: parseFloat(editHoras),
+    })
+      .then(() => {
+        setMensaje('Jornada actualizada')
+        setEditando(null)
+        cargar()
+      })
+      .catch((e) => setMensaje(e.message))
+  }
+
+  function eliminarJornada(id) {
+    if (!window.confirm('¿Eliminar esta jornada? No se puede deshacer.')) return
+    apiDelete(`/jornadas/${id}`)
+      .then(() => {
+        setMensaje('Jornada eliminada')
         cargar()
       })
       .catch((e) => setMensaje(e.message))
@@ -61,17 +104,56 @@ function PaginaJornadas() {
       </label>
       <table border="1">
         <thead>
-          <tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Pagada</th></tr>
+          <tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Horas restantes</th><th>Pagada</th><th>Acciones</th></tr>
         </thead>
         <tbody>
           {jornadas
             .filter((j) => !soloNoPagadas || !j.pagada)
             .map((j) => (
-              <tr key={j.id_jornada}>
-                <td>{j.nombre_trabajador}</td>
-                <td>{j.fecha}</td>
-                <td>{j.horas}</td>
-                <td>{j.pagada ? 'Sí' : 'No'}</td>
+              <tr key={j.id_jornada}
+                onMouseEnter={() => setFilaHover(j.id_jornada)}
+                onMouseLeave={() => setFilaHover(null)}>
+                {editando === j.id_jornada ? (
+                  <>
+                    <td>
+                      <SelectorBuscable
+                        opciones={trabajadores.filter((t) => t.habilitado)}
+                        valor={editTrabajador}
+                        onCambiar={setEditTrabajador}
+                        obtenerId={(t) => t.id_trabajador}
+                        obtenerTexto={(t) => t.nombre}
+                        placeholder="-- Trabajador --"
+                      />
+                    </td>
+                    <td>{j.fecha}</td>
+                    <td>
+                      <input type="number" style={{ width: '70px' }}
+                        value={editHoras} onChange={(e) => setEditHoras(e.target.value)} />
+                    </td>
+                    <td>{j.horas_restantes}</td>
+                    <td>{j.pagada ? 'Sí' : 'No'}</td>
+                    <td>
+                      <button onClick={() => guardarEdicion(j.id_jornada)}>Guardar</button>
+                      {' '}<button onClick={cancelarEdicion}>Cancelar</button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td>{j.nombre_trabajador}</td>
+                    <td>{j.fecha}</td>
+                    <td>{j.horas}</td>
+                    <td>{j.horas_restantes}</td>
+                    <td>{j.pagada ? 'Sí' : 'No'}</td>
+                    <td>
+                      {filaHover === j.id_jornada && j.intacta && (
+                        <>
+                          <button onClick={() => empezarEdicion(j)}>Editar</button>
+                          {' '}<button onClick={() => eliminarJornada(j.id_jornada)}>Eliminar</button>
+                        </>
+                      )}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
         </tbody>

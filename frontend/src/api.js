@@ -45,3 +45,13 @@ export async function apiPatch(ruta, cuerpo) {
   }
   return respuesta.json()
 }
+
+// Borra un recurso (DELETE) y devuelve el JSON de respuesta.
+export async function apiDelete(ruta) {
+  const respuesta = await fetch(`${BASE_URL}${ruta}`, { method: 'DELETE' })
+  if (!respuesta.ok) {
+    const error = await respuesta.json().catch(() => ({}))
+    throw new Error(error.detail || `Error en ${ruta}`)
+  }
+  return respuesta.json()
+}
