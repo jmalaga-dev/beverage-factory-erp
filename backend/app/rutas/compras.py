@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import UMBRAL_STOCK_MINIMO
 from app.dependencias import get_sesion
 from app.models import Compra, Materia_Prima
 from app.servicios.compras import registrar_compra
@@ -52,7 +53,7 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
 @router.get("/lotes-compra")
 def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
     """Lotes de compra con stock, incluyendo el nombre de la materia prima."""
-    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
     resultado = []
     for c in lotes:
         mp = sesion.get(Materia_Prima, c.Id_Materia_Prima)
@@ -73,7 +74,7 @@ def stock_materia_prima(sesion: Session = Depends(get_sesion)):
     cada materia, con su costo unitario promedio ponderado (mismo patron que
     stock-intermedio-general y stock-terminado-general)."""
     materias = sesion.query(Materia_Prima).all()
-    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
 
     resumen = {
         m.Id_Materia_Prima: {

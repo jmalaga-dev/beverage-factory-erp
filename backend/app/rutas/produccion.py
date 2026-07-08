@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import UMBRAL_STOCK_MINIMO
 from app.dependencias import get_sesion
 from app.models import (
     Produccion,
@@ -65,7 +66,7 @@ def crear_produccion_intermedia(datos: ProduccionIntermediaEntrada, sesion: Sess
 def listar_producciones_intermedias(sesion: Session = Depends(get_sesion)):
     """Lotes de producción intermedia con su stock restante y costo."""
     prods = sesion.query(Produccion_Intermedio).filter(
-        Produccion_Intermedio.Cantidad_Restante_Producida > 0
+        Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO
     ).all()
     resultado = []
     for p in prods:
@@ -84,7 +85,7 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
     """Stock consolidado de producto intermedio: suma todos los lotes por producto,
     con costo unitario promedio ponderado (prorrateado) de lo que queda."""
     prods = sesion.query(Produccion_Intermedio).filter(
-        Produccion_Intermedio.Cantidad_Restante_Producida > 0
+        Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO
     ).all()
 
     # Agrupar por producto intermedio
@@ -158,7 +159,7 @@ def crear_produccion_terminada(datos: ProduccionTerminadoEntrada, sesion: Sessio
 def listar_producciones_terminadas(sesion: Session = Depends(get_sesion)):
     """Lotes de producto terminado con stock, para la tabla por lote."""
     prods = sesion.query(Produccion).filter(
-        Produccion.Cantidad_Restante_Produccion > 0
+        Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
     ).all()
     resultado = []
     for p in prods:
@@ -176,7 +177,7 @@ def listar_producciones_terminadas(sesion: Session = Depends(get_sesion)):
 def listar_lotes_pt(sesion: Session = Depends(get_sesion)):
     """Lotes de producto terminado con stock, nombre del producto, costo y precio recomendado."""
     lotes = sesion.query(Produccion).filter(
-        Produccion.Cantidad_Restante_Produccion > 0
+        Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
     ).all()
     resultado = []
     for p in lotes:
@@ -196,7 +197,7 @@ def listar_lotes_pt(sesion: Session = Depends(get_sesion)):
 def stock_terminado_general(sesion: Session = Depends(get_sesion)):
     """Stock consolidado de producto terminado: suma lotes por producto, costo promedio ponderado."""
     prods = sesion.query(Produccion).filter(
-        Produccion.Cantidad_Restante_Produccion > 0
+        Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
     ).all()
     resumen = {}
     for p in prods:

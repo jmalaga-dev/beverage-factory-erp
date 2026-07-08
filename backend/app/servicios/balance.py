@@ -11,6 +11,7 @@ dependen de definiciones de negocio que pueden ajustarse. Se marcan con TODO.
 
 from datetime import date, timedelta
 from sqlalchemy import func
+from app.config import UMBRAL_STOCK_MINIMO
 from app.models import (
     Balance, Balance_Detalle_Producto,
     Cuenta, Deuda, Activo, Tipo_Bien,
@@ -32,11 +33,11 @@ def calcular_estado_actual(sesion):
     efectivo = sesion.query(func.coalesce(func.sum(Cuenta.Saldo_Actual_Cuenta), 0)).scalar()
 
     # Stock materia prima valorizado (restante x precio unitario del lote)
-    compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+    compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
     stock_mp = sum(float(c.Cantidad_Restante_Compra) * (float(c.Precio_Compra) / float(c.Cantidad_Compra)) for c in compras)
 
     # Stock de producto INTERMEDIO valorizado (a su costo unitario)
-    prods_int = sesion.query(Produccion_Intermedio).filter(Produccion_Intermedio.Cantidad_Restante_Producida > 0).all()
+    prods_int = sesion.query(Produccion_Intermedio).filter(Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO).all()
     stock_int = sum(float(p.Cantidad_Restante_Producida) * float(p.Costo_Unitario_Produccion_Intermedio or 0) for p in prods_int)
 
     # Horas de trabajo en stand-by (pagadas/registradas pero no consumidas)
@@ -47,7 +48,7 @@ def calcular_estado_actual(sesion):
         valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(trab.Pago_Trabajador or 0) if trab else 0
 
     # Stock producto terminado valorizado (a precio recomendado)
-    producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > 0).all()
+    producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO).all()
     stock_pt = 0
     for p in producciones:
         prod = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
@@ -109,7 +110,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
 
         # ===== INVENTARIOS VALORIZADOS =====
         # Stock de materia prima: restante x precio unitario del lote
-        compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+        compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
         valor_stock_mp = 0
         for c in compras:
             precio_unit = c.Precio_Compra / c.Cantidad_Compra
@@ -117,7 +118,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
 
         # Stock de producto intermedio valorizado (a su costo unitario)
         prods_int = sesion.query(Produccion_Intermedio).filter(
-            Produccion_Intermedio.Cantidad_Restante_Producida > 0
+            Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO
         ).all()
         valor_stock_intermedio = sum(
             p.Cantidad_Restante_Producida * (p.Costo_Unitario_Produccion_Intermedio or 0)
@@ -136,7 +137,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
 
         # Stock de producto terminado: restante x precio recomendado de venta
         producciones = sesion.query(Produccion).filter(
-            Produccion.Cantidad_Restante_Produccion > 0
+            Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
         ).all()
         valor_stock_pt = 0
         detalle_por_producto = {}  # id_producto -> (cantidad, valor)

@@ -103,6 +103,12 @@ umbral. Nota: el uso de `numeric`/`Decimal` ya evita la basurita de punto flotan
 (el 1.4e-17), así que esto solo aplicaría a restos reales pequeños. Actualmente se
 maneja vía el módulo de mermas.
 
+**Estado: implementado.** Constante `UMBRAL_STOCK_MINIMO` en `app/config.py`
+(0.0001), aplicada en los 13 filtros de "lotes con stock disponible" (listas,
+desplegables y cálculo de balance). Solo afecta visibilidad/cálculo: un lote
+bajo el umbral deja de contar como disponible, pero la fila con su resto
+sigue existiendo en la BD (ver 3.5).
+
 ### 3.3 Mermas de producto terminado e intermedio en cadena / reproceso
 El backend soporta reproceso (dos registros enlazados por Ref_Reproceso). La
 pantalla de mermas cubre merma/ajuste/devolución sobre los tres orígenes, pero el
@@ -112,6 +118,16 @@ reproceso completo no tiene interfaz aún.
 Caso: registré 8 horas a Juan pero eran de Pedro, o Juan no vino ese día. Necesita
 poder editar/anular una jornada (operación de edición, distinta de una merma de
 inventario). Relacionado con la falta general de "editar" (ver 6.1).
+
+### 3.5 Merma automática de residuos bajo el umbral
+El redondeo a cero (3.2) solo esconde de las listas los lotes con resto bajo
+`UMBRAL_STOCK_MINIMO`; la fila en la BD sigue con su resto positivo (no afecta
+el balance porque las mismas consultas ya excluyen esos lotes). Si se quiere
+"cerrar" esos lotes de verdad y no solo ocultarlos, se necesitaría generar una
+merma automática (evento de inventario, no borrar la fila — ver el principio
+de inmutabilidad del histórico) cuando un consumo deja el resto bajo el
+umbral. Falta decidir el disparador: ¿en cada consumo?, ¿una acción manual
+"limpiar residuos"? No es urgente: sin impacto financiero ni visual hoy.
 
 ---
 
