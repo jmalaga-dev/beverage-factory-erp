@@ -1,14 +1,30 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import TablaFiltrable from '../componentes/TablaFiltrable'
+
+// Columnas comunes a los tres detalles: descripcion, cantidad y costo
+// promedio ponderado (los endpoints "general" ya lo calculan por producto).
+const columnasDetalle = [
+  { key: 'descripcion', label: 'Producto' },
+  { key: 'stock_total', label: 'Cantidad', formato: (v) => v.toFixed(2) },
+  { key: 'costo_promedio', label: 'Costo ponderado promedio', formato: (v) => v.toFixed(4) },
+]
 
 function PaginaBalance() {
   const [actual, setActual] = useState(null)
   const [ultimo, setUltimo] = useState(null)
   const [mensaje, setMensaje] = useState('')
 
+  const [detalleTerminado, setDetalleTerminado] = useState([])
+  const [detalleIntermedio, setDetalleIntermedio] = useState([])
+  const [detalleMateriaPrima, setDetalleMateriaPrima] = useState([])
+
   function cargar() {
     apiGet('/balance-actual').then(setActual).catch(console.error)
     apiGet('/balance-ultimo').then(setUltimo).catch(console.error)
+    apiGet('/stock-terminado-general').then(setDetalleTerminado).catch(console.error)
+    apiGet('/stock-intermedio-general').then(setDetalleIntermedio).catch(console.error)
+    apiGet('/stock-materia-prima').then(setDetalleMateriaPrima).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -76,6 +92,26 @@ function PaginaBalance() {
         <button onClick={tomarBalance}>Tomar foto ahora</button>
       </div>
       {mensaje && <p>{mensaje}</p>}
+
+      <h2 style={{ marginTop: '2rem' }}>Detalle por producto (estado actual)</h2>
+      <TablaFiltrable
+        titulo="Producto Terminado"
+        filas={detalleTerminado}
+        columnas={columnasDetalle}
+        claveOrden="descripcion"
+      />
+      <TablaFiltrable
+        titulo="Producto Intermedio"
+        filas={detalleIntermedio}
+        columnas={columnasDetalle}
+        claveOrden="descripcion"
+      />
+      <TablaFiltrable
+        titulo="Materia Prima"
+        filas={detalleMateriaPrima}
+        columnas={columnasDetalle}
+        claveOrden="descripcion"
+      />
     </div>
   )
 }

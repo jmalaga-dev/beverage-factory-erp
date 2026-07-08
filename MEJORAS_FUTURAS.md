@@ -63,6 +63,10 @@ el reparto proporcional entre producciones; se pospuso.
 Ya se implementó el consolidado con promedio ponderado en intermedios y
 terminados. Verificar que esté completo en todas las vistas de stock.
 
+**Estado: verificado y completado.** `/stock-materia-prima` también expone
+`costo_promedio` ahora (antes solo intermedios y terminados lo tenían), mismo
+patrón de cálculo. Hecho como parte del trabajo de 4.5.
+
 ---
 
 ## 2. LÓGICA FINANCIERA DE REPARTO POR PRIORIDAD DE CUENTAS
@@ -135,6 +139,27 @@ Filosofía B para el costo de materia prima.
 La pantalla muestra patrimonio y escenarios. Ampliar para ver efectivo, stocks,
 deudas por separado, y el detalle por producto.
 
+**Estado: implementado.** Efectivo/stocks/deudas ya estaban separados en la
+tabla de comparación. Se agregó el detalle por producto (terminado, intermedio,
+materia prima) en tablas plegables (colapsadas por defecto) con buscador y
+orden alfabético — reutiliza los endpoints `/stock-*-general` ya existentes, en
+totales consolidados, no por lote. Solo cubre el **estado actual**; el detalle
+histórico de la "última foto" queda pendiente, ver 4.6.
+
+### 4.6 Detalle histórico por producto en la última foto
+El detalle por producto de 4.5 solo cubre el estado actual (reutiliza
+endpoints ya existentes, sin tocar el backend salvo por materia prima). La
+tabla `Balance_Detalle_Producto` sí guarda un detalle histórico por cada foto
+guardada, pero **solo de producto terminado** (no de intermedio ni materia
+prima), y hoy no hay ningún endpoint que lo exponga.
+
+Para mostrarlo también en la columna "Última foto" haría falta:
+- Un endpoint nuevo, ej. `GET /balances/{id}/detalle`, que lea
+  `Balance_Detalle_Producto`.
+- Decidir si se amplía el modelo para capturar también intermedio y materia
+  prima en cada foto (cambio de esquema, migración nueva), o si se deja el
+  detalle histórico solo para terminado.
+
 ---
 
 ## 5. PROVEEDORES
@@ -156,15 +181,31 @@ completa serían los métodos PUT/PATCH/DELETE.
 Cuando haya muchas materias primas / productos / clientes, los desplegables
 necesitan un campo de búsqueda para filtrar escribiendo, en vez de scrollear.
 
+**Estado: implementado.** Componente reutilizable `SelectorBuscable`, aplicado
+en 17 desplegables de catálogos/lotes/clientes en 8 páginas. Los `<select>` de
+categorías fijas de negocio (tipo/sentido/origen en Mermas) se dejaron nativos
+a propósito, no son catálogos que crecen.
+
 ### 6.3 Filtros dinámicos en tablas
 Tablas largas (catálogos, jornadas) necesitan filtros. Ejemplos concretos:
 - Jornadas: filtrar por "No pagadas" por defecto, para ver las activas de la semana.
 - Catálogos: buscar/filtrar productos.
 - Ocultar/colapsar tablas que no se están usando.
 
+**Estado: implementado** para los dos primeros puntos (Jornadas: checkbox
+"solo no pagadas" marcado por defecto; Catálogos: buscador de texto por
+tabla). El tercer punto se resolvió con 6.4. El mismo patrón de buscador +
+orden alfabético se generalizó en el componente `TablaFiltrable`, reutilizado
+también en el detalle de Balance (ver 4.5).
+
 ### 6.4 Secciones colapsables en Catálogos
 La página de catálogos tiene 6 tablas apiladas; scrollear hasta la última es
 molesto. Hacer secciones plegables o sub-pantallas con mini-menú.
+
+**Estado: implementado.** Cada tabla es una sección plegable (título
+clickeable con indicador ▾/▸ y contador de registros). Materia Prima abierta
+por defecto, el resto colapsadas. El mismo patrón se reutilizó en el detalle
+de Balance (4.5), ahí las tres tablas arrancan colapsadas.
 
 ### 6.5 Campo "habilitado" en trabajadores
 Agregar a la BD si un trabajador está activo, para mostrar solo los habilitados en
@@ -174,6 +215,10 @@ los desplegables. Mini-migración simple.
 En la pantalla de ventas, avisar visualmente (rojo / mensaje) si el precio de
 venta que se pone es menor al costo del lote, para no vender a pérdida.
 
+**Estado: implementado.** Aviso visual no bloqueante: mientras se arma la
+línea, y también en cada línea ya agregada que quede bajo costo. El registro
+de la venta nunca se bloquea.
+
 ### 6.7 Autocompletado y ayudas de formulario
 Ya se implementó autocompletar el precio recomendado en ventas y el sugerido en
 pagos. Extender este tipo de ayudas donde aplique.
@@ -181,6 +226,11 @@ pagos. Extender este tipo de ayudas donde aplique.
 ### 6.8 Menú de navegación mejorado
 El menú superior ya está largo (12+ pestañas). Agrupar por categorías (Catálogos,
 Operaciones, Finanzas, Cierre) con submenús o secciones.
+
+**Estado: implementado.** Componente `MenuCategoria`: 5 categorías
+(Configurar, Producción, Ventas, Finanzas, Cierre) que despliegan sus páginas
+al pasar el mouse (clic como respaldo para teclado/táctil). Se resalta la
+categoría y el link activos.
 
 ### 6.9 Mejora general de estilos (CSS)
 El MVP usa estilos por defecto (tablas con border=1, modo oscuro de Vite). Diseñar

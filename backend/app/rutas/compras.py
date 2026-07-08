@@ -7,7 +7,6 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
@@ -70,28 +69,39 @@ def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
 
 @router.get("/stock-materia-prima")
 def stock_materia_prima(sesion: Session = Depends(get_sesion)):
-    """Stock general de materia prima: suma el restante de todos los lotes por cada materia."""
-    filas = (
-        sesion.query(
-            Materia_Prima.Id_Materia_Prima,
-            Materia_Prima.Descripcion_Materia_Prima,
-            Materia_Prima.Unidad_Materia_Prima,
-            func.coalesce(func.sum(Compra.Cantidad_Restante_Compra), 0).label("total"),
-        )
-        .outerjoin(Compra, Compra.Id_Materia_Prima == Materia_Prima.Id_Materia_Prima)
-        .group_by(
-            Materia_Prima.Id_Materia_Prima,
-            Materia_Prima.Descripcion_Materia_Prima,
-            Materia_Prima.Unidad_Materia_Prima,
-        )
-        .all()
-    )
-    return [
-        {
-            "id_materia_prima": f.Id_Materia_Prima,
-            "descripcion": f.Descripcion_Materia_Prima,
-            "unidad": f.Unidad_Materia_Prima,
-            "stock_total": float(f.total),
+    """Stock general de materia prima: suma el restante de todos los lotes por
+    cada materia, con su costo unitario promedio ponderado (mismo patron que
+    stock-intermedio-general y stock-terminado-general)."""
+    materias = sesion.query(Materia_Prima).all()
+    lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > 0).all()
+
+    resumen = {
+        m.Id_Materia_Prima: {
+            "descripcion": m.Descripcion_Materia_Prima,
+            "unidad": m.Unidad_Materia_Prima,
+            "stock_total": 0.0,
+            "valor_total": 0.0,
         }
-        for f in filas
-    ]
+        for m in materias
+    }
+    for c in lotes:
+        datos = resumen.get(c.Id_Materia_Prima)
+        if datos is None:
+            continue
+        cant = float(c.Cantidad_Restante_Compra)
+        costo_unit = float(c.Precio_Compra) / float(c.Cantidad_Compra) if c.Cantidad_Compra else 0
+        datos["stock_total"] += cant
+        datos["valor_total"] += cant * costo_unit
+
+    resultado = []
+    for mid, datos in resumen.items():
+        stock = datos["stock_total"]
+        costo_prom = datos["valor_total"] / stock if stock > 0 else 0
+        resultado.append({
+            "id_materia_prima": mid,
+            "descripcion": datos["descripcion"],
+            "unidad": datos["unidad"],
+            "stock_total": stock,
+            "costo_promedio": round(costo_prom, 4),
+        })
+    return resultado

@@ -16,6 +16,15 @@ futuras están en un documento aparte: `MEJORAS_FUTURAS.md`.
 - Arquitectura por capas: Frontend (React) → API (FastAPI) → Servicios (lógica de
   negocio) → Base de datos. Los servicios son el corazón estable; hoy los llaman
   los endpoints, y son reutilizables entre distintos clientes (web, móvil, BI).
+- **Rutas por dominio:** los endpoints se organizan en `app/rutas/` (un router
+  por área: clientes, compras, ventas, etc.), espejando `app/servicios/`;
+  `main.py` solo los ensambla. Mismo principio de capas aplicado a la API:
+  fácil de navegar y sin endpoints duplicados.
+- **Acceso centralizado al backend en el frontend:** el frontend solo llama a
+  la API a través de `src/api.js` (URL base única + helpers `apiGet`/
+  `apiPost` con manejo de errores). Evita repetir la URL y el parseo de
+  errores en cada pantalla; si cambia el puerto o el dominio al desplegar,
+  se edita un solo lugar.
 - Migración desde una herramienta previa en Excel/VBA que se volvió lenta e
   inescalable por mezclar frontend, lógica y datos en hojas de cálculo.
 
@@ -160,11 +169,16 @@ Git/                          (raíz del repositorio)
 │   ├── .env                  (credenciales, NO versionado)
 │   ├── migraciones/          (cambios incrementales a la BD, numerados)
 │   └── app/
-│       ├── database.py, models.py, dependencias.py, main.py
+│       ├── database.py, models.py, dependencias.py
+│       ├── main.py           (ensambla la app, CORS y los routers)
+│       ├── rutas/             (endpoints de la API, un archivo por dominio)
 │       └── servicios/        (lógica de negocio, un archivo por área)
 └── frontend/
     ├── (config de Vite, package.json, etc.)
     └── src/
         ├── App.jsx           (coordinador + rutas de React Router)
+        ├── api.js            (acceso centralizado al backend)
+        ├── componentes/       (piezas reutilizables: SelectorBuscable,
+        │                       MenuCategoria, TablaFiltrable...)
         └── paginas/          (una pantalla por archivo)
 ```
