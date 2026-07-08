@@ -3,12 +3,26 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import { fmtMoneda } from '../formato'
 
+// Categorias fijas (ligadas a las columnas del Balance: Total_Inmuebles/
+// Total_Equipos/Total_Otros_Activos). Se eligen al crear el tipo de bien,
+// en vez de adivinarlas por el nombre (mejora 4.2).
+const CATEGORIAS_TIPO_BIEN = [
+  { valor: 'INMUEBLE', etiqueta: 'Inmueble' },
+  { valor: 'EQUIPO', etiqueta: 'Equipo' },
+  { valor: 'OTRO', etiqueta: 'Otro' },
+]
+
 function PaginaActivos() {
   const [tipos, setTipos] = useState([])
   const [activos, setActivos] = useState([])
 
   // Formulario de tipo de bien
   const [nuevoTipo, setNuevoTipo] = useState('')
+  const [nuevaCategoria, setNuevaCategoria] = useState('')
+
+  // Edicion in-line de la categoria de un tipo de bien
+  const [editandoTipo, setEditandoTipo] = useState(null)
+  const [editCategoria, setEditCategoria] = useState('')
 
   // Formulario de activo
   const [descripcion, setDescripcion] = useState('')
@@ -32,8 +46,20 @@ function PaginaActivos() {
 
   function crearTipo() {
     if (nuevoTipo.trim() === '') { setMensaje('El nombre del tipo es obligatorio'); return }
-    apiPost('/tipos-bien', { nombre: nuevoTipo })
-      .then(() => { setMensaje('Tipo de bien listo'); setNuevoTipo(''); cargar() })
+    if (nuevaCategoria === '') { setMensaje('Elige la categoría del tipo (Inmueble/Equipo/Otro)'); return }
+    apiPost('/tipos-bien', { nombre: nuevoTipo, categoria: nuevaCategoria })
+      .then(() => { setMensaje('Tipo de bien listo'); setNuevoTipo(''); setNuevaCategoria(''); cargar() })
+      .catch((e) => setMensaje(e.message))
+  }
+
+  function empezarEdicionTipo(t) {
+    setEditandoTipo(t.id_tipo_bien)
+    setEditCategoria(t.categoria)
+  }
+
+  function guardarCategoriaTipo(id) {
+    apiPatch(`/tipos-bien/${id}`, { categoria: editCategoria })
+      .then(() => { setMensaje('Categoría actualizada'); setEditandoTipo(null); cargar() })
       .catch((e) => setMensaje(e.message))
   }
 
@@ -89,10 +115,50 @@ function PaginaActivos() {
       {/* Crear tipo de bien */}
       <h3>Tipo de bien</h3>
       <div>
-        <input type="text" placeholder="Nuevo tipo (ej. Inmueble, Vehículo)"
+        <input type="text" placeholder="Nuevo tipo (ej. Casa, Vehículo de reparto)"
           value={nuevoTipo} onChange={(e) => setNuevoTipo(e.target.value)} />
+        <select value={nuevaCategoria} onChange={(e) => setNuevaCategoria(e.target.value)}>
+          <option value="">-- Categoría --</option>
+          {CATEGORIAS_TIPO_BIEN.map((c) => (
+            <option key={c.valor} value={c.valor}>{c.etiqueta}</option>
+          ))}
+        </select>
         <button onClick={crearTipo}>Agregar tipo</button>
       </div>
+
+      <table border="1">
+        <thead>
+          <tr><th>Tipo de bien</th><th>Categoría</th><th>Acciones</th></tr>
+        </thead>
+        <tbody>
+          {tipos.map((t) => (
+            <tr key={t.id_tipo_bien}>
+              <td>{t.nombre}</td>
+              <td>
+                {editandoTipo === t.id_tipo_bien ? (
+                  <select value={editCategoria} onChange={(e) => setEditCategoria(e.target.value)}>
+                    {CATEGORIAS_TIPO_BIEN.map((c) => (
+                      <option key={c.valor} value={c.valor}>{c.etiqueta}</option>
+                    ))}
+                  </select>
+                ) : (
+                  CATEGORIAS_TIPO_BIEN.find((c) => c.valor === t.categoria)?.etiqueta || t.categoria
+                )}
+              </td>
+              <td>
+                {editandoTipo === t.id_tipo_bien ? (
+                  <>
+                    <button onClick={() => guardarCategoriaTipo(t.id_tipo_bien)}>Guardar</button>
+                    {' '}<button onClick={() => setEditandoTipo(null)}>Cancelar</button>
+                  </>
+                ) : (
+                  <button onClick={() => empezarEdicionTipo(t)}>Editar categoría</button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       {/* Crear activo */}
       <h3>Nuevo activo</h3>

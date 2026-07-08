@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import CATEGORIAS_TIPO_BIEN
 from app.dependencias import get_sesion
 from app.models import Activo, Tipo_Bien
 
@@ -21,27 +22,51 @@ router = APIRouter(tags=["activos"])
 @router.get("/tipos-bien")
 def listar_tipos_bien(sesion: Session = Depends(get_sesion)):
     tipos = sesion.query(Tipo_Bien).all()
-    return [{"id_tipo_bien": t.Id_Tipo_Bien, "nombre": t.Nombre_Tipo_Bien} for t in tipos]
+    return [
+        {"id_tipo_bien": t.Id_Tipo_Bien, "nombre": t.Nombre_Tipo_Bien, "categoria": t.Categoria_Tipo_Bien}
+        for t in tipos
+    ]
 
 
 class TipoBienEntrada(BaseModel):
     nombre: str
+    categoria: str
 
 
 @router.post("/tipos-bien")
 def crear_tipo_bien(datos: TipoBienEntrada, sesion: Session = Depends(get_sesion)):
     if not datos.nombre.strip():
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    if datos.categoria not in CATEGORIAS_TIPO_BIEN:
+        raise HTTPException(status_code=400, detail=f"Categoría inválida, debe ser una de: {CATEGORIAS_TIPO_BIEN}")
     # Normalizar para no duplicar por mayusculas/espacios (mismo criterio que grupos)
     existente = sesion.query(Tipo_Bien).filter(
         Tipo_Bien.Nombre_Tipo_Bien.ilike(datos.nombre.strip())
     ).first()
     if existente:
         return {"mensaje": "Ya existía", "id": existente.Id_Tipo_Bien}
-    t = Tipo_Bien(Nombre_Tipo_Bien=datos.nombre.strip())
+    t = Tipo_Bien(Nombre_Tipo_Bien=datos.nombre.strip(), Categoria_Tipo_Bien=datos.categoria)
     sesion.add(t)
     sesion.commit()
     return {"mensaje": "Tipo de bien creado", "id": t.Id_Tipo_Bien}
+
+
+class TipoBienEdicion(BaseModel):
+    categoria: str
+
+
+@router.patch("/tipos-bien/{id_tipo_bien}")
+def actualizar_categoria_tipo_bien(id_tipo_bien: int, datos: TipoBienEdicion, sesion: Session = Depends(get_sesion)):
+    """Corrige la categoria de un tipo de bien (ej. los que quedaron en
+    OTRO por defecto al migrar, o si se cambia de idea despues)."""
+    t = sesion.get(Tipo_Bien, id_tipo_bien)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"No existe tipo de bien con Id {id_tipo_bien}")
+    if datos.categoria not in CATEGORIAS_TIPO_BIEN:
+        raise HTTPException(status_code=400, detail=f"Categoría inválida, debe ser una de: {CATEGORIAS_TIPO_BIEN}")
+    t.Categoria_Tipo_Bien = datos.categoria
+    sesion.commit()
+    return {"mensaje": "Categoría actualizada", "id": t.Id_Tipo_Bien}
 
 
 # ---------- ACTIVO ----------

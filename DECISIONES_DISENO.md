@@ -150,6 +150,16 @@ con `Movimiento` (`Compra.Id_Movimiento`, `Pago_Trabajador.Id_Movimiento`) en
 vez de adivinar por texto o grupo. Lo que no está vinculado a ninguna de las
 dos es, por descarte, un gasto.
 
+**Clasificar sin adivinar por texto (mismo principio, aplicado a activos):**
+la clasificación Inmueble/Equipo/Otro de los activos fijos en el balance
+usaba `ilike` buscando la palabra en el nombre del tipo de bien — frágil
+(un tipo llamado "Casa" no matchea "INMUEBLE"). Se reemplazó por una
+columna explícita `Categoria_Tipo_Bien` en `Tipo_Bien`, elegida al crear el
+tipo (ver 4.2 en MEJORAS_FUTURAS.md). Las 3 categorías están fijas porque
+están ligadas 1 a 1 con columnas ya existentes en `Balance`
+(`Total_Inmuebles`/`Total_Equipos`/`Total_Otros_Activos`); agregar una
+categoría nueva requeriría también una migración sobre `Balance`.
+
 ---
 
 ## 5. LISTAS VALIDADAS (catálogos)

@@ -61,13 +61,23 @@ def calcular_estado_actual(sesion):
     # Deudas
     deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
 
-    # Activos fijos: suma de TODOS los activos (casa, vehiculo, equipos...).
-    # Es lo unico que diferencia el Escenario A del B.
-    activos_fijos = sesion.query(func.coalesce(func.sum(Activo.Valor_Activo), 0)).scalar()
+    # Activos fijos, desglosados por categoria explicita del tipo de bien
+    # (ver 4.2 en MEJORAS_FUTURAS.md). La suma de las tres es "activos_fijos",
+    # lo unico que diferencia el Escenario A del B.
+    def suma_activos_por_categoria(categoria):
+        return sesion.query(
+            func.coalesce(func.sum(Activo.Valor_Activo), 0)
+        ).join(Tipo_Bien, Activo.Id_Tipo_Bien == Tipo_Bien.Id_Tipo_Bien).filter(
+            Tipo_Bien.Categoria_Tipo_Bien == categoria
+        ).scalar()
+
+    total_inmuebles = float(suma_activos_por_categoria("INMUEBLE"))
+    total_equipos = float(suma_activos_por_categoria("EQUIPO"))
+    total_otros = float(suma_activos_por_categoria("OTRO"))
+    activos_fijos = total_inmuebles + total_equipos + total_otros
 
     efectivo = float(efectivo)
     deudas = float(deudas)
-    activos_fijos = float(activos_fijos)
     escenario_c = efectivo - deudas
     escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
     escenario_a = escenario_b + activos_fijos
@@ -78,6 +88,9 @@ def calcular_estado_actual(sesion):
         "stock_producto_terminado": round(stock_pt, 2),
         "deudas": round(deudas, 2),
         "activos_fijos": round(activos_fijos, 2),
+        "total_inmuebles": round(total_inmuebles, 2),
+        "total_equipos": round(total_equipos, 2),
+        "total_otros": round(total_otros, 2),
         "escenario_c": round(escenario_c, 2),
         "escenario_b": round(escenario_b, 2),
         "escenario_a": round(escenario_a, 2),
@@ -213,20 +226,19 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         ).scalar()
 
         # ===== ACTIVOS FIJOS por tipo de bien =====
-        # Suma de valores de activos, agrupados segun el nombre del tipo de bien
-        def suma_activos_por_tipo(palabra):
+        # Suma de valores de activos segun la categoria explicita de su tipo
+        # de bien (ver 4.2 en MEJORAS_FUTURAS.md; antes se adivinaba
+        # buscando la palabra en el nombre, fragil si el nombre no la tenia).
+        def suma_activos_por_categoria(categoria):
             return sesion.query(
                 func.coalesce(func.sum(Activo.Valor_Activo), 0)
             ).join(Tipo_Bien, Activo.Id_Tipo_Bien == Tipo_Bien.Id_Tipo_Bien).filter(
-                Tipo_Bien.Nombre_Tipo_Bien.ilike(f"%{palabra}%")
+                Tipo_Bien.Categoria_Tipo_Bien == categoria
             ).scalar()
 
-        total_inmuebles = suma_activos_por_tipo("INMUEBLE")
-        total_equipos = suma_activos_por_tipo("EQUIPO")
-        # Otros activos: todo lo que no es inmueble ni equipo
-        total_otros = sesion.query(
-            func.coalesce(func.sum(Activo.Valor_Activo), 0)
-        ).scalar() - total_inmuebles - total_equipos
+        total_inmuebles = suma_activos_por_categoria("INMUEBLE")
+        total_equipos = suma_activos_por_categoria("EQUIPO")
+        total_otros = suma_activos_por_categoria("OTRO")
 
         # ===== INVENTARIOS VALORIZADOS =====
         # Stock de materia prima: restante x precio unitario del lote

@@ -103,6 +103,7 @@ class Tipo_Bien(Base):
 
     Id_Tipo_Bien = Column(Integer, primary_key=True)
     Nombre_Tipo_Bien = Column(String, unique=True, nullable=False)
+    Categoria_Tipo_Bien = Column(String, nullable=False, default="OTRO")
 
     activos = relationship("Activo", back_populates="tipo_bien")
 

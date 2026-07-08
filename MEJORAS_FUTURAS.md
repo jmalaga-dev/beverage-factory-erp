@@ -165,6 +165,22 @@ desplegable con el detalle día a día (colapsado por defecto).
 La clasificación inmuebles/equipos/otros se hace buscando palabras en el nombre
 del tipo de bien. Refinar con una clasificación explícita.
 
+**Estado: implementado.** Migración 006 agrega `Categoria_Tipo_Bien` a
+`Tipo_Bien` (INMUEBLE/EQUIPO/OTRO, constante `CATEGORIAS_TIPO_BIEN` en
+`app/config.py` — ligada a las 3 columnas que ya existían en `Balance`:
+`Total_Inmuebles`/`Total_Equipos`/`Total_Otros_Activos`, agregar una 4ta
+categoría requeriría también una columna nueva ahí). Se elige al crear el
+tipo de bien (no por activo individual); nuevo `PATCH /tipos-bien/{id}`
+para corregirla después. El backfill de los 2 tipos que ya existían
+reprodujo el criterio anterior por texto una sola vez (los que no
+matchearon quedaron en OTRO por defecto, corregibles a mano). `balance.py`
+(tanto la foto guardada como la vista previa en vivo `/balance-actual`)
+ahora filtra por la columna explícita en vez de `ilike`. En **Activos**,
+el formulario "Tipo de bien" pide la categoría al crear, y una tabla nueva
+lista los tipos con su categoría y botón para editarla. En **Balance**, 3
+filas nuevas (Inmuebles/Equipos/Otros) bajo "Activos fijos" en la tabla
+comparativa, en ambas columnas (última foto y estado actual).
+
 ### 4.3 Patrimonio contable puro
 Actualmente Patrimonio = Escenario A. Se podría distinguir un patrimonio contable
 (activos a valor real) de los escenarios de liquidez.
@@ -216,12 +232,13 @@ El sistema actual solo tiene crear (POST) y leer (GET). Falta poder editar y
 borrar registros (clientes, catálogos, jornadas, etc.). Es lo que en una API REST
 completa serían los métodos PUT/PATCH/DELETE.
 
-**Nota (aún no implementado en general):** ya hay 3 precedentes puntuales de
+**Nota (aún no implementado en general):** ya hay 4 precedentes puntuales de
 PATCH/DELETE, cada uno acotado a su caso, no una solución genérica:
 `PATCH /trabajadores/{id}/habilitado` (6.5), `PATCH`/`DELETE /jornadas/{id}`
-con guardrail de "intacta" (3.4), y `PATCH`/`DELETE /activos/{id}` (7.2). Ver
-la decisión "PATCH acotado, no edición genérica" en DECISIONES_DISENO.md.
-Sirven de referencia de patrón si se ataca esto en general.
+con guardrail de "intacta" (3.4), `PATCH`/`DELETE /activos/{id}` (7.2), y
+`PATCH /tipos-bien/{id}` para corregir la categoría (4.2). Ver la decisión
+"PATCH acotado, no edición genérica" en DECISIONES_DISENO.md. Sirven de
+referencia de patrón si se ataca esto en general.
 
 ### 6.2 Buscadores en desplegables largos
 Cuando haya muchas materias primas / productos / clientes, los desplegables

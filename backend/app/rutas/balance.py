@@ -50,11 +50,10 @@ def balance_ultimo(sesion: Session = Depends(get_sesion)):
     ultimo = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).first()
     if ultimo is None:
         return None
-    activos_fijos = (
-        float(ultimo.Total_Inmuebles or 0)
-        + float(ultimo.Total_Equipos or 0)
-        + float(ultimo.Total_Otros_Activos or 0)
-    )
+    total_inmuebles = float(ultimo.Total_Inmuebles or 0)
+    total_equipos = float(ultimo.Total_Equipos or 0)
+    total_otros = float(ultimo.Total_Otros_Activos or 0)
+    activos_fijos = total_inmuebles + total_equipos + total_otros
     return {
         "id_balance": ultimo.Id_Balance,
         "fecha": str(ultimo.Fecha_Balance),
@@ -65,6 +64,9 @@ def balance_ultimo(sesion: Session = Depends(get_sesion)):
         "stock_producto_terminado": float(ultimo.Valor_Stock_Producto_Terminado or 0),
         "deudas": float(ultimo.Total_Deudas or 0),
         "activos_fijos": round(activos_fijos, 2),
+        "total_inmuebles": round(total_inmuebles, 2),
+        "total_equipos": round(total_equipos, 2),
+        "total_otros": round(total_otros, 2),
         "escenario_c": float(ultimo.Escenario_C or 0),
         "escenario_b": float(ultimo.Escenario_B or 0),
         "escenario_a": float(ultimo.Escenario_A or 0),
