@@ -18,7 +18,7 @@ router = APIRouter(tags=["jornadas"])
 
 class JornadaEntrada(BaseModel):
     id_trabajador: int
-    horas: float
+    horas: Decimal
     fecha: date | None = None
 
 
@@ -29,7 +29,7 @@ def crear_jornada(datos: JornadaEntrada, sesion: Session = Depends(get_sesion)):
         jornada = registrar_jornada(
             sesion,
             id_trabajador=datos.id_trabajador,
-            horas=Decimal(str(datos.horas)),
+            horas=datos.horas,
             fecha=datos.fecha or date.today(),
         )
         return {"mensaje": "Jornada registrada", "id_jornada": jornada.Id_Registro_Trabajador}
@@ -60,7 +60,7 @@ def listar_jornadas(sesion: Session = Depends(get_sesion)):
 
 class JornadaEdicion(BaseModel):
     id_trabajador: int | None = None
-    horas: float | None = None
+    horas: Decimal | None = None
     fecha: date | None = None
 
 
@@ -72,7 +72,7 @@ def actualizar_jornada(id_jornada: int, datos: JornadaEdicion, sesion: Session =
             sesion,
             id_jornada=id_jornada,
             id_trabajador=datos.id_trabajador,
-            horas=Decimal(str(datos.horas)) if datos.horas is not None else None,
+            horas=datos.horas,
             fecha=datos.fecha,
         )
         return {"mensaje": "Jornada actualizada", "id_jornada": jornada.Id_Registro_Trabajador}

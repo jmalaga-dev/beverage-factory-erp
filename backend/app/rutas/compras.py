@@ -20,8 +20,8 @@ router = APIRouter(tags=["compras"])
 class CompraEntrada(BaseModel):
     id_materia_prima: int
     id_cuenta: int
-    cantidad: float
-    precio_total: float
+    cantidad: Decimal
+    precio_total: Decimal
     fecha: date | None = None
 
 
@@ -37,8 +37,8 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
             sesion,
             id_materia_prima=datos.id_materia_prima,
             id_cuenta=datos.id_cuenta,
-            cantidad=Decimal(str(datos.cantidad)),
-            precio_total=Decimal(str(datos.precio_total)),
+            cantidad=datos.cantidad,
+            precio_total=datos.precio_total,
             fecha=datos.fecha or date.today(),
         )
         return {

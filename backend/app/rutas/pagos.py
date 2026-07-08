@@ -32,7 +32,7 @@ def ver_pago_sugerido(id_trabajador: int, sesion: Session = Depends(get_sesion))
 class PagoEntrada(BaseModel):
     id_trabajador: int
     id_cuenta: int
-    monto_real: float
+    monto_real: Decimal
     fecha: date | None = None
 
 
@@ -44,7 +44,7 @@ def crear_pago(datos: PagoEntrada, sesion: Session = Depends(get_sesion)):
             sesion,
             id_trabajador=datos.id_trabajador,
             id_cuenta=datos.id_cuenta,
-            monto_real=Decimal(str(datos.monto_real)),
+            monto_real=datos.monto_real,
             fecha=datos.fecha or date.today(),
         )
         return {

@@ -195,9 +195,11 @@ la lista existente, no se escribe libre. Esto evita duplicados por variantes
 ## 6. MANEJO DE TIPOS EN LA FRONTERA WEB↔BD
 
 El frontend envía números como `float` (JSON), pero la BD usa `Decimal` (numeric).
-Cada endpoint convierte en la frontera con `Decimal(str(valor))` — el `str()`
-intermedio evita arrastrar el error de punto flotante. Es el "peaje" de la
-frontera; se aplica a todo endpoint que reciba cantidades o montos.
+Los campos monetarios/de cantidad en los esquemas Pydantic de entrada están
+tipados directo como `Decimal` (no `float`); Pydantic v2 hace la conversión
+`Decimal(str(valor))` internamente al validar, el mismo criterio que evita
+arrastrar el error de punto flotante, sin necesidad de convertir a mano en
+cada endpoint (mejora 8.1/9 de `MEJORAS_FUTURAS.md`).
 
 Además, los endpoints que crean registros con fecha usan `fecha or date.today()`:
 si el frontend no envía fecha, se usa la de hoy (evita el error de NOT NULL en las

@@ -399,9 +399,19 @@ README y la documentación, para que el repositorio sea visible (útil para CV).
 ## 9. TIPOS Y VALIDACIONES
 
 ### 8.1 Conversión Decimal automática en Pydantic
-Actualmente cada endpoint convierte float→Decimal a mano con `Decimal(str(...))`.
-Se podría configurar Pydantic para que los campos monetarios sean Decimal
-automáticamente, evitando repetir la conversión en cada endpoint.
+
+**Estado: implementado.** Todos los campos monetarios/de cantidad en los
+esquemas Pydantic de entrada (`rutas/*.py`) pasaron de `float` a `Decimal`
+(incluyendo las tuplas `list[tuple[int, Decimal]]` de insumos en
+producción). Pydantic v2 internamente hace `Decimal(str(valor))` al
+convertir un float entrante, el mismo criterio que ya se usaba a mano — se
+verificó (`Decimal(19.99)` directo arrastra el error de punto flotante,
+`M(x=19.99).x` con el campo tipado `Decimal` da `Decimal('19.99')` limpio).
+Se eliminaron las ~20 conversiones manuales `Decimal(str(datos.campo))` en
+los endpoints; ahora `datos.campo` ya llega como `Decimal` desde la
+frontera. Verificado con curl (POST/PATCH `/activos` con `1234.57` y
+`999.99`, sin arrastrar basura de punto flotante) y build de frontend sin
+cambios necesarios ahí (el frontend sigue mandando JSON números normales).
 
 ### 8.2 Validación en frontend (comodidad)
 El backend valida todo (seguridad). Agregar validaciones en el frontend como

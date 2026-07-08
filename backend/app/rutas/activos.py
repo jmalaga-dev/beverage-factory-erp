@@ -90,7 +90,7 @@ def listar_activos(sesion: Session = Depends(get_sesion)):
 
 class ActivoEntrada(BaseModel):
     descripcion: str
-    valor: float
+    valor: Decimal
     id_tipo_bien: int
 
 
@@ -104,7 +104,7 @@ def crear_activo(datos: ActivoEntrada, sesion: Session = Depends(get_sesion)):
         raise HTTPException(status_code=400, detail=f"No existe tipo de bien con Id {datos.id_tipo_bien}")
     a = Activo(
         Descripcion_Activo=datos.descripcion.strip(),
-        Valor_Activo=Decimal(str(datos.valor)),
+        Valor_Activo=datos.valor,
         Id_Tipo_Bien=datos.id_tipo_bien,
     )
     sesion.add(a)
@@ -114,7 +114,7 @@ def crear_activo(datos: ActivoEntrada, sesion: Session = Depends(get_sesion)):
 
 class ActivoEdicion(BaseModel):
     descripcion: str | None = None
-    valor: float | None = None
+    valor: Decimal | None = None
     id_tipo_bien: int | None = None
 
 
@@ -131,7 +131,7 @@ def actualizar_activo(id_activo: int, datos: ActivoEdicion, sesion: Session = De
     if datos.valor is not None:
         if datos.valor <= 0:
             raise HTTPException(status_code=400, detail="El valor debe ser mayor a cero")
-        a.Valor_Activo = Decimal(str(datos.valor))
+        a.Valor_Activo = datos.valor
     if datos.id_tipo_bien is not None:
         if sesion.get(Tipo_Bien, datos.id_tipo_bien) is None:
             raise HTTPException(status_code=400, detail=f"No existe tipo de bien con Id {datos.id_tipo_bien}")

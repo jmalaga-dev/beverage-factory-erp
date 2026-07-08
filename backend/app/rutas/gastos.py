@@ -17,7 +17,7 @@ router = APIRouter(tags=["gastos"])
 
 class GastoEntrada(BaseModel):
     id_cuenta: int
-    monto: float
+    monto: Decimal
     descripcion: str
     id_grupo: int | None = None
     fecha: date | None = None
@@ -30,7 +30,7 @@ def crear_gasto(datos: GastoEntrada, sesion: Session = Depends(get_sesion)):
         mov = registrar_gasto(
             sesion,
             id_cuenta=datos.id_cuenta,
-            monto=Decimal(str(datos.monto)),
+            monto=datos.monto,
             descripcion=datos.descripcion,
             id_grupo=datos.id_grupo,
             fecha=datos.fecha or date.today(),

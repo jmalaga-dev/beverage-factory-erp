@@ -19,8 +19,8 @@ router = APIRouter(tags=["ventas"])
 # Esquema de UNA linea de venta
 class LineaVentaEntrada(BaseModel):
     id_produccion: int
-    cantidad: float
-    precio_real: float
+    cantidad: Decimal
+    precio_real: Decimal
     id_cuenta: int
 
 
@@ -37,8 +37,8 @@ def crear_venta(datos: VentaEntrada, sesion: Session = Depends(get_sesion)):
         lineas = [
             {
                 "id_produccion": linea.id_produccion,
-                "cantidad": Decimal(str(linea.cantidad)),
-                "precio_real": Decimal(str(linea.precio_real)),
+                "cantidad": linea.cantidad,
+                "precio_real": linea.precio_real,
                 "id_cuenta": linea.id_cuenta,
             }
             for linea in datos.lineas

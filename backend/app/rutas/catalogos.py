@@ -91,8 +91,8 @@ def listar_trabajadores(sesion: Session = Depends(get_sesion)):
 
 class TrabajadorEntrada(BaseModel):
     nombre: str
-    pago: float
-    horas_base: float | None = None
+    pago: Decimal
+    horas_base: Decimal | None = None
     habilitado: bool = True
 
 
@@ -100,8 +100,8 @@ class TrabajadorEntrada(BaseModel):
 def crear_trabajador(datos: TrabajadorEntrada, sesion: Session = Depends(get_sesion)):
     if not datos.nombre.strip():
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
-    t = Trabajador(Nombre_Trabajador=datos.nombre, Pago_Trabajador=Decimal(str(datos.pago)),
-                   Horas_Base_Trabajador=Decimal(str(datos.horas_base)) if datos.horas_base else None,
+    t = Trabajador(Nombre_Trabajador=datos.nombre, Pago_Trabajador=datos.pago,
+                   Horas_Base_Trabajador=datos.horas_base or None,
                    Habilitado_Trabajador=datos.habilitado)
     sesion.add(t)
     sesion.commit()
@@ -140,7 +140,7 @@ def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
 
 class ProductoTerminadoEntrada(BaseModel):
     descripcion: str
-    precio_recomendado: float | None = None
+    precio_recomendado: Decimal | None = None
 
 
 @router.post("/productos-terminados")
@@ -148,7 +148,7 @@ def crear_producto_terminado(datos: ProductoTerminadoEntrada, sesion: Session = 
     if not datos.descripcion.strip():
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
     p = Producto_Terminado(Descripcion_Producto_Terminado=datos.descripcion,
-                           Precio_Venta_Recomendado_Producto_Terminado=Decimal(str(datos.precio_recomendado)) if datos.precio_recomendado else None)
+                           Precio_Venta_Recomendado_Producto_Terminado=datos.precio_recomendado or None)
     sesion.add(p)
     sesion.commit()
     return {"mensaje": "Producto terminado creado", "id": p.Id_Producto_Terminado}
@@ -171,7 +171,7 @@ def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
 
 class ProductoIntermedioEntrada(BaseModel):
     descripcion: str
-    litros: float | None = None
+    litros: Decimal | None = None
 
 
 @router.post("/productos-intermedios")
@@ -179,7 +179,7 @@ def crear_producto_intermedio(datos: ProductoIntermedioEntrada, sesion: Session 
     if not datos.descripcion.strip():
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
     p = Producto_Intermedio(Descripcion_Producto_Intermedio=datos.descripcion,
-                            Litros_Botella_Final=Decimal(str(datos.litros)) if datos.litros else None)
+                            Litros_Botella_Final=datos.litros or None)
     sesion.add(p)
     sesion.commit()
     return {"mensaje": "Producto intermedio creado", "id": p.Id_Producto_Intermedio}
@@ -227,14 +227,14 @@ def listar_gastos_extra(sesion: Session = Depends(get_sesion)):
 
 class GastoExtraEntrada(BaseModel):
     descripcion: str
-    precio_mensual: float
+    precio_mensual: Decimal
 
 
 @router.post("/gastos-extra")
 def crear_gasto_extra(datos: GastoExtraEntrada, sesion: Session = Depends(get_sesion)):
     if not datos.descripcion.strip():
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
-    g = Gasto_Extra(Descripcion_Gasto_Extra=datos.descripcion, Precio_Mensual_Gasto_Extra=Decimal(str(datos.precio_mensual)))
+    g = Gasto_Extra(Descripcion_Gasto_Extra=datos.descripcion, Precio_Mensual_Gasto_Extra=datos.precio_mensual)
     sesion.add(g)
     sesion.commit()
     return {"mensaje": "Gasto extra creado", "id": g.Id_Gasto_Extra}

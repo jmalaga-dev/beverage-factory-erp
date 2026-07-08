@@ -28,10 +28,10 @@ router = APIRouter(tags=["produccion"])
 
 class ProduccionIntermediaEntrada(BaseModel):
     id_producto_intermedio: int
-    cantidad_producida: float
-    insumos_mp: list[tuple[int, float]] = []          # [(id_compra, cantidad), ...]
-    insumos_trabajo: list[tuple[int, float]] = []     # [(id_registro, horas), ...]
-    insumos_intermedio: list[tuple[int, float]] = []  # [(id_prod_int, cantidad), ...]
+    cantidad_producida: Decimal
+    insumos_mp: list[tuple[int, Decimal]] = []          # [(id_compra, cantidad), ...]
+    insumos_trabajo: list[tuple[int, Decimal]] = []     # [(id_registro, horas), ...]
+    insumos_intermedio: list[tuple[int, Decimal]] = []  # [(id_prod_int, cantidad), ...]
     fecha: date | None = None
 
 
@@ -39,18 +39,13 @@ class ProduccionIntermediaEntrada(BaseModel):
 def crear_produccion_intermedia(datos: ProduccionIntermediaEntrada, sesion: Session = Depends(get_sesion)):
     """Produce un producto intermedio consumiendo lotes de insumos."""
     try:
-        # Convertir las cantidades a Decimal dentro de cada tupla
-        mp = [(i, Decimal(str(c))) for i, c in datos.insumos_mp]
-        trabajo = [(i, Decimal(str(h))) for i, h in datos.insumos_trabajo]
-        intermedio = [(i, Decimal(str(c))) for i, c in datos.insumos_intermedio]
-
         prod = producir_intermedio(
             sesion,
             id_producto_intermedio=datos.id_producto_intermedio,
-            cantidad_producida=Decimal(str(datos.cantidad_producida)),
-            insumos_mp=mp,
-            insumos_trabajo=trabajo,
-            insumos_intermedio=intermedio,
+            cantidad_producida=datos.cantidad_producida,
+            insumos_mp=datos.insumos_mp,
+            insumos_trabajo=datos.insumos_trabajo,
+            insumos_intermedio=datos.insumos_intermedio,
             fecha=datos.fecha or date.today(),
         )
         return {
@@ -122,10 +117,10 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
 
 class ProduccionTerminadoEntrada(BaseModel):
     id_producto_terminado: int
-    cantidad_producida: float
-    insumos_intermedio: list[tuple[int, float]] = []
-    insumos_mp: list[tuple[int, float]] = []
-    insumos_trabajo: list[tuple[int, float]] = []
+    cantidad_producida: Decimal
+    insumos_intermedio: list[tuple[int, Decimal]] = []
+    insumos_mp: list[tuple[int, Decimal]] = []
+    insumos_trabajo: list[tuple[int, Decimal]] = []
     fecha: date | None = None
 
 
@@ -133,17 +128,13 @@ class ProduccionTerminadoEntrada(BaseModel):
 def crear_produccion_terminada(datos: ProduccionTerminadoEntrada, sesion: Session = Depends(get_sesion)):
     """Produce un producto terminado consumiendo intermedios, MP y trabajo."""
     try:
-        intermedio = [(i, Decimal(str(c))) for i, c in datos.insumos_intermedio]
-        mp = [(i, Decimal(str(c))) for i, c in datos.insumos_mp]
-        trabajo = [(i, Decimal(str(h))) for i, h in datos.insumos_trabajo]
-
         prod = producir_terminado(
             sesion,
             id_producto_terminado=datos.id_producto_terminado,
-            cantidad_producida=Decimal(str(datos.cantidad_producida)),
-            insumos_intermedio=intermedio,
-            insumos_mp=mp,
-            insumos_trabajo=trabajo,
+            cantidad_producida=datos.cantidad_producida,
+            insumos_intermedio=datos.insumos_intermedio,
+            insumos_mp=datos.insumos_mp,
+            insumos_trabajo=datos.insumos_trabajo,
             fecha=datos.fecha or date.today(),
         )
         return {
