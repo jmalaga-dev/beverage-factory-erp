@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 
 // Componente reutilizable: un catálogo genérico de crear + listar
-function Catalogo({ titulo, endpoint, campos, camposTabla }) {
+function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
   const [items, setItems] = useState([])
   const [valores, setValores] = useState({})
   const [mensaje, setMensaje] = useState('')
+  const [abierto, setAbierto] = useState(abiertoInicial)
 
   function cargar() {
     apiGet(`/${endpoint}`).then(setItems).catch(console.error)
@@ -40,33 +41,39 @@ function Catalogo({ titulo, endpoint, campos, camposTabla }) {
   }
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      <h3>{titulo}</h3>
-      <div>
-        {campos.map((campo) => (
-          <input
-            key={campo.nombre}
-            type={campo.tipo === 'number' ? 'number' : 'text'}
-            placeholder={campo.label}
-            value={valores[campo.nombre] || ''}
-            onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
-          />
-        ))}
-        <button onClick={crear}>Agregar</button>
-      </div>
-      {mensaje && <p>{mensaje}</p>}
-      <table border="1">
-        <thead>
-          <tr>{camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
-        </thead>
-        <tbody>
-          {items.map((item, i) => (
-            <tr key={i}>
-              {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{ marginBottom: '1rem' }}>
+      <h3 style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setAbierto(!abierto)}>
+        {abierto ? '▾' : '▸'} {titulo} ({items.length})
+      </h3>
+      {abierto && (
+        <>
+          <div>
+            {campos.map((campo) => (
+              <input
+                key={campo.nombre}
+                type={campo.tipo === 'number' ? 'number' : 'text'}
+                placeholder={campo.label}
+                value={valores[campo.nombre] || ''}
+                onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
+              />
+            ))}
+            <button onClick={crear}>Agregar</button>
+          </div>
+          {mensaje && <p>{mensaje}</p>}
+          <table border="1">
+            <thead>
+              <tr>{camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr key={i}>
+                  {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   )
 }
@@ -79,6 +86,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Materia Prima"
+        abiertoInicial={true}
         endpoint="materias-primas"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
@@ -92,6 +100,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Trabajador"
+        abiertoInicial={false}
         endpoint="trabajadores"
         campos={[
           { nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true },
@@ -107,6 +116,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Producto Terminado"
+        abiertoInicial={false}
         endpoint="productos-terminados"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
@@ -120,6 +130,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Producto Intermedio"
+        abiertoInicial={false}
         endpoint="productos-intermedios"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
@@ -133,6 +144,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Grupo de Movimiento"
+        abiertoInicial={false}
         endpoint="grupos"
         campos={[{ nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true }]}
         camposTabla={[{ key: 'nombre', label: 'Nombre' }]}
@@ -140,6 +152,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Gasto Extra"
+        abiertoInicial={false}
         endpoint="gastos-extra"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
