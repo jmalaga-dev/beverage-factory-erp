@@ -9,6 +9,7 @@ function PaginaJornadas() {
   const [idTrabajador, setIdTrabajador] = useState('')
   const [horas, setHoras] = useState('')
   const [mensaje, setMensaje] = useState('')
+  const [soloNoPagadas, setSoloNoPagadas] = useState(true)
 
   function cargar() {
     apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
@@ -53,19 +54,26 @@ function PaginaJornadas() {
       {mensaje && <p>{mensaje}</p>}
 
       <h2>Jornadas registradas</h2>
+      <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+        <input type="checkbox" checked={soloNoPagadas}
+          onChange={(e) => setSoloNoPagadas(e.target.checked)} />
+        {' '}Mostrar solo no pagadas
+      </label>
       <table border="1">
         <thead>
           <tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Pagada</th></tr>
         </thead>
         <tbody>
-          {jornadas.map((j) => (
-            <tr key={j.id_jornada}>
-              <td>{j.nombre_trabajador}</td>
-              <td>{j.fecha}</td>
-              <td>{j.horas}</td>
-              <td>{j.pagada ? 'Sí' : 'No'}</td>
-            </tr>
-          ))}
+          {jornadas
+            .filter((j) => !soloNoPagadas || !j.pagada)
+            .map((j) => (
+              <tr key={j.id_jornada}>
+                <td>{j.nombre_trabajador}</td>
+                <td>{j.fecha}</td>
+                <td>{j.horas}</td>
+                <td>{j.pagada ? 'Sí' : 'No'}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

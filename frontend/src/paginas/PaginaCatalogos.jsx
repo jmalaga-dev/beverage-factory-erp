@@ -7,6 +7,7 @@ function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
   const [valores, setValores] = useState({})
   const [mensaje, setMensaje] = useState('')
   const [abierto, setAbierto] = useState(abiertoInicial)
+  const [filtro, setFiltro] = useState('')
 
   function cargar() {
     apiGet(`/${endpoint}`).then(setItems).catch(console.error)
@@ -60,16 +61,29 @@ function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
             <button onClick={crear}>Agregar</button>
           </div>
           {mensaje && <p>{mensaje}</p>}
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            style={{ display: 'block', marginBottom: '0.5rem' }}
+          />
           <table border="1">
             <thead>
               <tr>{camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
             </thead>
             <tbody>
-              {items.map((item, i) => (
-                <tr key={i}>
-                  {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
-                </tr>
-              ))}
+              {items
+                .filter((item) =>
+                  camposTabla.some((c) =>
+                    String(item[c.key] ?? '').toLowerCase().includes(filtro.toLowerCase())
+                  )
+                )
+                .map((item, i) => (
+                  <tr key={i}>
+                    {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
+                  </tr>
+                ))}
             </tbody>
           </table>
         </>
