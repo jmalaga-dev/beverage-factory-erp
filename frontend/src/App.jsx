@@ -12,6 +12,7 @@ import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
 import PaginaMermas from './paginas/PaginaMermas'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
+import PaginaActivos from './paginas/PaginaActivos'
 import PaginaBalance from './paginas/PaginaBalance'
 
 // Grupos del menu principal: agrupan las paginas por su lugar en el
@@ -36,6 +37,7 @@ const categorias = [
   ] },
   { titulo: 'Cierre', links: [
     { to: '/mermas', label: 'Mermas' },
+    { to: '/activos', label: 'Activos' },
     { to: '/balance', label: 'Balance' },
   ] },
 ]
@@ -65,7 +67,7 @@ function App() {
           <Route path="/pagos" element={<PaginaPagos />} />
           <Route path="/gastos" element={<PaginaGastos />} />
           <Route path="/mermas" element={<PaginaMermas />} />
-          
+          <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
         </Routes>
       </div>

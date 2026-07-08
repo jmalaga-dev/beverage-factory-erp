@@ -26,8 +26,10 @@ def calcular_estado_actual(sesion):
     Calcula el estado actual de la fabrica con desglose completo,
     SIN guardar nada (vista previa). Devuelve un dict listo para la API.
 
-    NOTA: aqui escenario_a == escenario_b porque esta vista previa aun no
-    suma activos fijos; la foto guardada (tomar_balance) si los incluye.
+    Los escenarios se distinguen por lo que suman al efectivo (menos deudas):
+      C = solo efectivo
+      B = C + inventarios valorizados + horas en stand-by
+      A = B + activos fijos  (el "todo")
     """
     # Efectivo: suma de saldos de cuentas
     efectivo = sesion.query(func.coalesce(func.sum(Cuenta.Saldo_Actual_Cuenta), 0)).scalar()
@@ -58,17 +60,23 @@ def calcular_estado_actual(sesion):
     # Deudas
     deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
 
+    # Activos fijos: suma de TODOS los activos (casa, vehiculo, equipos...).
+    # Es lo unico que diferencia el Escenario A del B.
+    activos_fijos = sesion.query(func.coalesce(func.sum(Activo.Valor_Activo), 0)).scalar()
+
     efectivo = float(efectivo)
     deudas = float(deudas)
+    activos_fijos = float(activos_fijos)
     escenario_c = efectivo - deudas
     escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
-    escenario_a = escenario_b  # sin activos fijos por ahora (se suman si los hay)
+    escenario_a = escenario_b + activos_fijos
 
     return {
         "efectivo": round(efectivo, 2),
         "stock_materia_prima": round(stock_mp, 2),
         "stock_producto_terminado": round(stock_pt, 2),
         "deudas": round(deudas, 2),
+        "activos_fijos": round(activos_fijos, 2),
         "escenario_c": round(escenario_c, 2),
         "escenario_b": round(escenario_b, 2),
         "escenario_a": round(escenario_a, 2),

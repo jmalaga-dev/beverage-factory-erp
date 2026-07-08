@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import { fmtMoneda, fmtNumero } from '../formato'
 
 // Columnas comunes a los tres detalles: descripcion, cantidad y costo
 // promedio ponderado (los endpoints "general" ya lo calculan por producto).
 const columnasDetalle = [
   { key: 'descripcion', label: 'Producto' },
-  { key: 'stock_total', label: 'Cantidad', formato: (v) => v.toFixed(2) },
-  { key: 'costo_promedio', label: 'Costo ponderado promedio', formato: (v) => v.toFixed(4) },
+  { key: 'stock_total', label: 'Cantidad', formato: (v) => fmtNumero(v, 2) },
+  { key: 'costo_promedio', label: 'Costo ponderado promedio', formato: (v) => fmtNumero(v, 4) },
+]
+
+// Columnas de la lista de activos fijos (resumen en el balance).
+const columnasActivos = [
+  { key: 'descripcion', label: 'Descripción' },
+  { key: 'tipo_bien', label: 'Tipo' },
+  { key: 'valor', label: 'Valor', formato: (v) => fmtMoneda(v) },
 ]
 
 function PaginaBalance() {
@@ -18,6 +26,7 @@ function PaginaBalance() {
   const [detalleTerminado, setDetalleTerminado] = useState([])
   const [detalleIntermedio, setDetalleIntermedio] = useState([])
   const [detalleMateriaPrima, setDetalleMateriaPrima] = useState([])
+  const [activos, setActivos] = useState([])
 
   function cargar() {
     apiGet('/balance-actual').then(setActual).catch(console.error)
@@ -25,6 +34,7 @@ function PaginaBalance() {
     apiGet('/stock-terminado-general').then(setDetalleTerminado).catch(console.error)
     apiGet('/stock-intermedio-general').then(setDetalleIntermedio).catch(console.error)
     apiGet('/stock-materia-prima').then(setDetalleMateriaPrima).catch(console.error)
+    apiGet('/activos').then(setActivos).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -45,7 +55,7 @@ function PaginaBalance() {
     const d = actual[campo] - ultimo[campo]
     const color = d > 0 ? 'lightgreen' : d < 0 ? 'salmon' : 'gray'
     const signo = d > 0 ? '+' : ''
-    return <span style={{ color }}>{signo}{d.toFixed(2)}</span>
+    return <span style={{ color }}>{signo}{fmtMoneda(d)}</span>
   }
 
   const filas = [
@@ -54,10 +64,11 @@ function PaginaBalance() {
     ['Stock producto intermedio', 'stock_producto_intermedio'],
     ['Horas en stand-by', 'valor_horas_standby'],
     ['Stock producto terminado', 'stock_producto_terminado'],
+    ['Activos fijos', 'activos_fijos'],
     ['Deudas', 'deudas'],
     ['Escenario C (solo efectivo)', 'escenario_c'],
     ['Escenario B (+ stock)', 'escenario_b'],
-    ['Escenario A (todo)', 'escenario_a'],
+    ['Escenario A (+ activos fijos)', 'escenario_a'],
     ['PATRIMONIO', 'patrimonio'],
   ]
 
@@ -78,8 +89,8 @@ function PaginaBalance() {
           {filas.map(([label, campo]) => (
             <tr key={campo}>
               <td>{label}</td>
-              <td>{ultimo ? ultimo[campo] : '—'}</td>
-              <td>{actual ? actual[campo] : '—'}</td>
+              <td>{ultimo ? fmtMoneda(ultimo[campo]) : '—'}</td>
+              <td>{actual ? fmtMoneda(actual[campo]) : '—'}</td>
               <td>{diff(campo)}</td>
             </tr>
           ))}
@@ -110,6 +121,14 @@ function PaginaBalance() {
         titulo="Materia Prima"
         filas={detalleMateriaPrima}
         columnas={columnasDetalle}
+        claveOrden="descripcion"
+      />
+
+      <h2 style={{ marginTop: '2rem' }}>Activos fijos</h2>
+      <TablaFiltrable
+        titulo="Activos"
+        filas={activos}
+        columnas={columnasActivos}
         claveOrden="descripcion"
       />
     </div>
