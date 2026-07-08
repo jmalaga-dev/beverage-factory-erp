@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaPagos() {
   const [trabajadores, setTrabajadores] = useState([])
@@ -61,12 +62,14 @@ function PaginaPagos() {
       <h2>Pago a trabajadores</h2>
 
       <div>
-        <select value={idTrabajador} onChange={(e) => elegirTrabajador(e.target.value)}>
-          <option value="">-- Trabajador --</option>
-          {trabajadores.map((t) => (
-            <option key={t.id_trabajador} value={t.id_trabajador}>{t.nombre}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={trabajadores}
+          valor={idTrabajador}
+          onCambiar={elegirTrabajador}
+          obtenerId={(t) => t.id_trabajador}
+          obtenerTexto={(t) => t.nombre}
+          placeholder="-- Trabajador --"
+        />
       </div>
 
       {/* Cuando hay un trabajador elegido, mostrar lo que se le debe */}
@@ -79,14 +82,14 @@ function PaginaPagos() {
           <div>
             <input type="number" placeholder="Monto a pagar"
               value={montoReal} onChange={(e) => setMontoReal(e.target.value)} />
-            <select value={idCuenta} onChange={(e) => setIdCuenta(e.target.value)}>
-              <option value="">-- Cuenta de dónde sale --</option>
-              {cuentas.map((c) => (
-                <option key={c.id_cuenta} value={c.id_cuenta}>
-                  {c.nombre} (saldo: {c.saldo})
-                </option>
-              ))}
-            </select>
+            <SelectorBuscable
+              opciones={cuentas}
+              valor={idCuenta}
+              onCambiar={setIdCuenta}
+              obtenerId={(c) => c.id_cuenta}
+              obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
+              placeholder="-- Cuenta de dónde sale --"
+            />
             <button onClick={pagar}>PAGAR</button>
           </div>
         </div>

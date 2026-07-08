@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaVentas() {
   const [clientes, setClientes] = useState([])
@@ -46,6 +47,13 @@ function PaginaVentas() {
 
   function quitarLinea(i) { setLineas(lineas.filter((_, idx) => idx !== i)) }
 
+  // Al elegir un lote, autocompletar el precio con el recomendado
+  function elegirProducto(id) {
+    setLinProd(id)
+    const lote = lotes.find((x) => x.id_produccion === parseInt(id))
+    if (lote) setLinPrecio(lote.precio_recomendado)
+  }
+
   function registrarVenta() {
     if (idCliente === '') { setMensaje('Elige un cliente'); return }
     if (lineas.length === 0) { setMensaje('Agrega al menos una línea'); return }
@@ -89,40 +97,39 @@ function PaginaVentas() {
       <h2>Registrar venta</h2>
 
       <div>
-        <select value={idCliente} onChange={(e) => setIdCliente(e.target.value)}>
-          <option value="">-- Cliente --</option>
-          {clientes.map((c) => (
-            <option key={c.id_cliente} value={c.id_cliente}>{c.nombre}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={clientes}
+          valor={idCliente}
+          onCambiar={setIdCliente}
+          obtenerId={(c) => c.id_cliente}
+          obtenerTexto={(c) => c.nombre}
+          placeholder="-- Cliente --"
+        />
       </div>
 
       {/* Agregar línea de venta */}
       <h3>Agregar producto a la venta</h3>
       <div>
-        <select value={linProd} onChange={(e) => {
-          setLinProd(e.target.value)
-          // autocompletar el precio con el recomendado del lote elegido
-          const lote = lotes.find((x) => x.id_produccion === parseInt(e.target.value))
-          if (lote) setLinPrecio(lote.precio_recomendado)
-        }}>
-          <option value="">-- Lote de producto --</option>
-          {lotes.map((l) => (
-            <option key={l.id_produccion} value={l.id_produccion}>
-              {l.nombre_producto} - Lote {l.id_produccion} (stock: {l.stock} | costo: {l.costo_unitario} | recomendado: {l.precio_recomendado} Bs)
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={lotes}
+          valor={linProd}
+          onCambiar={elegirProducto}
+          obtenerId={(l) => l.id_produccion}
+          obtenerTexto={(l) => `${l.nombre_producto} - Lote ${l.id_produccion} (stock: ${l.stock} | costo: ${l.costo_unitario} | recomendado: ${l.precio_recomendado} Bs)`}
+          placeholder="-- Lote de producto --"
+        />
         <input type="number" placeholder="Cantidad"
           value={linCantidad} onChange={(e) => setLinCantidad(e.target.value)} />
         <input type="number" placeholder="Precio de venta"
           value={linPrecio} onChange={(e) => setLinPrecio(e.target.value)} />
-        <select value={linCuenta} onChange={(e) => setLinCuenta(e.target.value)}>
-          <option value="">-- Cuenta destino --</option>
-          {cuentas.map((c) => (
-            <option key={c.id_cuenta} value={c.id_cuenta}>{c.nombre}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={cuentas}
+          valor={linCuenta}
+          onCambiar={setLinCuenta}
+          obtenerId={(c) => c.id_cuenta}
+          obtenerTexto={(c) => c.nombre}
+          placeholder="-- Cuenta destino --"
+        />
         <button onClick={agregarLinea}>Agregar línea</button>
       </div>
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaMermas() {
   const [lotesMP, setLotesMP] = useState([])
@@ -96,12 +97,14 @@ function PaginaMermas() {
         </select>
 
         {/* Lote según el origen */}
-        <select value={idLote} onChange={(e) => setIdLote(e.target.value)}>
-          <option value="">-- Lote --</option>
-          {lotesDelOrigen().map((l) => (
-            <option key={l.id} value={l.id}>{l.texto}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={lotesDelOrigen()}
+          valor={idLote}
+          onCambiar={setIdLote}
+          obtenerId={(l) => l.id}
+          obtenerTexto={(l) => l.texto}
+          placeholder="-- Lote --"
+        />
 
         <input type="number" placeholder="Cantidad"
           value={cantidad} onChange={(e) => setCantidad(e.target.value)} />

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaJornadas() {
   const [trabajadores, setTrabajadores] = useState([])
@@ -37,14 +38,14 @@ function PaginaJornadas() {
     <div>
       <h2>Registrar jornada</h2>
       <div>
-        <select value={idTrabajador} onChange={(e) => setIdTrabajador(e.target.value)}>
-          <option value="">-- Trabajador --</option>
-          {trabajadores.map((t) => (
-            <option key={t.id_trabajador} value={t.id_trabajador}>
-              {t.nombre} ({t.pago} Bs/hora)
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={trabajadores}
+          valor={idTrabajador}
+          onCambiar={setIdTrabajador}
+          obtenerId={(t) => t.id_trabajador}
+          obtenerTexto={(t) => `${t.nombre} (${t.pago} Bs/hora)`}
+          placeholder="-- Trabajador --"
+        />
         <input type="number" placeholder="Horas trabajadas"
           value={horas} onChange={(e) => setHoras(e.target.value)} />
         <button onClick={registrar}>Registrar jornada</button>

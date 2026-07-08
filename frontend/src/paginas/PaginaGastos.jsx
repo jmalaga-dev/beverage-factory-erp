@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaGastos() {
   const [cuentas, setCuentas] = useState([])
@@ -47,20 +48,22 @@ function PaginaGastos() {
           value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
         <input type="number" placeholder="Monto"
           value={monto} onChange={(e) => setMonto(e.target.value)} />
-        <select value={idCuenta} onChange={(e) => setIdCuenta(e.target.value)}>
-          <option value="">-- Cuenta de dónde sale --</option>
-          {cuentas.map((c) => (
-            <option key={c.id_cuenta} value={c.id_cuenta}>
-              {c.nombre} (saldo: {c.saldo})
-            </option>
-          ))}
-        </select>
-        <select value={idGrupo} onChange={(e) => setIdGrupo(e.target.value)}>
-          <option value="">-- Grupo (opcional) --</option>
-          {grupos.map((g) => (
-            <option key={g.id_grupo} value={g.id_grupo}>{g.nombre}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={cuentas}
+          valor={idCuenta}
+          onCambiar={setIdCuenta}
+          obtenerId={(c) => c.id_cuenta}
+          obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
+          placeholder="-- Cuenta de dónde sale --"
+        />
+        <SelectorBuscable
+          opciones={grupos}
+          valor={idGrupo}
+          onCambiar={setIdGrupo}
+          obtenerId={(g) => g.id_grupo}
+          obtenerTexto={(g) => g.nombre}
+          placeholder="-- Grupo (opcional) --"
+        />
         <button onClick={registrar}>Registrar gasto</button>
       </div>
       {mensaje && <p>{mensaje}</p>}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaProduccionTerminada() {
   const [productos, setProductos] = useState([])
@@ -103,12 +104,14 @@ function PaginaProduccionTerminada() {
     <div>
       <h2>Producir producto terminado</h2>
       <div>
-        <select value={idProducto} onChange={(e) => setIdProducto(e.target.value)}>
-          <option value="">-- Producto terminado a producir --</option>
-          {productos.map((p) => (
-            <option key={p.id_producto_terminado} value={p.id_producto_terminado}>{p.descripcion}</option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={productos}
+          valor={idProducto}
+          onCambiar={setIdProducto}
+          obtenerId={(p) => p.id_producto_terminado}
+          obtenerTexto={(p) => p.descripcion}
+          placeholder="-- Producto terminado a producir --"
+        />
         <input type="number" placeholder="Cantidad a producir"
           value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
       </div>
@@ -116,14 +119,14 @@ function PaginaProduccionTerminada() {
       {/* Producto intermedio (insumo principal) */}
       <h3>Producto intermedio</h3>
       <div>
-        <select value={intLote} onChange={(e) => setIntLote(e.target.value)}>
-          <option value="">-- Producción intermedia --</option>
-          {intermedios.map((p) => (
-            <option key={p.id_produccion_intermedio} value={p.id_produccion_intermedio}>
-              {p.descripcion} - Lote {p.id_produccion_intermedio} (quedan {p.cantidad_restante}, costo {p.costo_unitario})
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={intermedios}
+          valor={intLote}
+          onCambiar={setIntLote}
+          obtenerId={(p) => p.id_produccion_intermedio}
+          obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}, costo ${p.costo_unitario})`}
+          placeholder="-- Producción intermedia --"
+        />
         <input type="number" placeholder="Cantidad"
           value={intCantidad} onChange={(e) => setIntCantidad(e.target.value)} />
         <button onClick={agregarIntermedio}>Agregar intermedio</button>
@@ -137,14 +140,14 @@ function PaginaProduccionTerminada() {
       {/* Materia prima directa */}
       <h3>Materia prima directa</h3>
       <div>
-        <select value={mpLote} onChange={(e) => setMpLote(e.target.value)}>
-          <option value="">-- Lote --</option>
-          {lotes.map((l) => (
-            <option key={l.id_compra} value={l.id_compra}>
-              {l.nombre_materia} - Lote {l.id_compra} (restante: {l.cantidad_restante})
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={lotes}
+          valor={mpLote}
+          onCambiar={setMpLote}
+          obtenerId={(l) => l.id_compra}
+          obtenerTexto={(l) => `${l.nombre_materia} - Lote ${l.id_compra} (restante: ${l.cantidad_restante})`}
+          placeholder="-- Lote --"
+        />
         <input type="number" placeholder="Cantidad"
           value={mpCantidad} onChange={(e) => setMpCantidad(e.target.value)} />
         <button onClick={agregarMP}>Agregar MP</button>
@@ -158,14 +161,14 @@ function PaginaProduccionTerminada() {
       {/* Trabajo */}
       <h3>Trabajo</h3>
       <div>
-        <select value={trabJornada} onChange={(e) => setTrabJornada(e.target.value)}>
-          <option value="">-- Jornada --</option>
-          {jornadas.map((j) => (
-            <option key={j.id_jornada} value={j.id_jornada}>
-              {j.nombre_trabajador} - {j.fecha} (quedan {j.horas_restantes}h)
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={jornadas}
+          valor={trabJornada}
+          onCambiar={setTrabJornada}
+          obtenerId={(j) => j.id_jornada}
+          obtenerTexto={(j) => `${j.nombre_trabajador} - ${j.fecha} (quedan ${j.horas_restantes}h)`}
+          placeholder="-- Jornada --"
+        />
         <input type="number" placeholder="Horas a usar"
           value={trabHoras} onChange={(e) => setTrabHoras(e.target.value)} />
         <button onClick={agregarTrabajo}>Agregar trabajo</button>

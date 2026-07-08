@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaClientes() {
   const [clientes, setClientes] = useState([])
@@ -106,14 +107,14 @@ function PaginaClientes() {
         <input type="text" placeholder="Licorería"
           value={licoreria} onChange={(e) => setLicoreria(e.target.value)} />
 
-        <select value={idSector} onChange={(e) => setIdSector(e.target.value)}>
-          <option value="">-- Sin sector --</option>
-          {sectores.map((s) => (
-            <option key={s.id_sector} value={s.id_sector}>
-              {s.nombre}
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={sectores}
+          valor={idSector}
+          onCambiar={setIdSector}
+          obtenerId={(s) => s.id_sector}
+          obtenerTexto={(s) => s.nombre}
+          placeholder="-- Sin sector --"
+        />
 
         <div>
           <input type="text" placeholder="Link de Google Maps"

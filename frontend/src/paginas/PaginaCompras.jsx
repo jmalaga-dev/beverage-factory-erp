@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import SelectorBuscable from '../componentes/SelectorBuscable'
 
 function PaginaCompras() {
   const [materias, setMaterias] = useState([])
@@ -61,23 +62,23 @@ function PaginaCompras() {
       <h2>Registrar compra</h2>
 
       <div>
-        <select value={idMateria} onChange={(e) => setIdMateria(e.target.value)}>
-          <option value="">-- Materia prima --</option>
-          {materias.map((m) => (
-            <option key={m.id_materia_prima} value={m.id_materia_prima}>
-              {m.descripcion}
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={materias}
+          valor={idMateria}
+          onCambiar={setIdMateria}
+          obtenerId={(m) => m.id_materia_prima}
+          obtenerTexto={(m) => m.descripcion}
+          placeholder="-- Materia prima --"
+        />
 
-        <select value={idCuenta} onChange={(e) => setIdCuenta(e.target.value)}>
-          <option value="">-- Cuenta --</option>
-          {cuentas.map((c) => (
-            <option key={c.id_cuenta} value={c.id_cuenta}>
-              {c.nombre} (saldo: {c.saldo})
-            </option>
-          ))}
-        </select>
+        <SelectorBuscable
+          opciones={cuentas}
+          valor={idCuenta}
+          onCambiar={setIdCuenta}
+          obtenerId={(c) => c.id_cuenta}
+          obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
+          placeholder="-- Cuenta --"
+        />
 
         <input type="text" placeholder="Cantidad"
           value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
