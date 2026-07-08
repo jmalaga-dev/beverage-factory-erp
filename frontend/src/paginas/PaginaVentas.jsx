@@ -35,6 +35,14 @@ function PaginaVentas() {
       setMensaje('Completa todos los campos de la línea')
       return
     }
+    const lote = lotes.find((l) => l.id_produccion === parseInt(linProd))
+    const yaUsado = lineas
+      .filter((l) => l.id_produccion === parseInt(linProd))
+      .reduce((s, l) => s + l.cantidad, 0)
+    if (lote && yaUsado + parseFloat(linCantidad) > lote.stock) {
+      setMensaje(`Ese lote solo tiene ${lote.stock} en stock${yaUsado > 0 ? ` (ya agregaste ${yaUsado})` : ''}`)
+      return
+    }
     setLineas([...lineas, {
       id_produccion: parseInt(linProd),
       cantidad: parseFloat(linCantidad),

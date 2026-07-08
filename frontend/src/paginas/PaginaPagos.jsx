@@ -41,6 +41,13 @@ function PaginaPagos() {
       setMensaje('Elige trabajador, cuenta y monto')
       return
     }
+
+    const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
+    if (cuenta && parseFloat(montoReal) > cuenta.saldo) {
+      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el pago es de ${montoReal} Bs`)
+      return
+    }
+
     apiPost('/pagos', {
       id_trabajador: parseInt(idTrabajador),
       id_cuenta: parseInt(idCuenta),

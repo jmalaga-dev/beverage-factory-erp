@@ -34,6 +34,13 @@ function PaginaCompras() {
       return
     }
 
+    // Aviso local de saldo insuficiente, sin esperar la respuesta del backend
+    const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
+    if (cuenta && parseFloat(precioTotal) > cuenta.saldo) {
+      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y la compra cuesta ${precioTotal} Bs`)
+      return
+    }
+
     apiPost('/compras', {
       id_materia_prima: parseInt(idMateria),
       id_cuenta: parseInt(idCuenta),

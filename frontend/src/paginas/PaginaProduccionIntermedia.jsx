@@ -53,6 +53,14 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige lote y cantidad de materia prima')
       return
     }
+    const lote = lotes.find((l) => l.id_compra === parseInt(mpLote))
+    const yaUsado = insumosMP
+      .filter((x) => x.id_compra === parseInt(mpLote))
+      .reduce((s, x) => s + x.cantidad, 0)
+    if (lote && yaUsado + parseFloat(mpCantidad) > lote.cantidad_restante) {
+      setMensaje(`Ese lote solo tiene ${lote.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
+      return
+    }
     setInsumosMP([...insumosMP, { id_compra: parseInt(mpLote), cantidad: parseFloat(mpCantidad) }])
     setMpLote('')
     setMpCantidad('')
@@ -75,6 +83,14 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige jornada y horas')
       return
     }
+    const jornada = jornadas.find((j) => j.id_jornada === parseInt(trabJornada))
+    const yaUsado = insumosTrabajo
+      .filter((x) => x.id_registro === parseInt(trabJornada))
+      .reduce((s, x) => s + x.horas, 0)
+    if (jornada && yaUsado + parseFloat(trabHoras) > jornada.horas_restantes) {
+      setMensaje(`Esa jornada solo tiene ${jornada.horas_restantes}h disponibles${yaUsado > 0 ? ` (ya usaste ${yaUsado}h)` : ''}`)
+      return
+    }
     setInsumosTrabajo([...insumosTrabajo, { id_registro: parseInt(trabJornada), horas: parseFloat(trabHoras) }])
     setTrabJornada('')
     setTrabHoras('')
@@ -88,6 +104,14 @@ function PaginaProduccionIntermedia() {
   function agregarIntermedio() {
     if (intLote === '' || intCantidad === '') {
       setMensaje('Elige producción intermedia y cantidad')
+      return
+    }
+    const prod = producciones.find((p) => p.id_produccion_intermedio === parseInt(intLote))
+    const yaUsado = insumosIntermedio
+      .filter((x) => x.id_prod === parseInt(intLote))
+      .reduce((s, x) => s + x.cantidad, 0)
+    if (prod && yaUsado + parseFloat(intCantidad) > prod.cantidad_restante) {
+      setMensaje(`Ese lote solo tiene ${prod.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
     setInsumosIntermedio([...insumosIntermedio, { id_prod: parseInt(intLote), cantidad: parseFloat(intCantidad) }])

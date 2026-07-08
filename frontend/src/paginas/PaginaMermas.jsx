@@ -43,10 +43,27 @@ function PaginaMermas() {
     }))
   }
 
+  // Cuanto le queda al lote elegido, segun el origen (para validar la salida)
+  function restanteDelLote() {
+    const id = parseInt(idLote)
+    if (origen === 'COMPRA') return lotesMP.find((l) => l.id_compra === id)?.cantidad_restante
+    if (origen === 'PRODUCCION_INTERMEDIO') return lotesInt.find((l) => l.id_produccion_intermedio === id)?.cantidad_restante
+    return lotesTerm.find((l) => l.id_produccion === id)?.cantidad_restante
+  }
+
   function registrar() {
     if (idLote === '' || cantidad === '') {
       setMensaje('Elige lote y cantidad')
       return
+    }
+
+    // Solo cuando el movimiento resta stock tiene sentido validar contra el restante
+    if (calcularSentido() === 'SALIDA') {
+      const restante = restanteDelLote()
+      if (restante !== undefined && parseFloat(cantidad) > restante) {
+        setMensaje(`Ese lote solo tiene ${restante} disponible`)
+        return
+      }
     }
 
     // Armar el body con el id según el origen

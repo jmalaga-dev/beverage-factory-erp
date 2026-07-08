@@ -24,6 +24,13 @@ function PaginaGastos() {
       setMensaje('Completa cuenta, monto y descripción')
       return
     }
+
+    const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
+    if (cuenta && parseFloat(monto) > cuenta.saldo) {
+      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el gasto es de ${monto} Bs`)
+      return
+    }
+
     apiPost('/gastos', {
       id_cuenta: parseInt(idCuenta),
       monto: parseFloat(monto),
