@@ -185,6 +185,21 @@ comparativa, en ambas columnas (última foto y estado actual).
 Actualmente Patrimonio = Escenario A. Se podría distinguir un patrimonio contable
 (activos a valor real) de los escenarios de liquidez.
 
+**Estado: implementado.** Migración 007 agrega
+`Valor_Stock_Producto_Terminado_Conservador` a `Balance`. Patrimonio dejó de
+ser un alias de Escenario A: ahora valoriza el stock de producto terminado a
+**costo o mercado, el menor** (criterio contable conservador: no reconoce la
+ganancia de lo que todavía no se vendió), usando el costo real de cada lote
+(`Produccion.Precio_Unitario_Producto_Terminado`) contra el precio de venta
+recomendado. Escenario A/B/C no cambiaron — siguen siendo la vista de
+liquidez ("cuánto tendría si liquido todo hoy"), con el stock terminado a
+precio de venta. Las fotos ya guardadas antes de esta mejora conservan su
+Patrimonio calculado con la fórmula vieja (inmutabilidad del histórico); solo
+las fotos nuevas usan la fórmula conservadora. En **Balance**, nueva fila
+"Stock producto terminado (costo o mercado, el menor)" en la tabla
+comparativa, y las etiquetas de Escenario A / Patrimonio aclaran la
+diferencia.
+
 ### 4.4 Informe comparativo entre balances
 Generar automáticamente un reporte que compare dos fotos de balance semanales y
 resalte qué cambió (costos, patrimonio, stock). Relevante dado que se eligió

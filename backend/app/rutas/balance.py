@@ -62,6 +62,7 @@ def balance_ultimo(sesion: Session = Depends(get_sesion)):
         "stock_producto_intermedio": float(ultimo.Valor_Stock_Intermedio or 0),
         "valor_horas_standby": float(ultimo.Valor_Horas_Standby or 0),
         "stock_producto_terminado": float(ultimo.Valor_Stock_Producto_Terminado or 0),
+        "stock_producto_terminado_conservador": float(ultimo.Valor_Stock_Producto_Terminado_Conservador or 0),
         "deudas": float(ultimo.Total_Deudas or 0),
         "activos_fijos": round(activos_fijos, 2),
         "total_inmuebles": round(total_inmuebles, 2),

@@ -110,7 +110,7 @@ function PaginaActivos() {
   return (
     <div>
       <h2>Activos fijos</h2>
-      <p>Casa, vehículo, equipos... suman al patrimonio (Escenario A) en el Balance.</p>
+      <p>Casa, vehículo, equipos... suman al patrimonio y a los escenarios de liquidez en el Balance.</p>
 
       {/* Crear tipo de bien */}
       <h3>Tipo de bien</h3>

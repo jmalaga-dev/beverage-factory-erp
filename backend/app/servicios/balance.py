@@ -50,13 +50,20 @@ def calcular_estado_actual(sesion):
         trab = sesion.get(Trabajador, j.Id_Trabajador)
         valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(trab.Pago_Trabajador or 0) if trab else 0
 
-    # Stock producto terminado valorizado (a precio recomendado)
+    # Stock producto terminado valorizado a precio recomendado (para los
+    # escenarios de liquidez) y, aparte, a "costo o mercado, el menor"
+    # (para el patrimonio contable, ver 4.3 en MEJORAS_FUTURAS.md): no
+    # reconoce la ganancia de lo que todavia no se vendio.
     producciones = sesion.query(Produccion).filter(Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO).all()
     stock_pt = 0
+    stock_pt_conservador = 0
     for p in producciones:
         prod = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
-        precio = float(prod.Precio_Venta_Recomendado_Producto_Terminado or 0) if prod else 0
-        stock_pt += float(p.Cantidad_Restante_Produccion) * precio
+        precio_venta = float(prod.Precio_Venta_Recomendado_Producto_Terminado or 0) if prod else 0
+        costo = float(p.Precio_Unitario_Producto_Terminado or 0)
+        cantidad = float(p.Cantidad_Restante_Produccion)
+        stock_pt += cantidad * precio_venta
+        stock_pt_conservador += cantidad * min(costo, precio_venta)
 
     # Deudas
     deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
@@ -81,11 +88,15 @@ def calcular_estado_actual(sesion):
     escenario_c = efectivo - deudas
     escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
     escenario_a = escenario_b + activos_fijos
+    # Patrimonio contable puro (4.3): igual que Escenario A pero con el stock
+    # de producto terminado a costo o mercado (el menor), no a precio de venta.
+    patrimonio = efectivo + stock_mp + stock_int + stock_pt_conservador + valor_horas + activos_fijos - deudas
 
     return {
         "efectivo": round(efectivo, 2),
         "stock_materia_prima": round(stock_mp, 2),
         "stock_producto_terminado": round(stock_pt, 2),
+        "stock_producto_terminado_conservador": round(stock_pt_conservador, 2),
         "deudas": round(deudas, 2),
         "activos_fijos": round(activos_fijos, 2),
         "total_inmuebles": round(total_inmuebles, 2),
@@ -94,7 +105,7 @@ def calcular_estado_actual(sesion):
         "escenario_c": round(escenario_c, 2),
         "escenario_b": round(escenario_b, 2),
         "escenario_a": round(escenario_a, 2),
-        "patrimonio": round(escenario_a, 2),
+        "patrimonio": round(patrimonio, 2),
         "stock_producto_intermedio": round(stock_int, 2),
         "valor_horas_standby": round(valor_horas, 2),
     }
@@ -267,17 +278,22 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             if trab:
                 valor_horas_standby += j.Horas_Restante_Registro_Trabajador * (trab.Pago_Trabajador or 0)
 
-        # Stock de producto terminado: restante x precio recomendado de venta
+        # Stock de producto terminado: a precio recomendado de venta (para
+        # los escenarios de liquidez) y, aparte, a costo o mercado -el menor-
+        # (para el patrimonio contable, ver 4.3 en MEJORAS_FUTURAS.md).
         producciones = sesion.query(Produccion).filter(
             Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
         ).all()
         valor_stock_pt = 0
+        valor_stock_pt_conservador = 0
         detalle_por_producto = {}  # id_producto -> (cantidad, valor)
         for p in producciones:
             producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
             precio_venta = producto.Precio_Venta_Recomendado_Producto_Terminado or 0
+            costo = p.Precio_Unitario_Producto_Terminado or 0
             valor = p.Cantidad_Restante_Produccion * precio_venta
             valor_stock_pt += valor
+            valor_stock_pt_conservador += p.Cantidad_Restante_Produccion * min(costo, precio_venta)
             # acumular para el detalle por producto
             if p.Id_Producto_Terminado not in detalle_por_producto:
                 detalle_por_producto[p.Id_Producto_Terminado] = [0, 0]
@@ -344,7 +360,16 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         escenario_c = total_efectivo - total_deudas
         escenario_b = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby - total_deudas
         escenario_a = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby + total_activos_fijos - total_deudas
-        patrimonio = escenario_a   # patrimonio = mejor escenario (todo el activo - pasivo)
+        # Patrimonio contable puro (4.3): igual que Escenario A pero con el
+        # stock de producto terminado a costo o mercado (el menor), no a
+        # precio de venta -no reconoce ganancia de lo que no se vendio-.
+        # Ya no es un alias de Escenario A (que sigue siendo la vista de
+        # liquidez: "cuanto tendria si liquido todo hoy").
+        patrimonio = (
+            total_efectivo + valor_stock_mp + valor_stock_intermedio
+            + valor_stock_pt_conservador + valor_horas_standby
+            + total_activos_fijos - total_deudas
+        )
 
         # ===== CREAR LA FOTO =====
         balance = Balance(
@@ -366,6 +391,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             Patrimonio=patrimonio,
             Valor_Stock_Intermedio=valor_stock_intermedio,
             Valor_Horas_Standby=valor_horas_standby,
+            Valor_Stock_Producto_Terminado_Conservador=valor_stock_pt_conservador,
         )
         sesion.add(balance)
         sesion.flush()  # para obtener el Id_Balance

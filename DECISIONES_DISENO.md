@@ -118,6 +118,26 @@ punto flotante (`Decimal` ya la evita) sino un remanente real demasiado chico
 para usarse. Limpiar esas filas de verdad (con una merma automática) queda
 pendiente, ver 3.5 en MEJORAS_FUTURAS.md.
 
+### 3.6 Patrimonio contable — costo o mercado, el menor (mejora 4.3)
+`Patrimonio` en `Balance` era un alias de Escenario A (efectivo + stocks
+valorizados + activos fijos - deudas), y ahí el stock de producto terminado
+se valoraba a `Precio_Venta_Recomendado_Producto_Terminado`, es decir,
+reconociendo la ganancia de lo que todavía no se vendió — correcto para una
+vista de liquidez ("cuánto tendría si liquido hoy"), pero no para un
+patrimonio contable.
+
+Se separaron los dos conceptos: los Escenarios A/B/C siguen siendo la vista
+de liquidez sin cambios; Patrimonio ahora valoriza el producto terminado al
+**menor entre costo de producción y precio de venta** (criterio "costo o
+mercado, el menor"), usando el costo real que ya guarda cada lote
+(`Produccion.Precio_Unitario_Producto_Terminado`, pese al nombre es el costo
+unitario de producción, no un precio de venta). Migración 007 agrega
+`Valor_Stock_Producto_Terminado_Conservador` a `Balance` para que la foto
+histórica deje ver por qué Patrimonio difiere de Escenario A (mismo
+principio de transparencia que 4.2 con Inmuebles/Equipos/Otros). Como el
+histórico es inmutable, las fotos tomadas antes de esta mejora conservan su
+Patrimonio calculado con la fórmula vieja.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)

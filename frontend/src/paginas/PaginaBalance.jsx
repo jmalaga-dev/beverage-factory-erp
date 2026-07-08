@@ -69,7 +69,8 @@ function PaginaBalance() {
     ['Stock materia prima', 'stock_materia_prima'],
     ['Stock producto intermedio', 'stock_producto_intermedio'],
     ['Horas en stand-by', 'valor_horas_standby'],
-    ['Stock producto terminado', 'stock_producto_terminado'],
+    ['Stock producto terminado (a precio de venta)', 'stock_producto_terminado'],
+    ['*Stock producto terminado (costo o mercado, el menor)', 'stock_producto_terminado_conservador'],
     ['Activos fijos', 'activos_fijos'],
     ['*Inmuebles', 'total_inmuebles'],
     ['*Equipos', 'total_equipos'],
@@ -77,8 +78,8 @@ function PaginaBalance() {
     ['Deudas', 'deudas'],
     ['Escenario C (solo efectivo)', 'escenario_c'],
     ['Escenario B (+ stock)', 'escenario_b'],
-    ['Escenario A (+ activos fijos)', 'escenario_a'],
-    ['PATRIMONIO', 'patrimonio'],
+    ['Escenario A (+ activos fijos, liquidez: todo a precio de venta)', 'escenario_a'],
+    ['PATRIMONIO (contable: stock terminado sin ganancia no realizada)', 'patrimonio'],
   ]
 
   // Movimientos desde la ultima foto: "Ultima foto" = lo que esa foto

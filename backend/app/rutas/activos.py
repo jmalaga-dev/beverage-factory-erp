@@ -1,7 +1,8 @@
 """
 Rutas de activos fijos y sus tipos de bien.
-Los activos (casa, vehiculo, equipos) suman al patrimonio en el balance
-(Escenario A). Tipo_Bien es un catalogo simple para clasificarlos.
+Los activos (casa, vehiculo, equipos) suman al patrimonio y a los
+escenarios de liquidez en el balance. Tipo_Bien es un catalogo simple
+para clasificarlos.
 """
 
 from decimal import Decimal
