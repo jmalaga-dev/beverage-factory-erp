@@ -22,9 +22,18 @@ futuras están en un documento aparte: `MEJORAS_FUTURAS.md`.
   fácil de navegar y sin endpoints duplicados.
 - **Acceso centralizado al backend en el frontend:** el frontend solo llama a
   la API a través de `src/api.js` (URL base única + helpers `apiGet`/
-  `apiPost` con manejo de errores). Evita repetir la URL y el parseo de
-  errores en cada pantalla; si cambia el puerto o el dominio al desplegar,
-  se edita un solo lugar.
+  `apiPost`/`apiPatch` con manejo de errores). Evita repetir la URL y el
+  parseo de errores en cada pantalla; si cambia el puerto o el dominio al
+  desplegar, se edita un solo lugar.
+- **PATCH acotado, no edición genérica:** el primer PATCH de la API
+  (`/trabajadores/{id}/habilitado`) solo acepta el campo que cambia, no un
+  objeto completo. La edición genérica (PUT/PATCH de cualquier campo) sigue
+  pendiente (ver 6.1 en MEJORAS_FUTURAS.md); cada caso puntual que la
+  necesite se resuelve con su propio endpoint chico, no se adelanta la
+  solución general.
+- **Constantes de negocio centralizadas:** valores ajustables como
+  `UMBRAL_STOCK_MINIMO` viven en `app/config.py`, no repartidos por el
+  código, para poder ajustarlos en un solo lugar sin buscar cada uso.
 - Migración desde una herramienta previa en Excel/VBA que se volvió lenta e
   inescalable por mezclar frontend, lógica y datos en hojas de cálculo.
 
@@ -42,6 +51,11 @@ Principios aplicados en las 31 tablas:
   auditabilidad (como funciona un banco).
 - **Inmutabilidad del histórico:** mermas, ajustes, devoluciones y reprocesos se
   registran como eventos nuevos, nunca se borra ni sobrescribe.
+- **Deshabilitar en vez de borrar:** los catálogos que ya tienen historial
+  encima (ej. `Trabajador`, con jornadas y pagos vinculados) no se borran —
+  se marcan `Habilitado_*` en `false`. Extiende el mismo principio de
+  inmutabilidad: nunca se pierde a quién le pagaste o qué produjo, solo deja
+  de ofrecerse para trabajo nuevo.
 - **Sin datos duplicados:** los datos derivados (totales, márgenes) se calculan
   vía JOIN o al vuelo, no se almacenan.
 - **Relaciones por Id**, no por código.
@@ -87,6 +101,14 @@ Cuando hay varios lotes del mismo producto con distinto costo, el stock
 consolidado se valora con **promedio ponderado** (suma de cantidad×costo de cada
 lote, dividido entre el total). Refleja el costo real mezclado, no un promedio
 simple.
+
+### 3.5 Umbral de stock mínimo
+Un lote con menos de `UMBRAL_STOCK_MINIMO` (0.0001, en `app/config.py`) se
+considera agotado: deja de listarse como disponible y de contar en el
+balance, aunque la fila siga con su resto positivo en la BD. No es basura de
+punto flotante (`Decimal` ya la evita) sino un remanente real demasiado chico
+para usarse. Limpiar esas filas de verdad (con una merma automática) queda
+pendiente, ver 3.5 en MEJORAS_FUTURAS.md.
 
 ---
 
@@ -136,6 +158,12 @@ Además, los endpoints que crean registros con fecha usan `fecha or date.today()
 si el frontend no envía fecha, se usa la de hoy (evita el error de NOT NULL en las
 columnas de fecha).
 
+**El backend es la única fuente de verdad.** El frontend duplica algunas de
+sus validaciones (saldo suficiente, stock suficiente) solo como comodidad,
+para avisar sin esperar el viaje al servidor — nunca reemplaza la validación
+del backend, que sigue corriendo igual y es la que de verdad protege los
+datos.
+
 ---
 
 ## 7. CORS Y DOS SERVIDORES
@@ -170,6 +198,7 @@ Git/                          (raíz del repositorio)
 │   ├── migraciones/          (cambios incrementales a la BD, numerados)
 │   └── app/
 │       ├── database.py, models.py, dependencias.py
+│       ├── config.py         (constantes de negocio ajustables)
 │       ├── main.py           (ensambla la app, CORS y los routers)
 │       ├── rutas/             (endpoints de la API, un archivo por dominio)
 │       └── servicios/        (lógica de negocio, un archivo por área)

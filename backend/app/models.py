@@ -9,7 +9,7 @@ Convencion:
   - Atributos de relacion en minuscula: singular para "uno", plural para "muchos".
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Numeric, Date, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -35,6 +35,7 @@ class Trabajador(Base):
     Nombre_Trabajador = Column(String, nullable=False)
     Pago_Trabajador = Column(Numeric)
     Horas_Base_Trabajador = Column(Numeric)
+    Habilitado_Trabajador = Column(Boolean, nullable=False, server_default="true")
 
     registros = relationship("Registro_Trabajador", back_populates="trabajador")
 

@@ -83,6 +83,7 @@ def listar_trabajadores(sesion: Session = Depends(get_sesion)):
             "nombre": t.Nombre_Trabajador,
             "pago": float(t.Pago_Trabajador or 0),
             "horas_base": float(t.Horas_Base_Trabajador or 0),
+            "habilitado": t.Habilitado_Trabajador,
         }
         for t in ts
     ]
@@ -92,6 +93,7 @@ class TrabajadorEntrada(BaseModel):
     nombre: str
     pago: float
     horas_base: float | None = None
+    habilitado: bool = True
 
 
 @router.post("/trabajadores")
@@ -99,10 +101,26 @@ def crear_trabajador(datos: TrabajadorEntrada, sesion: Session = Depends(get_ses
     if not datos.nombre.strip():
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
     t = Trabajador(Nombre_Trabajador=datos.nombre, Pago_Trabajador=Decimal(str(datos.pago)),
-                   Horas_Base_Trabajador=Decimal(str(datos.horas_base)) if datos.horas_base else None)
+                   Horas_Base_Trabajador=Decimal(str(datos.horas_base)) if datos.horas_base else None,
+                   Habilitado_Trabajador=datos.habilitado)
     sesion.add(t)
     sesion.commit()
     return {"mensaje": "Trabajador creado", "id": t.Id_Trabajador}
+
+
+class TrabajadorHabilitadoEntrada(BaseModel):
+    habilitado: bool
+
+
+@router.patch("/trabajadores/{id_trabajador}/habilitado")
+def cambiar_habilitado_trabajador(id_trabajador: int, datos: TrabajadorHabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    """Activa/desactiva un trabajador (no aparece en desplegables si esta deshabilitado)."""
+    t = sesion.get(Trabajador, id_trabajador)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"No existe trabajador con Id {id_trabajador}")
+    t.Habilitado_Trabajador = datos.habilitado
+    sesion.commit()
+    return {"mensaje": "Trabajador actualizado", "id": t.Id_Trabajador, "habilitado": t.Habilitado_Trabajador}
 
 
 # ---------- PRODUCTO TERMINADO ----------

@@ -40,7 +40,7 @@ function PaginaJornadas() {
       <h2>Registrar jornada</h2>
       <div>
         <SelectorBuscable
-          opciones={trabajadores}
+          opciones={trabajadores.filter((t) => t.habilitado)}
           valor={idTrabajador}
           onCambiar={setIdTrabajador}
           obtenerId={(t) => t.id_trabajador}

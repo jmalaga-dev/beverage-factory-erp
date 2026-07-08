@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
-import { apiGet, apiPost } from '../api'
+import { apiGet, apiPatch, apiPost } from '../api'
 
-// Componente reutilizable: un catálogo genérico de crear + listar
-function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
+// Componente reutilizable: un catálogo genérico de crear + listar.
+// accionFila (opcional) agrega una columna extra con una accion por fila
+// (recibe el item, una funcion para recargar la lista, y setMensaje para
+// avisar errores en el mismo lugar que los del formulario de creación).
+function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial, accionFila }) {
   const [items, setItems] = useState([])
   const [valores, setValores] = useState({})
   const [mensaje, setMensaje] = useState('')
@@ -70,7 +73,10 @@ function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
           />
           <table border="1">
             <thead>
-              <tr>{camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
+              <tr>
+                {camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}
+                {accionFila && <th>Estado</th>}
+              </tr>
             </thead>
             <tbody>
               {items
@@ -82,6 +88,7 @@ function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial }) {
                 .map((item, i) => (
                   <tr key={i}>
                     {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
+                    {accionFila && <td>{accionFila(item, cargar, setMensaje)}</td>}
                   </tr>
                 ))}
             </tbody>
@@ -126,6 +133,15 @@ function PaginaCatalogos() {
           { key: 'pago', label: 'Pago/hora' },
           { key: 'horas_base', label: 'Horas base' },
         ]}
+        accionFila={(t, recargar, avisar) => (
+          <button onClick={() => {
+            apiPatch(`/trabajadores/${t.id_trabajador}/habilitado`, { habilitado: !t.habilitado })
+              .then(recargar)
+              .catch((e) => avisar(e.message))
+          }}>
+            {t.habilitado ? 'Habilitado (clic para deshabilitar)' : 'Deshabilitado (clic para habilitar)'}
+          </button>
+        )}
       />
 
       <Catalogo

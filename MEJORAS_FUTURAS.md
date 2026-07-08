@@ -227,6 +227,15 @@ de Balance (4.5), ahí las tres tablas arrancan colapsadas.
 Agregar a la BD si un trabajador está activo, para mostrar solo los habilitados en
 los desplegables. Mini-migración simple.
 
+**Estado: implementado.** Migración 004 (`Habilitado_Trabajador boolean DEFAULT
+TRUE`, existentes quedan habilitados sin tocarlos). Nuevo endpoint
+`PATCH /trabajadores/{id}/habilitado` — primer PATCH de la API, ver nota en
+DECISIONES_DISENO.md. En Catálogos, la tabla de Trabajador tiene un botón por
+fila para alternar el estado. El desplegable de **Jornadas** solo muestra
+habilitados; el de **Pagos** a propósito muestra todos (si deshabilitas a
+alguien con jornadas pendientes, necesitas poder pagarle igual para cerrar la
+cuenta).
+
 ### 6.6 Alerta de venta bajo costo
 En la pantalla de ventas, avisar visualmente (rojo / mensaje) si el precio de
 venta que se pone es menor al costo del lote, para no vender a pérdida.
@@ -324,3 +333,11 @@ automáticamente, evitando repetir la conversión en cada endpoint.
 El backend valida todo (seguridad). Agregar validaciones en el frontend como
 comodidad: avisar antes de enviar (ej. horas pedidas > horas disponibles) sin
 esperar el viaje al servidor.
+
+**Estado: implementado.** Saldo insuficiente en Compras/Gastos/Pagos; stock u
+horas insuficientes al agregar un insumo en Producción Intermedia/Terminada y
+Ventas (sumando lo ya agregado del mismo lote en la lista actual, no solo la
+última cantidad); y en Mermas, solo cuando el movimiento resta stock. Todas
+bloquean la acción local — a diferencia del aviso no bloqueante de 6.6, aquí
+el backend igual las rechazaría. El backend sigue siendo la única fuente de
+verdad; esto es puramente comodidad.

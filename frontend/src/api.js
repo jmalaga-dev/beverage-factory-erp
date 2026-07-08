@@ -31,3 +31,17 @@ export async function apiPost(ruta, cuerpo) {
   }
   return respuesta.json()
 }
+
+// Igual que apiPost, pero con metodo PATCH (actualizar un campo puntual).
+export async function apiPatch(ruta, cuerpo) {
+  const respuesta = await fetch(`${BASE_URL}${ruta}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo),
+  })
+  if (!respuesta.ok) {
+    const error = await respuesta.json().catch(() => ({}))
+    throw new Error(error.detail || `Error en ${ruta}`)
+  }
+  return respuesta.json()
+}
