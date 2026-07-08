@@ -72,6 +72,14 @@ function PaginaVentas() {
     const c = cuentas.find((x) => x.id_cuenta === id)
     return c ? c.nombre : `Cuenta ${id}`
   }
+  function costoDeLote(id) {
+    const l = lotes.find((x) => x.id_produccion === id)
+    return l ? l.costo_unitario : null
+  }
+
+  // Precio bajo costo del lote que se está armando (solo aviso, no bloquea)
+  const loteEnCurso = linProd !== '' ? lotes.find((x) => x.id_produccion === parseInt(linProd)) : null
+  const precioBajoCosto = loteEnCurso && linPrecio !== '' && parseFloat(linPrecio) < loteEnCurso.costo_unitario
 
   // Total de la venta que se está armando
   const totalVenta = lineas.reduce((suma, l) => suma + l.cantidad * l.precio_real, 0)
@@ -118,15 +126,26 @@ function PaginaVentas() {
         <button onClick={agregarLinea}>Agregar línea</button>
       </div>
 
+      {precioBajoCosto && (
+        <p style={{ color: 'red' }}>
+          ⚠ El precio ({linPrecio} Bs) es menor al costo del lote ({loteEnCurso.costo_unitario} Bs)
+        </p>
+      )}
+
       {/* Líneas de la venta */}
       <ul>
-        {lineas.map((l, i) => (
-          <li key={i}>
-            {nombreLote(l.id_produccion)} — {l.cantidad} × {l.precio_real} Bs = {(l.cantidad * l.precio_real).toFixed(2)} Bs
-            → {nombreCuenta(l.id_cuenta)}
-            {' '}<button onClick={() => quitarLinea(i)}>quitar</button>
-          </li>
-        ))}
+        {lineas.map((l, i) => {
+          const costo = costoDeLote(l.id_produccion)
+          const bajoCosto = costo !== null && l.precio_real < costo
+          return (
+            <li key={i} style={bajoCosto ? { color: 'red' } : undefined}>
+              {nombreLote(l.id_produccion)} — {l.cantidad} × {l.precio_real} Bs = {(l.cantidad * l.precio_real).toFixed(2)} Bs
+              → {nombreCuenta(l.id_cuenta)}
+              {bajoCosto && ' ⚠ bajo costo'}
+              {' '}<button onClick={() => quitarLinea(i)}>quitar</button>
+            </li>
+          )
+        })}
       </ul>
 
       {lineas.length > 0 && <p><strong>Total venta: {totalVenta.toFixed(2)} Bs</strong></p>}
