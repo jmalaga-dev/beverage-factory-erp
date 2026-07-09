@@ -127,8 +127,9 @@ function PaginaBalance() {
 
       {!ultimo && <p>Aún no hay ninguna foto guardada. Toma la primera para empezar a comparar.</p>}
 
-      <div style={{ marginTop: '1rem' }}>
+      <div className="no-imprimir" style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
         <button onClick={tomarBalance}>Tomar foto ahora</button>
+        <button onClick={() => window.print()}>Imprimir / PDF</button>
       </div>
       {mensaje && <p>{mensaje}</p>}
 

@@ -14,6 +14,7 @@ import PaginaMermas from './paginas/PaginaMermas'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaActivos from './paginas/PaginaActivos'
 import PaginaBalance from './paginas/PaginaBalance'
+import PaginaComparativaBalances from './paginas/PaginaComparativaBalances'
 
 // Grupos del menu principal: agrupan las paginas por su lugar en el
 // flujo del negocio, en vez de una lista plana de 11 links.
@@ -39,6 +40,7 @@ const categorias = [
     { to: '/mermas', label: 'Mermas' },
     { to: '/activos', label: 'Activos' },
     { to: '/balance', label: 'Balance' },
+    { to: '/comparar-balances', label: 'Comparar cierres' },
   ] },
 ]
 
@@ -69,6 +71,7 @@ function App() {
           <Route path="/mermas" element={<PaginaMermas />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
+          <Route path="/comparar-balances" element={<PaginaComparativaBalances />} />
         </Routes>
       </div>
     </BrowserRouter>

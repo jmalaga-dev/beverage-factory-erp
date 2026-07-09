@@ -182,3 +182,30 @@
     border-right-color: var(--border);
   }
 }
+
+/* Impresión / PDF: deja solo el reporte en el papel. Oculta el menú de
+   navegación y cualquier control interactivo marcado con .no-imprimir
+   (selectores, botones). Las tablas se muestran en negro sobre blanco para
+   que se lean bien impresas en la fábrica. */
+@media print {
+  nav,
+  .no-imprimir {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th,
+  td {
+    border: 1px solid #000;
+    padding: 4px 8px;
+  }
+}

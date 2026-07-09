@@ -205,6 +205,26 @@ Generar automáticamente un reporte que compare dos fotos de balance semanales y
 resalte qué cambió (costos, patrimonio, stock). Relevante dado que se eligió
 Filosofía B para el costo de materia prima.
 
+**Estado: implementado.** Sin migración: cada foto de `Balance` ya guarda todo
+lo comparable (efectivo, stocks, escenarios, patrimonio, movimientos de su
+semana). Solo hizo falta exponer el histórico y compararlo. En backend se
+extrajo `serializar_balance()` en `servicios/balance.py` (antes la lógica
+estaba incrustada en `/balance-ultimo`; ahora la reusan la última foto y el
+listado, sin divergir) y se agregó `GET /balances`, que devuelve **todas** las
+fotos ya serializadas, de la más reciente a la más antigua. En frontend, nueva
+pantalla **Comparar cierres** (`/comparar-balances`, grupo *Cierre*) con dos
+selectores (Foto A / Foto B) que listan el histórico por `#id — fecha` (el id
+distingue fotos con la misma fecha); la tabla usa los mismos conceptos y
+movimientos que Balance, con columna Diferencia (B − A) coloreada. Se distingue
+a propósito de la pantalla de Balance: aquella compara "estado actual vs último
+cierre" (mira al *ahora*), ésta compara "cierre X vs cierre Y" (mira al
+*pasado*). Un campo que a una de las dos fotos le falta (columna agregada
+después) se muestra "—" en vez de restar contra cero. **Impresión/PDF**: botón
+"Imprimir / PDF" que dispara `window.print()`, tanto en la comparativa como en
+la pantalla de Balance existente (pedido para llevar el reporte físico a la
+fábrica); un bloque `@media print` en `App.css` oculta el menú y los controles
+marcados con `.no-imprimir` y deja solo la tabla en negro sobre blanco.
+
 ### 4.5 Enriquecer la vista de balance en el frontend
 La pantalla muestra patrimonio y escenarios. Ampliar para ver efectivo, stocks,
 deudas por separado, y el detalle por producto.

@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
 from app.models import Balance
-from app.servicios.balance import calcular_estado_actual, resumen_desde_ultima_foto, tomar_balance
+from app.servicios.balance import (
+    calcular_estado_actual,
+    resumen_desde_ultima_foto,
+    serializar_balance,
+    tomar_balance,
+)
 
 router = APIRouter(tags=["balance"])
 
@@ -50,34 +55,19 @@ def balance_ultimo(sesion: Session = Depends(get_sesion)):
     ultimo = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).first()
     if ultimo is None:
         return None
-    total_inmuebles = float(ultimo.Total_Inmuebles or 0)
-    total_equipos = float(ultimo.Total_Equipos or 0)
-    total_otros = float(ultimo.Total_Otros_Activos or 0)
-    activos_fijos = total_inmuebles + total_equipos + total_otros
-    return {
-        "id_balance": ultimo.Id_Balance,
-        "fecha": str(ultimo.Fecha_Balance),
-        "efectivo": float(ultimo.Total_Efectivo or 0),
-        "stock_materia_prima": float(ultimo.Valor_Stock_Materia_Prima or 0),
-        "stock_producto_intermedio": float(ultimo.Valor_Stock_Intermedio or 0),
-        "valor_horas_standby": float(ultimo.Valor_Horas_Standby or 0),
-        "stock_producto_terminado": float(ultimo.Valor_Stock_Producto_Terminado or 0),
-        "stock_producto_terminado_conservador": float(ultimo.Valor_Stock_Producto_Terminado_Conservador or 0),
-        "deudas": float(ultimo.Total_Deudas or 0),
-        "activos_fijos": round(activos_fijos, 2),
-        "total_inmuebles": round(total_inmuebles, 2),
-        "total_equipos": round(total_equipos, 2),
-        "total_otros": round(total_otros, 2),
-        "escenario_c": float(ultimo.Escenario_C or 0),
-        "escenario_b": float(ultimo.Escenario_B or 0),
-        "escenario_a": float(ultimo.Escenario_A or 0),
-        "patrimonio": float(ultimo.Patrimonio or 0),
-        "ventas": float(ultimo.Ventas_Semana or 0),
-        "compras": float(ultimo.Compras_Semana or 0),
-        "gastos": float(ultimo.Gastos_Semana or 0),
-        # None (no 0): las fotos tomadas antes de esta columna no tienen este dato
-        "pagos": float(ultimo.Pagos_Semana) if ultimo.Pagos_Semana is not None else None,
-    }
+    return serializar_balance(ultimo)
+
+
+@router.get("/balances")
+def listar_balances(sesion: Session = Depends(get_sesion)):
+    """
+    Lista todas las fotos de balance guardadas, cada una con su desglose
+    completo, ordenadas de la más reciente a la más antigua. El frontend
+    (comparativa 4.4) elige dos y calcula la diferencia en el cliente, sin
+    pedir cada foto por separado.
+    """
+    balances = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).all()
+    return [serializar_balance(b) for b in balances]
 
 
 @router.get("/balance-resumen-semana")

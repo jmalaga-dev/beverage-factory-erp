@@ -161,6 +161,29 @@ principio de transparencia que 4.2 con Inmuebles/Equipos/Otros). Como el
 histórico es inmutable, las fotos tomadas antes de esta mejora conservan su
 Patrimonio calculado con la fórmula vieja.
 
+### 3.7 Comparar dos fotos de balance del pasado (mejora 4.4)
+La pantalla de Balance ya compara "estado actual (en vivo) vs. última foto
+guardada" — siempre contra el *ahora*, y solo contra la foto más reciente. Como
+las fotos son inmutables y se acumulan, faltaba poder comparar **dos cierres del
+pasado** entre sí (p. ej. junio vs. julio) para ver la evolución. No requirió
+migración: la foto ya guarda todo lo comparable. Solo se expuso el histórico
+(`GET /balances`, todas las fotos serializadas) y se compara en el cliente. Para
+no duplicar la forma de los datos, la lógica que arma el dict de una foto se
+extrajo a `serializar_balance()` y la reusan la última foto y el listado. La
+comparativa vive en pantalla aparte (`Comparar cierres`) a propósito: mezclar
+"vs. ahora" con "cierre vs. cierre" confunde qué se está mirando. Las fotos se
+identifican por `#id — fecha` porque varias pueden compartir fecha (se pueden
+tomar varias el mismo día). Un campo ausente en una de las dos fotos (columna
+agregada después, histórico inmutable) se muestra "—", no se resta contra cero.
+
+**Impresión física (PDF):** el informe comparativo y el reporte de Balance se
+imprimen con `window.print()` del navegador (sin librerías) + un bloque
+`@media print` en `App.css` que oculta el menú y los controles `.no-imprimir`
+(selectores, botones) y deja solo la tabla en negro sobre blanco. Se eligió la
+impresión nativa del navegador (que ya ofrece "Guardar como PDF") en vez de
+generar el PDF en el backend: cero dependencias nuevas y el usuario controla
+formato/márgenes desde el diálogo del sistema.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)

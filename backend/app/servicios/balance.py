@@ -22,6 +22,43 @@ from app.models import (
 )
 
 
+def serializar_balance(balance):
+    """
+    Convierte una foto de Balance guardada en el dict que consume la API
+    (mismos campos y nombres que usa el frontend). Se usa para la ultima
+    foto y para el listado del historico (comparativa 4.4), asi ambos
+    endpoints devuelven siempre la misma forma sin duplicar la logica.
+    """
+    total_inmuebles = float(balance.Total_Inmuebles or 0)
+    total_equipos = float(balance.Total_Equipos or 0)
+    total_otros = float(balance.Total_Otros_Activos or 0)
+    activos_fijos = total_inmuebles + total_equipos + total_otros
+    return {
+        "id_balance": balance.Id_Balance,
+        "fecha": str(balance.Fecha_Balance),
+        "efectivo": float(balance.Total_Efectivo or 0),
+        "stock_materia_prima": float(balance.Valor_Stock_Materia_Prima or 0),
+        "stock_producto_intermedio": float(balance.Valor_Stock_Intermedio or 0),
+        "valor_horas_standby": float(balance.Valor_Horas_Standby or 0),
+        "stock_producto_terminado": float(balance.Valor_Stock_Producto_Terminado or 0),
+        "stock_producto_terminado_conservador": float(balance.Valor_Stock_Producto_Terminado_Conservador or 0),
+        "deudas": float(balance.Total_Deudas or 0),
+        "activos_fijos": round(activos_fijos, 2),
+        "total_inmuebles": round(total_inmuebles, 2),
+        "total_equipos": round(total_equipos, 2),
+        "total_otros": round(total_otros, 2),
+        "escenario_c": float(balance.Escenario_C or 0),
+        "escenario_b": float(balance.Escenario_B or 0),
+        "escenario_a": float(balance.Escenario_A or 0),
+        "patrimonio": float(balance.Patrimonio or 0),
+        "ventas": float(balance.Ventas_Semana or 0),
+        "compras": float(balance.Compras_Semana or 0),
+        "gastos": float(balance.Gastos_Semana or 0),
+        # None (no 0): las fotos tomadas antes de esta columna no tienen este dato
+        "pagos": float(balance.Pagos_Semana) if balance.Pagos_Semana is not None else None,
+    }
+
+
 def calcular_estado_actual(sesion):
     """
     Calcula el estado actual de la fabrica con desglose completo,
