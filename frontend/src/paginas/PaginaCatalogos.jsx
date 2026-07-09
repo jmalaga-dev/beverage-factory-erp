@@ -1,114 +1,23 @@
-import { useState, useEffect } from 'react'
-import { apiGet, apiPatch, apiPost } from '../api'
+import Catalogo from '../componentes/Catalogo'
 
-// Componente reutilizable: un catálogo genérico de crear + listar.
-// accionFila (opcional) agrega una columna extra con una accion por fila
-// (recibe el item, una funcion para recargar la lista, y setMensaje para
-// avisar errores en el mismo lugar que los del formulario de creación).
-function Catalogo({ titulo, endpoint, campos, camposTabla, abiertoInicial, accionFila }) {
-  const [items, setItems] = useState([])
-  const [valores, setValores] = useState({})
-  const [mensaje, setMensaje] = useState('')
-  const [abierto, setAbierto] = useState(abiertoInicial)
-  const [filtro, setFiltro] = useState('')
-
-  function cargar() {
-    apiGet(`/${endpoint}`).then(setItems).catch(console.error)
-  }
-
-  useEffect(() => { cargar() }, [])
-
-  function crear() {
-    // Validar que los campos obligatorios estén llenos
-    for (const campo of campos) {
-      if (campo.obligatorio && !valores[campo.nombre]) {
-        setMensaje(`${campo.label} es obligatorio`)
-        return
-      }
-    }
-
-    // Armar el body convirtiendo números
-    const body = {}
-    for (const campo of campos) {
-      let v = valores[campo.nombre]
-      if (campo.tipo === 'number' && v) v = parseFloat(v)
-      body[campo.nombre] = v || null
-    }
-
-    apiPost(`/${endpoint}`, body)
-      .then(() => {
-        setMensaje(`${titulo} creado`)
-        setValores({})
-        cargar()
-      })
-      .catch((e) => setMensaje(e.message))
-  }
-
-  return (
-    <div style={{ marginBottom: '1rem' }}>
-      <h3 style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setAbierto(!abierto)}>
-        {abierto ? '▾' : '▸'} {titulo} ({items.length})
-      </h3>
-      {abierto && (
-        <>
-          <div>
-            {campos.map((campo) => (
-              <input
-                key={campo.nombre}
-                type={campo.tipo === 'number' ? 'number' : 'text'}
-                placeholder={campo.label}
-                value={valores[campo.nombre] || ''}
-                onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
-              />
-            ))}
-            <button onClick={crear}>Agregar</button>
-          </div>
-          {mensaje && <p>{mensaje}</p>}
-          <input
-            type="text"
-            placeholder="Buscar..."
-            value={filtro}
-            onChange={(e) => setFiltro(e.target.value)}
-            style={{ display: 'block', marginBottom: '0.5rem' }}
-          />
-          <table border="1">
-            <thead>
-              <tr>
-                {camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}
-                {accionFila && <th>Estado</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {items
-                .filter((item) =>
-                  camposTabla.some((c) =>
-                    String(item[c.key] ?? '').toLowerCase().includes(filtro.toLowerCase())
-                  )
-                )
-                .map((item, i) => (
-                  <tr key={i}>
-                    {camposTabla.map((c) => <td key={c.key}>{item[c.key]}</td>)}
-                    {accionFila && <td>{accionFila(item, cargar, setMensaje)}</td>}
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </>
-      )}
-    </div>
-  )
-}
-
-// La página que junta todos los catálogos
+// La página que junta todos los catálogos. El componente Catalogo (en
+// componentes/) trae crear + listar + editar + habilitar/deshabilitar + borrar;
+// aquí solo se configura cada catálogo (mejora 6.1).
 function PaginaCatalogos() {
   return (
     <div>
       <h2>Catálogos</h2>
+      <p style={{ fontSize: '0.9em', color: '#888' }}>
+        Editar un registro es seguro (no afecta el historial). Para dar de baja algo
+        que ya se usó, deshabilítalo: desaparece de los desplegables sin borrarse.
+        Borrar solo está disponible si el registro no tiene historial.
+      </p>
 
       <Catalogo
         titulo="Materia Prima"
         abiertoInicial={true}
         endpoint="materias-primas"
+        idKey="id_materia_prima"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'unidad', label: 'Unidad', tipo: 'text', obligatorio: true },
@@ -123,6 +32,7 @@ function PaginaCatalogos() {
         titulo="Trabajador"
         abiertoInicial={false}
         endpoint="trabajadores"
+        idKey="id_trabajador"
         campos={[
           { nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true },
           { nombre: 'pago', label: 'Pago por hora', tipo: 'number', obligatorio: true },
@@ -133,21 +43,13 @@ function PaginaCatalogos() {
           { key: 'pago', label: 'Pago/hora' },
           { key: 'horas_base', label: 'Horas base' },
         ]}
-        accionFila={(t, recargar, avisar) => (
-          <button onClick={() => {
-            apiPatch(`/trabajadores/${t.id_trabajador}/habilitado`, { habilitado: !t.habilitado })
-              .then(recargar)
-              .catch((e) => avisar(e.message))
-          }}>
-            {t.habilitado ? 'Habilitado (clic para deshabilitar)' : 'Deshabilitado (clic para habilitar)'}
-          </button>
-        )}
       />
 
       <Catalogo
         titulo="Producto Terminado"
         abiertoInicial={false}
         endpoint="productos-terminados"
+        idKey="id_producto_terminado"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'precio_recomendado', label: 'Precio recomendado', tipo: 'number' },
@@ -162,6 +64,7 @@ function PaginaCatalogos() {
         titulo="Producto Intermedio"
         abiertoInicial={false}
         endpoint="productos-intermedios"
+        idKey="id_producto_intermedio"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'litros', label: 'Litros', tipo: 'number' },
@@ -176,6 +79,7 @@ function PaginaCatalogos() {
         titulo="Grupo de Movimiento"
         abiertoInicial={false}
         endpoint="grupos"
+        idKey="id_grupo"
         campos={[{ nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true }]}
         camposTabla={[{ key: 'nombre', label: 'Nombre' }]}
       />
@@ -184,6 +88,7 @@ function PaginaCatalogos() {
         titulo="Gasto Extra"
         abiertoInicial={false}
         endpoint="gastos-extra"
+        idKey="id_gasto_extra"
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'precio_mensual', label: 'Precio mensual', tipo: 'number', obligatorio: true },
@@ -191,6 +96,21 @@ function PaginaCatalogos() {
         camposTabla={[
           { key: 'descripcion', label: 'Descripción' },
           { key: 'precio_mensual', label: 'Precio/mes' },
+        ]}
+      />
+
+      {/* Cuenta: solo se edita el nombre; el saldo se deriva de los movimientos,
+          no se crea desde aquí. Por eso permitirCrear=false. */}
+      <Catalogo
+        titulo="Cuenta"
+        abiertoInicial={false}
+        endpoint="cuentas"
+        idKey="id_cuenta"
+        permitirCrear={false}
+        campos={[{ nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true }]}
+        camposTabla={[
+          { key: 'nombre', label: 'Nombre' },
+          { key: 'saldo', label: 'Saldo' },
         ]}
       />
     </div>

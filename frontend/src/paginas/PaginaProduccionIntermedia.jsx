@@ -177,7 +177,7 @@ function PaginaProduccionIntermedia() {
       {/* Cabecera */}
       <div>
         <SelectorBuscable
-          opciones={productos}
+          opciones={productos.filter((p) => p.habilitado)}
           valor={idProducto}
           onCambiar={setIdProducto}
           obtenerId={(p) => p.id_producto_intermedio}

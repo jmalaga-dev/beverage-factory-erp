@@ -3,6 +3,19 @@ Rutas de catalogos: las tablas maestras que alimentan los desplegables
 del frontend (materias primas, trabajadores, productos, grupos, gastos
 extra y cuentas). Son CRUD simples sin logica de negocio, por eso operan
 directo sobre los modelos en lugar de pasar por un servicio.
+
+Edicion / deshabilitar / borrar (mejora 6.1):
+  - Editar los campos descriptivos SIEMPRE es seguro: como las relaciones
+    son por Id (no por texto), renombrar un catalogo no corrompe el
+    historial que lo referencia. Por eso el PATCH de edicion no lleva
+    guardrail.
+  - Deshabilitar (PATCH .../habilitado) saca el item de los desplegables de
+    operaciones nuevas sin borrarlo; su historial queda intacto. Es la via
+    recomendada para "dar de baja" algo que ya se uso (ver DECISIONES_DISENO,
+    "Deshabilitar en vez de borrar").
+  - Borrar (DELETE) es un borrado real y SOLO se permite si el item no tiene
+    historial encima (en_uso == False); si lo tiene, se bloquea y se sugiere
+    deshabilitar. Asi se respeta la inmutabilidad del historico.
 """
 
 from decimal import Decimal
@@ -13,32 +26,145 @@ from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
 from app.models import (
+    Compra,
     Cuenta,
     Gasto_Extra,
     Grupo_Movimiento,
     Materia_Prima,
+    Movimiento,
+    Movimiento_Deuda,
+    Pago_Trabajador,
+    Produccion,
+    Produccion_Intermedio,
     Producto_Intermedio,
     Producto_Terminado,
+    Prorrateo_Mensual,
+    Registro_Trabajador,
     Trabajador,
 )
 
 router = APIRouter(tags=["catalogos"])
 
 
-# ---------- CUENTAS ----------
+# =========================================================
+# HELPERS COMPARTIDOS
+# =========================================================
+
+class HabilitadoEntrada(BaseModel):
+    habilitado: bool
+
+
+def _ids_referenciados(sesion: Session, *columnas) -> set:
+    """Union de los Ids que aparecen en una o mas columnas FK. De una sola
+    pasada nos dice que items de un catalogo ya tienen historial encima (y
+    por tanto no se pueden borrar, solo deshabilitar)."""
+    usados = set()
+    for col in columnas:
+        for (valor,) in sesion.query(col).distinct():
+            if valor is not None:
+                usados.add(valor)
+    return usados
+
+
+def _toggle_habilitado(sesion, modelo, campo, id_valor, habilitado, etiqueta):
+    """Activa/desactiva un item de catalogo. Deshabilitado deja de aparecer
+    en los desplegables de operaciones nuevas (el frontend filtra), pero
+    sigue existiendo y su historial queda intacto."""
+    obj = sesion.get(modelo, id_valor)
+    if obj is None:
+        raise HTTPException(status_code=404, detail=f"No existe {etiqueta} con Id {id_valor}")
+    setattr(obj, campo, habilitado)
+    sesion.commit()
+    return {"mensaje": f"{etiqueta} actualizado", "habilitado": habilitado}
+
+
+def _borrar(sesion, modelo, id_valor, etiqueta, en_uso, detalle_uso):
+    """Borrado real, solo si el item no tiene historial (en_uso False).
+    Si lo tiene, se bloquea y se sugiere deshabilitar."""
+    obj = sesion.get(modelo, id_valor)
+    if obj is None:
+        raise HTTPException(status_code=404, detail=f"No existe {etiqueta} con Id {id_valor}")
+    if en_uso:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede borrar: {detalle_uso}. Deshabilítalo en su lugar para sacarlo de los desplegables sin perder el historial.",
+        )
+    sesion.delete(obj)
+    sesion.commit()
+    return {"mensaje": f"{etiqueta} eliminado"}
+
+
+# =========================================================
+# CUENTAS
+# =========================================================
+
+def _cuentas_en_uso(sesion: Session) -> set:
+    """Una cuenta esta 'en uso' si algun movimiento (de caja o de deuda) la
+    referencia. El saldo != 0 se evalua aparte, por cuenta, en cada uso."""
+    return _ids_referenciados(
+        sesion,
+        Movimiento.Id_Cuenta_Origen,
+        Movimiento.Id_Cuenta_Destino,
+        Movimiento_Deuda.Id_Cuenta_Pago,
+    )
+
 
 @router.get("/cuentas")
 def listar_cuentas(sesion: Session = Depends(get_sesion)):
     """Devuelve las cuentas con su saldo actual."""
     cuentas = sesion.query(Cuenta).all()
+    usados = _cuentas_en_uso(sesion)
     return [
         {
             "id_cuenta": c.Id_Cuenta,
             "nombre": c.Nombre_Cuenta,
             "saldo": float(c.Saldo_Actual_Cuenta),
+            "habilitado": c.Habilitado_Cuenta,
+            # No se puede borrar si tiene movimientos o si le queda saldo.
+            "en_uso": (c.Id_Cuenta in usados) or (c.Saldo_Actual_Cuenta != 0),
         }
         for c in cuentas
     ]
+
+
+class CuentaEdicion(BaseModel):
+    nombre: str
+
+
+@router.patch("/cuentas/{id_cuenta}")
+def actualizar_cuenta(id_cuenta: int, datos: CuentaEdicion, sesion: Session = Depends(get_sesion)):
+    """Corrige el nombre de una cuenta. El saldo NO se edita a mano: se deriva
+    de los movimientos (principio del libro de movimientos unico)."""
+    c = sesion.get(Cuenta, id_cuenta)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"No existe cuenta con Id {id_cuenta}")
+    if not datos.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre no puede quedar vacío")
+    existente = sesion.query(Cuenta).filter(
+        Cuenta.Nombre_Cuenta.ilike(datos.nombre.strip()), Cuenta.Id_Cuenta != id_cuenta
+    ).first()
+    if existente:
+        raise HTTPException(status_code=400, detail="Ya existe otra cuenta con ese nombre")
+    c.Nombre_Cuenta = datos.nombre.strip()
+    sesion.commit()
+    return {"mensaje": "Cuenta actualizada", "id": c.Id_Cuenta}
+
+
+@router.patch("/cuentas/{id_cuenta}/habilitado")
+def cambiar_habilitado_cuenta(id_cuenta: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Cuenta, "Habilitado_Cuenta", id_cuenta, datos.habilitado, "cuenta")
+
+
+@router.delete("/cuentas/{id_cuenta}")
+def borrar_cuenta(id_cuenta: int, sesion: Session = Depends(get_sesion)):
+    c = sesion.get(Cuenta, id_cuenta)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"No existe cuenta con Id {id_cuenta}")
+    tiene_mov = c.Id_Cuenta in _cuentas_en_uso(sesion)
+    tiene_saldo = c.Saldo_Actual_Cuenta != 0
+    en_uso = tiene_mov or tiene_saldo
+    motivo = "tiene movimientos registrados" if tiene_mov else "tiene saldo distinto de cero"
+    return _borrar(sesion, Cuenta, id_cuenta, "cuenta", en_uso, motivo)
 
 
 # ---------- MATERIA PRIMA ----------
@@ -47,11 +173,14 @@ def listar_cuentas(sesion: Session = Depends(get_sesion)):
 def listar_materias_primas(sesion: Session = Depends(get_sesion)):
     """Devuelve la lista de materias primas (el catalogo)."""
     materias = sesion.query(Materia_Prima).all()
+    usados = _ids_referenciados(sesion, Compra.Id_Materia_Prima)
     return [
         {
             "id_materia_prima": m.Id_Materia_Prima,
             "descripcion": m.Descripcion_Materia_Prima,
             "unidad": m.Unidad_Materia_Prima,
+            "habilitado": m.Habilitado_Materia_Prima,
+            "en_uso": m.Id_Materia_Prima in usados,
         }
         for m in materias
     ]
@@ -72,11 +201,47 @@ def crear_materia_prima(datos: MateriaPrimaEntrada, sesion: Session = Depends(ge
     return {"mensaje": "Materia prima creada", "id": m.Id_Materia_Prima}
 
 
+class MateriaPrimaEdicion(BaseModel):
+    descripcion: str | None = None
+    unidad: str | None = None
+
+
+@router.patch("/materias-primas/{id_materia_prima}")
+def actualizar_materia_prima(id_materia_prima: int, datos: MateriaPrimaEdicion, sesion: Session = Depends(get_sesion)):
+    m = sesion.get(Materia_Prima, id_materia_prima)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"No existe materia prima con Id {id_materia_prima}")
+    if datos.descripcion is not None:
+        if not datos.descripcion.strip():
+            raise HTTPException(status_code=400, detail="La descripción no puede quedar vacía")
+        m.Descripcion_Materia_Prima = datos.descripcion.strip()
+    if datos.unidad is not None:
+        if not datos.unidad.strip():
+            raise HTTPException(status_code=400, detail="La unidad no puede quedar vacía")
+        m.Unidad_Materia_Prima = datos.unidad.strip()
+    sesion.commit()
+    return {"mensaje": "Materia prima actualizada", "id": m.Id_Materia_Prima}
+
+
+@router.patch("/materias-primas/{id_materia_prima}/habilitado")
+def cambiar_habilitado_materia_prima(id_materia_prima: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Materia_Prima, "Habilitado_Materia_Prima", id_materia_prima, datos.habilitado, "materia prima")
+
+
+@router.delete("/materias-primas/{id_materia_prima}")
+def borrar_materia_prima(id_materia_prima: int, sesion: Session = Depends(get_sesion)):
+    en_uso = sesion.query(Compra).filter(Compra.Id_Materia_Prima == id_materia_prima).first() is not None
+    return _borrar(sesion, Materia_Prima, id_materia_prima, "materia prima", en_uso, "tiene compras registradas")
+
+
 # ---------- TRABAJADOR ----------
 
 @router.get("/trabajadores")
 def listar_trabajadores(sesion: Session = Depends(get_sesion)):
     ts = sesion.query(Trabajador).all()
+    usados = _ids_referenciados(
+        sesion, Registro_Trabajador.Id_Trabajador, Pago_Trabajador.Id_Trabajador
+    )
     return [
         {
             "id_trabajador": t.Id_Trabajador,
@@ -84,6 +249,7 @@ def listar_trabajadores(sesion: Session = Depends(get_sesion)):
             "pago": float(t.Pago_Trabajador or 0),
             "horas_base": float(t.Horas_Base_Trabajador or 0),
             "habilitado": t.Habilitado_Trabajador,
+            "en_uso": t.Id_Trabajador in usados,
         }
         for t in ts
     ]
@@ -108,6 +274,32 @@ def crear_trabajador(datos: TrabajadorEntrada, sesion: Session = Depends(get_ses
     return {"mensaje": "Trabajador creado", "id": t.Id_Trabajador}
 
 
+class TrabajadorEdicion(BaseModel):
+    nombre: str | None = None
+    pago: Decimal | None = None
+    horas_base: Decimal | None = None
+
+
+@router.patch("/trabajadores/{id_trabajador}")
+def actualizar_trabajador(id_trabajador: int, datos: TrabajadorEdicion, sesion: Session = Depends(get_sesion)):
+    """Corrige nombre/tarifa/horas base. Cambiar la tarifa solo afecta las
+    producciones FUTURAS: el costo de las ya hechas quedo congelado con la
+    tarifa pactada de ese momento (Camino 1, ver DECISIONES_DISENO)."""
+    t = sesion.get(Trabajador, id_trabajador)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"No existe trabajador con Id {id_trabajador}")
+    if datos.nombre is not None:
+        if not datos.nombre.strip():
+            raise HTTPException(status_code=400, detail="El nombre no puede quedar vacío")
+        t.Nombre_Trabajador = datos.nombre.strip()
+    if datos.pago is not None:
+        t.Pago_Trabajador = datos.pago
+    if datos.horas_base is not None:
+        t.Horas_Base_Trabajador = datos.horas_base
+    sesion.commit()
+    return {"mensaje": "Trabajador actualizado", "id": t.Id_Trabajador}
+
+
 class TrabajadorHabilitadoEntrada(BaseModel):
     habilitado: bool
 
@@ -123,16 +315,28 @@ def cambiar_habilitado_trabajador(id_trabajador: int, datos: TrabajadorHabilitad
     return {"mensaje": "Trabajador actualizado", "id": t.Id_Trabajador, "habilitado": t.Habilitado_Trabajador}
 
 
+@router.delete("/trabajadores/{id_trabajador}")
+def borrar_trabajador(id_trabajador: int, sesion: Session = Depends(get_sesion)):
+    en_uso = (
+        sesion.query(Registro_Trabajador).filter(Registro_Trabajador.Id_Trabajador == id_trabajador).first() is not None
+        or sesion.query(Pago_Trabajador).filter(Pago_Trabajador.Id_Trabajador == id_trabajador).first() is not None
+    )
+    return _borrar(sesion, Trabajador, id_trabajador, "trabajador", en_uso, "tiene jornadas o pagos registrados")
+
+
 # ---------- PRODUCTO TERMINADO ----------
 
 @router.get("/productos-terminados")
 def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
     ps = sesion.query(Producto_Terminado).all()
+    usados = _ids_referenciados(sesion, Produccion.Id_Producto_Terminado)
     return [
         {
             "id_producto_terminado": p.Id_Producto_Terminado,
             "descripcion": p.Descripcion_Producto_Terminado,
             "precio_recomendado": float(p.Precio_Venta_Recomendado_Producto_Terminado or 0),
+            "habilitado": p.Habilitado_Producto_Terminado,
+            "en_uso": p.Id_Producto_Terminado in usados,
         }
         for p in ps
     ]
@@ -154,16 +358,50 @@ def crear_producto_terminado(datos: ProductoTerminadoEntrada, sesion: Session = 
     return {"mensaje": "Producto terminado creado", "id": p.Id_Producto_Terminado}
 
 
+class ProductoTerminadoEdicion(BaseModel):
+    descripcion: str | None = None
+    precio_recomendado: Decimal | None = None
+
+
+@router.patch("/productos-terminados/{id_producto}")
+def actualizar_producto_terminado(id_producto: int, datos: ProductoTerminadoEdicion, sesion: Session = Depends(get_sesion)):
+    p = sesion.get(Producto_Terminado, id_producto)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"No existe producto terminado con Id {id_producto}")
+    if datos.descripcion is not None:
+        if not datos.descripcion.strip():
+            raise HTTPException(status_code=400, detail="La descripción no puede quedar vacía")
+        p.Descripcion_Producto_Terminado = datos.descripcion.strip()
+    if datos.precio_recomendado is not None:
+        p.Precio_Venta_Recomendado_Producto_Terminado = datos.precio_recomendado
+    sesion.commit()
+    return {"mensaje": "Producto terminado actualizado", "id": p.Id_Producto_Terminado}
+
+
+@router.patch("/productos-terminados/{id_producto}/habilitado")
+def cambiar_habilitado_producto_terminado(id_producto: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Producto_Terminado, "Habilitado_Producto_Terminado", id_producto, datos.habilitado, "producto terminado")
+
+
+@router.delete("/productos-terminados/{id_producto}")
+def borrar_producto_terminado(id_producto: int, sesion: Session = Depends(get_sesion)):
+    en_uso = sesion.query(Produccion).filter(Produccion.Id_Producto_Terminado == id_producto).first() is not None
+    return _borrar(sesion, Producto_Terminado, id_producto, "producto terminado", en_uso, "tiene producciones registradas")
+
+
 # ---------- PRODUCTO INTERMEDIO ----------
 
 @router.get("/productos-intermedios")
 def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
     ps = sesion.query(Producto_Intermedio).all()
+    usados = _ids_referenciados(sesion, Produccion_Intermedio.Id_Producto_Intermedio)
     return [
         {
             "id_producto_intermedio": p.Id_Producto_Intermedio,
             "descripcion": p.Descripcion_Producto_Intermedio,
             "litros": float(p.Litros_Botella_Final or 0),
+            "habilitado": p.Habilitado_Producto_Intermedio,
+            "en_uso": p.Id_Producto_Intermedio in usados,
         }
         for p in ps
     ]
@@ -185,12 +423,52 @@ def crear_producto_intermedio(datos: ProductoIntermedioEntrada, sesion: Session 
     return {"mensaje": "Producto intermedio creado", "id": p.Id_Producto_Intermedio}
 
 
+class ProductoIntermedioEdicion(BaseModel):
+    descripcion: str | None = None
+    litros: Decimal | None = None
+
+
+@router.patch("/productos-intermedios/{id_producto}")
+def actualizar_producto_intermedio(id_producto: int, datos: ProductoIntermedioEdicion, sesion: Session = Depends(get_sesion)):
+    p = sesion.get(Producto_Intermedio, id_producto)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"No existe producto intermedio con Id {id_producto}")
+    if datos.descripcion is not None:
+        if not datos.descripcion.strip():
+            raise HTTPException(status_code=400, detail="La descripción no puede quedar vacía")
+        p.Descripcion_Producto_Intermedio = datos.descripcion.strip()
+    if datos.litros is not None:
+        p.Litros_Botella_Final = datos.litros
+    sesion.commit()
+    return {"mensaje": "Producto intermedio actualizado", "id": p.Id_Producto_Intermedio}
+
+
+@router.patch("/productos-intermedios/{id_producto}/habilitado")
+def cambiar_habilitado_producto_intermedio(id_producto: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Producto_Intermedio, "Habilitado_Producto_Intermedio", id_producto, datos.habilitado, "producto intermedio")
+
+
+@router.delete("/productos-intermedios/{id_producto}")
+def borrar_producto_intermedio(id_producto: int, sesion: Session = Depends(get_sesion)):
+    en_uso = sesion.query(Produccion_Intermedio).filter(Produccion_Intermedio.Id_Producto_Intermedio == id_producto).first() is not None
+    return _borrar(sesion, Producto_Intermedio, id_producto, "producto intermedio", en_uso, "tiene producciones registradas")
+
+
 # ---------- GRUPO DE MOVIMIENTO ----------
 
 @router.get("/grupos")
 def listar_grupos(sesion: Session = Depends(get_sesion)):
     gs = sesion.query(Grupo_Movimiento).all()
-    return [{"id_grupo": g.Id_Grupo_Movimiento, "nombre": g.Nombre_Grupo_Movimiento} for g in gs]
+    usados = _ids_referenciados(sesion, Movimiento.Id_Grupo_Movimiento)
+    return [
+        {
+            "id_grupo": g.Id_Grupo_Movimiento,
+            "nombre": g.Nombre_Grupo_Movimiento,
+            "habilitado": g.Habilitado_Grupo_Movimiento,
+            "en_uso": g.Id_Grupo_Movimiento in usados,
+        }
+        for g in gs
+    ]
 
 
 class GrupoEntrada(BaseModel):
@@ -210,16 +488,52 @@ def crear_grupo(datos: GrupoEntrada, sesion: Session = Depends(get_sesion)):
     return {"mensaje": "Grupo creado", "id": g.Id_Grupo_Movimiento}
 
 
+class GrupoEdicion(BaseModel):
+    nombre: str
+
+
+@router.patch("/grupos/{id_grupo}")
+def actualizar_grupo(id_grupo: int, datos: GrupoEdicion, sesion: Session = Depends(get_sesion)):
+    g = sesion.get(Grupo_Movimiento, id_grupo)
+    if g is None:
+        raise HTTPException(status_code=404, detail=f"No existe grupo con Id {id_grupo}")
+    if not datos.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre no puede quedar vacío")
+    existente = sesion.query(Grupo_Movimiento).filter(
+        Grupo_Movimiento.Nombre_Grupo_Movimiento.ilike(datos.nombre.strip()),
+        Grupo_Movimiento.Id_Grupo_Movimiento != id_grupo,
+    ).first()
+    if existente:
+        raise HTTPException(status_code=400, detail="Ya existe otro grupo con ese nombre")
+    g.Nombre_Grupo_Movimiento = datos.nombre.strip()
+    sesion.commit()
+    return {"mensaje": "Grupo actualizado", "id": g.Id_Grupo_Movimiento}
+
+
+@router.patch("/grupos/{id_grupo}/habilitado")
+def cambiar_habilitado_grupo(id_grupo: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Grupo_Movimiento, "Habilitado_Grupo_Movimiento", id_grupo, datos.habilitado, "grupo")
+
+
+@router.delete("/grupos/{id_grupo}")
+def borrar_grupo(id_grupo: int, sesion: Session = Depends(get_sesion)):
+    en_uso = sesion.query(Movimiento).filter(Movimiento.Id_Grupo_Movimiento == id_grupo).first() is not None
+    return _borrar(sesion, Grupo_Movimiento, id_grupo, "grupo", en_uso, "tiene movimientos asociados")
+
+
 # ---------- GASTO EXTRA ----------
 
 @router.get("/gastos-extra")
 def listar_gastos_extra(sesion: Session = Depends(get_sesion)):
     gs = sesion.query(Gasto_Extra).all()
+    usados = _ids_referenciados(sesion, Prorrateo_Mensual.Id_Gasto_Extra)
     return [
         {
             "id_gasto_extra": g.Id_Gasto_Extra,
             "descripcion": g.Descripcion_Gasto_Extra,
             "precio_mensual": float(g.Precio_Mensual_Gasto_Extra or 0),
+            "habilitado": g.Habilitado_Gasto_Extra,
+            "en_uso": g.Id_Gasto_Extra in usados,
         }
         for g in gs
     ]
@@ -238,3 +552,34 @@ def crear_gasto_extra(datos: GastoExtraEntrada, sesion: Session = Depends(get_se
     sesion.add(g)
     sesion.commit()
     return {"mensaje": "Gasto extra creado", "id": g.Id_Gasto_Extra}
+
+
+class GastoExtraEdicion(BaseModel):
+    descripcion: str | None = None
+    precio_mensual: Decimal | None = None
+
+
+@router.patch("/gastos-extra/{id_gasto}")
+def actualizar_gasto_extra(id_gasto: int, datos: GastoExtraEdicion, sesion: Session = Depends(get_sesion)):
+    g = sesion.get(Gasto_Extra, id_gasto)
+    if g is None:
+        raise HTTPException(status_code=404, detail=f"No existe gasto extra con Id {id_gasto}")
+    if datos.descripcion is not None:
+        if not datos.descripcion.strip():
+            raise HTTPException(status_code=400, detail="La descripción no puede quedar vacía")
+        g.Descripcion_Gasto_Extra = datos.descripcion.strip()
+    if datos.precio_mensual is not None:
+        g.Precio_Mensual_Gasto_Extra = datos.precio_mensual
+    sesion.commit()
+    return {"mensaje": "Gasto extra actualizado", "id": g.Id_Gasto_Extra}
+
+
+@router.patch("/gastos-extra/{id_gasto}/habilitado")
+def cambiar_habilitado_gasto_extra(id_gasto: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_habilitado(sesion, Gasto_Extra, "Habilitado_Gasto_Extra", id_gasto, datos.habilitado, "gasto extra")
+
+
+@router.delete("/gastos-extra/{id_gasto}")
+def borrar_gasto_extra(id_gasto: int, sesion: Session = Depends(get_sesion)):
+    en_uso = sesion.query(Prorrateo_Mensual).filter(Prorrateo_Mensual.Id_Gasto_Extra == id_gasto).first() is not None
+    return _borrar(sesion, Gasto_Extra, id_gasto, "gasto extra", en_uso, "ya se uso en un prorrateo")

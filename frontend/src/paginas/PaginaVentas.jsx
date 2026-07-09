@@ -106,7 +106,7 @@ function PaginaVentas() {
 
       <div>
         <SelectorBuscable
-          opciones={clientes}
+          opciones={clientes.filter((c) => c.habilitado)}
           valor={idCliente}
           onCambiar={setIdCliente}
           obtenerId={(c) => c.id_cliente}
@@ -131,7 +131,7 @@ function PaginaVentas() {
         <input type="number" placeholder="Precio de venta"
           value={linPrecio} onChange={(e) => setLinPrecio(e.target.value)} />
         <SelectorBuscable
-          opciones={cuentas}
+          opciones={cuentas.filter((c) => c.habilitado)}
           valor={linCuenta}
           onCambiar={setLinCuenta}
           obtenerId={(c) => c.id_cuenta}

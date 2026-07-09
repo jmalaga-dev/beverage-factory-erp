@@ -56,7 +56,7 @@ function PaginaGastos() {
         <input type="number" placeholder="Monto"
           value={monto} onChange={(e) => setMonto(e.target.value)} />
         <SelectorBuscable
-          opciones={cuentas}
+          opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuenta}
           onCambiar={setIdCuenta}
           obtenerId={(c) => c.id_cuenta}
@@ -64,7 +64,7 @@ function PaginaGastos() {
           placeholder="-- Cuenta de dónde sale --"
         />
         <SelectorBuscable
-          opciones={grupos}
+          opciones={grupos.filter((g) => g.habilitado)}
           valor={idGrupo}
           onCambiar={setIdGrupo}
           obtenerId={(g) => g.id_grupo}

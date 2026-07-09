@@ -24,6 +24,7 @@ class Materia_Prima(Base):
     Id_Materia_Prima = Column(Integer, primary_key=True)
     Descripcion_Materia_Prima = Column(String, nullable=False)
     Unidad_Materia_Prima = Column(String, nullable=False)
+    Habilitado_Materia_Prima = Column(Boolean, nullable=False, server_default="true")
 
     compras = relationship("Compra", back_populates="materia_prima")
 
@@ -46,6 +47,7 @@ class Producto_Intermedio(Base):
     Id_Producto_Intermedio = Column(Integer, primary_key=True)
     Descripcion_Producto_Intermedio = Column(String, nullable=False)
     Litros_Botella_Final = Column(Numeric)
+    Habilitado_Producto_Intermedio = Column(Boolean, nullable=False, server_default="true")
 
     producciones = relationship("Produccion_Intermedio", back_populates="producto_intermedio")
 
@@ -56,6 +58,7 @@ class Producto_Terminado(Base):
     Id_Producto_Terminado = Column(Integer, primary_key=True)
     Descripcion_Producto_Terminado = Column(String, nullable=False)
     Precio_Venta_Recomendado_Producto_Terminado = Column(Numeric)
+    Habilitado_Producto_Terminado = Column(Boolean, nullable=False, server_default="true")
 
     producciones = relationship("Produccion", back_populates="producto_terminado")
     horas_mes = relationship("Horas_Producto_Mes", back_populates="producto_terminado")
@@ -67,6 +70,7 @@ class Sector(Base):
 
     Id_Sector = Column(Integer, primary_key=True)
     Nombre_Sector = Column(String, unique=True, nullable=False)
+    Habilitado_Sector = Column(Boolean, nullable=False, server_default="true")
 
     clientes = relationship("Cliente", back_populates="sector")
 
@@ -77,6 +81,7 @@ class Cuenta(Base):
     Id_Cuenta = Column(Integer, primary_key=True)
     Nombre_Cuenta = Column(String, unique=True, nullable=False)
     Saldo_Actual_Cuenta = Column(Numeric, nullable=False, default=0)
+    Habilitado_Cuenta = Column(Boolean, nullable=False, server_default="true")
 
 
 class Grupo_Movimiento(Base):
@@ -84,6 +89,7 @@ class Grupo_Movimiento(Base):
 
     Id_Grupo_Movimiento = Column(Integer, primary_key=True)
     Nombre_Grupo_Movimiento = Column(String, unique=True, nullable=False)
+    Habilitado_Grupo_Movimiento = Column(Boolean, nullable=False, server_default="true")
 
     movimientos = relationship("Movimiento", back_populates="grupo")
 
@@ -114,6 +120,7 @@ class Gasto_Extra(Base):
     Id_Gasto_Extra = Column(Integer, primary_key=True)
     Descripcion_Gasto_Extra = Column(String, nullable=False)
     Precio_Mensual_Gasto_Extra = Column(Numeric)
+    Habilitado_Gasto_Extra = Column(Boolean, nullable=False, server_default="true")
 
     prorrateos = relationship("Prorrateo_Mensual", back_populates="gasto_extra")
 
@@ -356,6 +363,7 @@ class Cliente(Base):
     Latitud_Cliente = Column(Numeric)
     Longitud_Cliente = Column(Numeric)
     Id_Sector = Column(Integer, ForeignKey("Sector.Id_Sector"), nullable=True)
+    Habilitado_Cliente = Column(Boolean, nullable=False, server_default="true")
 
     sector = relationship("Sector", back_populates="clientes")
     ventas = relationship("Venta", back_populates="cliente")

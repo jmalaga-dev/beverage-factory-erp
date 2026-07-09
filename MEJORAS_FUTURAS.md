@@ -247,13 +247,40 @@ El sistema actual solo tiene crear (POST) y leer (GET). Falta poder editar y
 borrar registros (clientes, catálogos, jornadas, etc.). Es lo que en una API REST
 completa serían los métodos PUT/PATCH/DELETE.
 
-**Nota (aún no implementado en general):** ya hay 4 precedentes puntuales de
-PATCH/DELETE, cada uno acotado a su caso, no una solución genérica:
-`PATCH /trabajadores/{id}/habilitado` (6.5), `PATCH`/`DELETE /jornadas/{id}`
-con guardrail de "intacta" (3.4), `PATCH`/`DELETE /activos/{id}` (7.2), y
-`PATCH /tipos-bien/{id}` para corregir la categoría (4.2). Ver la decisión
-"PATCH acotado, no edición genérica" en DECISIONES_DISENO.md. Sirven de
-referencia de patrón si se ataca esto en general.
+**Estado: implementado** (generalizado a todos los catálogos y clientes).
+Antes había 4 precedentes puntuales (habilitado de trabajador 6.5, jornadas
+3.4, activos 7.2, categoría de tipo de bien 4.2); ahora las 9 entidades que
+solo tenían POST/GET tienen el juego completo: **editar**, **habilitar/
+deshabilitar** y **borrar**. Las entidades: Materia_Prima, Trabajador,
+Producto_Terminado, Producto_Intermedio, Grupo_Movimiento, Gasto_Extra,
+Cuenta (solo nombre), Cliente y Sector.
+
+Tres reglas de negocio (ver la decisión ampliada en DECISIONES_DISENO.md):
+- **Editar** los campos descriptivos es siempre seguro y no lleva guardrail:
+  como las relaciones son por Id (no por texto), renombrar no corrompe el
+  historial. Cambiar la tarifa de un trabajador solo afecta producciones
+  futuras (Camino 1). El saldo de una Cuenta NO se edita a mano (se deriva de
+  los movimientos): de Cuenta solo se edita el nombre.
+- **Deshabilitar** (nuevo `Habilitado_*` en los 8 catálogos que no lo tenían,
+  migración 008 — extiende el patrón de Trabajador de la 6.5) saca el item de
+  los desplegables de operaciones nuevas sin borrarlo; su historial queda
+  intacto. Es la vía recomendada para dar de baja algo que ya se usó.
+- **Borrar** es real y SOLO si el item no tiene historial (`en_uso == false`,
+  que cada GET ahora calcula); si lo tiene, se bloquea (400) y se sugiere
+  deshabilitar. Respeta la inmutabilidad del histórico.
+
+Implementación: endpoints `PATCH /{recurso}/{id}` (editar),
+`PATCH /{recurso}/{id}/habilitado` (toggle) y `DELETE /{recurso}/{id}` en
+`rutas/catalogos.py` y `rutas/clientes.py`, con helpers compartidos
+(`_ids_referenciados`, `_toggle_habilitado`, `_borrar`). En el frontend, el
+componente genérico `Catalogo` (movido a `componentes/`) trae edición
+in-line + toggle + borrado guardado, reutilizado por los 6 catálogos, Cuenta
+y Sectores; la página de Clientes pasó de lista a tabla con las mismas
+acciones. Los desplegables de operaciones (Compras, Gastos, Pagos, Ventas,
+Producción) filtran por `habilitado` (excepto el de trabajadores en Pagos,
+que a propósito muestra todos — regla de 6.5). Verificado con curl (ciclo
+completo crear/editar/deshabilitar/borrar y los guardrails de borrado con
+historial) y build de frontend.
 
 ### 6.2 Buscadores en desplegables largos
 Cuando haya muchas materias primas / productos / clientes, los desplegables

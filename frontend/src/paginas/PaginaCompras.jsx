@@ -70,7 +70,7 @@ function PaginaCompras() {
 
       <div>
         <SelectorBuscable
-          opciones={materias}
+          opciones={materias.filter((m) => m.habilitado)}
           valor={idMateria}
           onCambiar={setIdMateria}
           obtenerId={(m) => m.id_materia_prima}
@@ -79,7 +79,7 @@ function PaginaCompras() {
         />
 
         <SelectorBuscable
-          opciones={cuentas}
+          opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuenta}
           onCambiar={setIdCuenta}
           obtenerId={(c) => c.id_cuenta}

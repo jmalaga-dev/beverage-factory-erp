@@ -90,7 +90,7 @@ function PaginaPagos() {
             <input type="number" placeholder="Monto a pagar"
               value={montoReal} onChange={(e) => setMontoReal(e.target.value)} />
             <SelectorBuscable
-              opciones={cuentas}
+              opciones={cuentas.filter((c) => c.habilitado)}
               valor={idCuenta}
               onCambiar={setIdCuenta}
               obtenerId={(c) => c.id_cuenta}

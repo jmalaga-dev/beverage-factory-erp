@@ -25,12 +25,35 @@ futuras están en un documento aparte: `MEJORAS_FUTURAS.md`.
   `apiPost`/`apiPatch` con manejo de errores). Evita repetir la URL y el
   parseo de errores en cada pantalla; si cambia el puerto o el dominio al
   desplegar, se edita un solo lugar.
-- **PATCH acotado, no edición genérica:** el primer PATCH de la API
-  (`/trabajadores/{id}/habilitado`) solo acepta el campo que cambia, no un
-  objeto completo. La edición genérica (PUT/PATCH de cualquier campo) sigue
-  pendiente (ver 6.1 en MEJORAS_FUTURAS.md); cada caso puntual que la
-  necesite se resuelve con su propio endpoint chico, no se adelanta la
-  solución general.
+- **Editar, deshabilitar y borrar en catálogos (mejora 6.1):** los 9
+  catálogos que solo tenían POST/GET ganaron el juego completo. Tres reglas,
+  cada una derivada de un principio ya existente:
+  - **Editar es seguro y sin guardrail.** Como las relaciones son por Id (no
+    por texto), renombrar un catálogo no corrompe el historial que lo
+    referencia. Editar la tarifa de un trabajador solo afecta producciones
+    futuras (el costo de las hechas quedó congelado, Camino 1). Excepción: el
+    `Saldo_Actual_Cuenta` no se edita a mano — se deriva de los movimientos
+    (libro de movimientos único); de Cuenta solo se edita el nombre.
+  - **Deshabilitar en vez de borrar.** Se extendió el `Habilitado_*` de
+    Trabajador (6.5) a los otros 8 catálogos (migración 008). Un item
+    deshabilitado desaparece de los desplegables de operaciones nuevas pero
+    sigue existiendo; su historial queda intacto. El frontend filtra por
+    `habilitado` en el punto del desplegable (no en el estado global), para
+    que las tablas de historial sigan resolviendo el nombre de un item
+    deshabilitado. Único que muestra deshabilitados a propósito: el
+    desplegable de trabajadores en Pagos (para cerrar cuentas pendientes, ya
+    decidido en 6.5).
+  - **Borrar solo si no hay historial.** El DELETE es un borrado real y se
+    permite únicamente si nada referencia al item (`en_uso == false`, que
+    cada GET calcula recorriendo las FK que lo apuntan); si tiene historial,
+    se bloquea con 400 y se sugiere deshabilitar. Mismo guardrail "intacta"
+    de jornadas (3.4), generalizado. Así se respeta la inmutabilidad del
+    histórico.
+
+  El primer PATCH de la API (`/trabajadores/{id}/habilitado`) inauguró el
+  criterio de "un endpoint por campo/acción" en vez de un PUT de objeto
+  completo; 6.1 lo mantiene: por entidad hay un PATCH de edición de campos
+  descriptivos, un PATCH `.../habilitado` y un DELETE, no un PUT genérico.
 - **Constantes de negocio centralizadas:** valores ajustables como
   `UMBRAL_STOCK_MINIMO` viven en `app/config.py`, no repartidos por el
   código, para poder ajustarlos en un solo lugar sin buscar cada uso.
