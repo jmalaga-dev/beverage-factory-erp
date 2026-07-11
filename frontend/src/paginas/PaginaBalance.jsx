@@ -11,6 +11,14 @@ const columnasDetalle = [
   { key: 'costo_promedio', label: 'Costo ponderado promedio', formato: (v) => fmtNumero(v, 4) },
 ]
 
+// Producto Terminado suma una columna de paquetes equivalentes (mejora 4.7):
+// solo esa tabla tiene Botellas_Por_Paquete (3.9), intermedio y materia
+// prima no se venden por paquete.
+const columnasDetalleTerminado = [
+  ...columnasDetalle,
+  { key: 'paquetes_equivalentes', label: 'Paquetes equiv.', formato: (v) => fmtNumero(v, 2) },
+]
+
 // Columnas de la lista de activos fijos (resumen en el balance).
 const columnasActivos = [
   { key: 'descripcion', label: 'Descripción' },
@@ -157,7 +165,7 @@ function PaginaBalance() {
       <TablaFiltrable
         titulo="Producto Terminado"
         filas={detalleTerminado}
-        columnas={columnasDetalle}
+        columnas={columnasDetalleTerminado}
         claveOrden="descripcion"
       />
       <TablaFiltrable

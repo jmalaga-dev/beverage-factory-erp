@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtNumero } from '../formato'
 
 function PaginaProduccionTerminada() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [productos, setProductos] = useState([])
   const [intermedios, setIntermedios] = useState([])   // producciones intermedias con stock
   const [lotes, setLotes] = useState([])               // lotes de materia prima
   const [jornadas, setJornadas] = useState([])
   const [porLote, setPorLote] = useState([])           // stock terminado por lote
   const [stockGeneral, setStockGeneral] = useState([]) // stock terminado consolidado
+  const [trabajadores, setTrabajadores] = useState([]) // para la tarifa (indicadores en vivo, 6.11)
 
   const [idProducto, setIdProducto] = useState('')
   const [cantidad, setCantidad] = useState('')
@@ -36,6 +40,7 @@ function PaginaProduccionTerminada() {
       .then((d) => setJornadas(d.filter((j) => j.horas_restantes > 0))).catch(console.error)
     apiGet('/producciones-terminadas').then(setPorLote).catch(console.error)
     apiGet('/stock-terminado-general').then(setStockGeneral).catch(console.error)
+    apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
@@ -114,6 +119,7 @@ function PaginaProduccionTerminada() {
       insumos_intermedio: insumosIntermedio.map((x) => [x.id_prod, x.cantidad]),
       insumos_mp: insumosMP.map((x) => [x.id_compra, x.cantidad]),
       insumos_trabajo: insumosTrabajo.map((x) => [x.id_registro, x.horas]),
+      fecha: fechaParaEnviar,
     })
       .then((data) => {
         setMensaje(`Producción creada. Costo unitario: ${data.costo_unitario} Bs`)
@@ -123,6 +129,30 @@ function PaginaProduccionTerminada() {
       })
       .catch((e) => setMensaje(e.message))
   }
+
+  // Indicadores en vivo (mejora 6.11): costo unitario parcial y horas
+  // invertidas hasta el momento, recalculados al agregar/quitar insumos.
+  // No incluye la absorcion por botella (1.4, se decide solo al confirmar)
+  // ni horas heredadas de intermedios (depende de 1.1, no construido aun).
+  const costoIntermedio = insumosIntermedio.reduce((suma, x) => {
+    const prod = intermedios.find((p) => p.id_produccion_intermedio === x.id_prod)
+    return suma + x.cantidad * (prod ? prod.costo_unitario : 0)
+  }, 0)
+  const costoMP = insumosMP.reduce((suma, x) => {
+    const lote = lotes.find((l) => l.id_compra === x.id_compra)
+    const unit = lote && lote.cantidad_compra ? lote.precio_compra / lote.cantidad_compra : 0
+    return suma + x.cantidad * unit
+  }, 0)
+  const costoTrabajo = insumosTrabajo.reduce((suma, x) => {
+    const jornada = jornadas.find((j) => j.id_jornada === x.id_registro)
+    const trabajador = jornada ? trabajadores.find((t) => t.id_trabajador === jornada.id_trabajador) : null
+    return suma + x.horas * (trabajador ? trabajador.pago : 0)
+  }, 0)
+  const costoTotalParcial = costoIntermedio + costoMP + costoTrabajo
+  const horasInvertidas = insumosTrabajo.reduce((suma, x) => suma + x.horas, 0)
+  const costoUnitarioParcial = cantidad !== '' && parseFloat(cantidad) > 0
+    ? costoTotalParcial / parseFloat(cantidad)
+    : null
 
   return (
     <div>
@@ -203,6 +233,16 @@ function PaginaProduccionTerminada() {
         ))}
       </ul>
 
+      {/* Indicadores en vivo (mejora 6.11) */}
+      {(insumosIntermedio.length > 0 || insumosMP.length > 0 || insumosTrabajo.length > 0) && (
+        <p style={{ background: '#f0f0f0', padding: '0.4rem' }}>
+          <strong>Costo unitario parcial:</strong>{' '}
+          {costoUnitarioParcial !== null ? `${costoUnitarioParcial.toFixed(4)} Bs` : `(ingresa la cantidad — costo insumos: ${costoTotalParcial.toFixed(2)} Bs)`}
+          {' | '}
+          <strong>Horas hombre invertidas:</strong> {horasInvertidas.toFixed(2)} h
+        </p>
+      )}
+
       <button onClick={producir}>PRODUCIR</button>
       {mensaje && <p>{mensaje}</p>}
 
@@ -212,7 +252,7 @@ function PaginaProduccionTerminada() {
         <tbody>
           {stockGeneral.map((s) => (
             <tr key={s.id_producto_terminado}>
-              <td>{s.descripcion}</td><td>{s.stock_total}</td><td>{s.costo_promedio}</td>
+              <td>{s.descripcion}</td><td>{fmtNumero(s.stock_total)}</td><td>{fmtNumero(s.costo_promedio, 4)}</td>
             </tr>
           ))}
         </tbody>
@@ -224,7 +264,7 @@ function PaginaProduccionTerminada() {
         <tbody>
           {porLote.map((p) => (
             <tr key={p.id_produccion}>
-              <td>{p.id_produccion}</td><td>{p.descripcion}</td><td>{p.cantidad_restante}</td><td>{p.costo_unitario}</td>
+              <td>{p.id_produccion}</td><td>{p.descripcion}</td><td>{fmtNumero(p.cantidad_restante)}</td><td>{fmtNumero(p.costo_unitario, 4)}</td>
             </tr>
           ))}
         </tbody>

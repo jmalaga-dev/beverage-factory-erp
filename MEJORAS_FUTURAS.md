@@ -404,6 +404,16 @@ botellas mostrar una columna "paquetes equivalentes" (botellas /
 números no enteros a 2 decimales en todas las tablas (solo presentación: los
 cálculos internos siguen en `Decimal` completo).
 
+**Estado: implementado.** `stock-terminado-general` agrega
+`botellas_por_paquete` y `paquetes_equivalentes` (stock / botellas por
+paquete); nueva columna en la tabla de Producto Terminado del detalle de
+Balance. Para el redondeo, se generalizó el uso de `fmtNumero`/`fmtMoneda`
+(`formato.js`, ya existían pero solo se usaban en Balance/Activos desde la
+mejora 7.2) a las tablas de Compras, Producción Intermedia/Terminada,
+Ventas, Mermas, Jornadas, Proveedores, Deudas, Absorción y el componente
+genérico `Catalogo` (columnas numéricas). Verificado con curl y build de
+frontend.
+
 ---
 
 ## 5. PROVEEDORES
@@ -589,11 +599,30 @@ estado global en el frontend (contexto de React) que los formularios leen
 como valor por defecto; el backend ya acepta fecha explícita en todo
 (`fecha or date.today()`), no necesita cambios.
 
+**Estado: implementado.** `componentes/FechaGlobal.jsx` (contexto +
+`useFechaGlobal()`) con un input de fecha junto al título "Fábrica V2"
+(vacío = hoy, como siempre). Las 11 pantallas que crean registros con fecha
+(Compras, Jornadas, Producción Intermedia/Terminada, Ventas, Pagos, Gastos,
+Transferencias, Deudas, Mermas, Absorción) mandan `fecha: fechaParaEnviar`
+en su POST. Verificado con curl: una fecha explícita (`2020-01-15`) se
+guardó exacta en `Movimiento.Fecha_Movimiento`, confirmando el mecanismo que
+usan las 11 pantallas.
+
 ### 6.11 Indicadores en vivo al armar una producción — del Excel
 En producción intermedia y terminada, junto al botón de confirmar, dos
 etiquetas que se recalculan al agregar/quitar insumos: costo unitario
 parcial (por litro o botella) y horas hombre invertidas hasta el momento.
 Para tener esos números frescos día a día sin esperar al cierre.
+
+**Estado: implementado.** En ambas pantallas de producción, un indicador
+recalculado en cada render a partir de las listas de insumos ya agregadas
+(sin tocar backend): costo unitario parcial = (MP + intermedios + trabajo)
+÷ cantidad a producir, y horas hombre = suma de horas de los insumos de
+trabajo agregados. **Limitación reconocida:** las horas mostradas son solo
+las **directas** de esta producción, no las heredadas de los intermedios
+que consume (eso depende de 1.1, no construido aún) — cuando 1.1 exista,
+este indicador se puede enriquecer sumando las horas heredadas del
+intermedio consumido.
 
 ### 6.12 Venta mejorada (tabla, precio sugerido, taxi/delivery, ganancia) — del Excel
 Mejoras de la hoja de ventas del Excel sobre la pantalla actual:

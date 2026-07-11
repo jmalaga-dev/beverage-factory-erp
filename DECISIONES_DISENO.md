@@ -307,7 +307,11 @@ cada endpoint (mejora 9.1 de `MEJORAS_FUTURAS.md`).
 
 Además, los endpoints que crean registros con fecha usan `fecha or date.today()`:
 si el frontend no envía fecha, se usa la de hoy (evita el error de NOT NULL en las
-columnas de fecha).
+columnas de fecha). Esto es lo que permitió construir la **fecha global**
+(mejora 6.10) sin tocar el backend: un contexto de React
+(`componentes/FechaGlobal.jsx`) guarda una fecha opcional y cada pantalla
+la manda en su POST; si no está fijada, se manda `null` y el backend cae en
+el mismo `date.today()` de siempre.
 
 **El backend es la única fuente de verdad.** El frontend duplica algunas de
 sus validaciones (saldo suficiente, stock suficiente) solo como comodidad,

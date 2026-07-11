@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
+import { fmtNumero } from '../formato'
 
 // Catalogo generico: crear + listar + editar + habilitar/deshabilitar + borrar.
 // Reutilizado por todos los catalogos simples (mejora 6.1). El backend expone,
@@ -150,7 +151,9 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
                               onChange={(e) => setEditValores({ ...editValores, [c.key]: e.target.value })}
                             />
                           ) : (
-                            item[c.key]
+                            campoEditable && campoEditable.tipo === 'number'
+                              ? fmtNumero(item[c.key])
+                              : item[c.key]
                           )}
                         </td>
                       )

@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtNumero, fmtMoneda } from '../formato'
 
 function PaginaCompras() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [materias, setMaterias] = useState([])
   const [cuentas, setCuentas] = useState([])
   const [stockGeneral, setStockGeneral] = useState([])
@@ -104,6 +107,7 @@ function PaginaCompras() {
       // Solo se manda monto_pagado cuando es a credito; si no, el backend paga total
       monto_pagado: aCredito ? pagoAhora : null,
       recibida: !pendiente,
+      fecha: fechaParaEnviar,
     })
       .then((r) => {
         setMensaje(r.mensaje || 'Compra registrada correctamente')
@@ -228,8 +232,8 @@ function PaginaCompras() {
                 <tr key={p.id_compra}>
                   <td>{p.id_compra}</td>
                   <td>{p.nombre_materia}</td>
-                  <td>{p.cantidad}</td>
-                  <td>{p.precio_compra}</td>
+                  <td>{fmtNumero(p.cantidad)}</td>
+                  <td>{fmtMoneda(p.precio_compra)}</td>
                   <td>{p.proveedor || '—'}</td>
                   <td><button onClick={() => recibirPedido(p.id_compra)}>Recibir</button></td>
                 </tr>
@@ -250,7 +254,7 @@ function PaginaCompras() {
             <tr key={s.id_materia_prima}>
               <td>{s.descripcion}</td>
               <td>{s.unidad}</td>
-              <td>{s.stock_total}</td>
+              <td>{fmtNumero(s.stock_total)}</td>
             </tr>
           ))}
         </tbody>
@@ -267,8 +271,8 @@ function PaginaCompras() {
             <tr key={l.id_compra}>
               <td>{l.id_compra}</td>
               <td>{nombreMateria(l.id_materia_prima)}</td>
-              <td>{l.cantidad_restante}</td>
-              <td>{l.precio_compra}</td>
+              <td>{fmtNumero(l.cantidad_restante)}</td>
+              <td>{fmtMoneda(l.precio_compra)}</td>
             </tr>
           ))}
         </tbody>

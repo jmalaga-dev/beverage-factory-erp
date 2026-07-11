@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtNumero } from '../formato'
 
 function PaginaMermas() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [lotesMP, setLotesMP] = useState([])
   const [lotesInt, setLotesInt] = useState([])
   const [lotesTerm, setLotesTerm] = useState([])
@@ -109,6 +112,7 @@ function PaginaMermas() {
       absorber_costo: esMerma ? absorberMerma : false,
       botellas_estimadas_absorcion:
         esMerma && absorberMerma && botellasAbsorcion !== '' ? parseFloat(botellasAbsorcion) : null,
+      fecha: fechaParaEnviar,
     }
 
     apiPost('/movimientos-inventario', body)
@@ -205,7 +209,7 @@ function PaginaMermas() {
         <tbody>
           {lotesMP.map((l) => (
             <tr key={l.id_compra}>
-              <td>{l.id_compra}</td><td>{l.nombre_materia}</td><td>{l.cantidad_restante}</td>
+              <td>{l.id_compra}</td><td>{l.nombre_materia}</td><td>{fmtNumero(l.cantidad_restante)}</td>
             </tr>
           ))}
         </tbody>
@@ -218,7 +222,7 @@ function PaginaMermas() {
           {lotesInt.map((l) => (
             <tr key={l.id_produccion_intermedio}>
               <td>{l.id_produccion_intermedio}</td><td>{l.descripcion}</td>
-              <td>{l.cantidad_restante}</td><td>{l.costo_unitario}</td>
+              <td>{fmtNumero(l.cantidad_restante)}</td><td>{fmtNumero(l.costo_unitario, 4)}</td>
             </tr>
           ))}
         </tbody>
@@ -231,7 +235,7 @@ function PaginaMermas() {
           {lotesTerm.map((l) => (
             <tr key={l.id_produccion}>
               <td>{l.id_produccion}</td><td>{l.descripcion}</td>
-              <td>{l.cantidad_restante}</td><td>{l.costo_unitario}</td>
+              <td>{fmtNumero(l.cantidad_restante)}</td><td>{fmtNumero(l.costo_unitario, 4)}</td>
             </tr>
           ))}
         </tbody>

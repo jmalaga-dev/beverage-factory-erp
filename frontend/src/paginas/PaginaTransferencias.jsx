@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
 
 function PaginaTransferencias() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [cuentas, setCuentas] = useState([])
 
   // Transferencia entre cuentas propias
@@ -45,6 +47,7 @@ function PaginaTransferencias() {
       id_cuenta_destino: parseInt(idDestino),
       monto: parseFloat(montoTransferencia),
       descripcion: descripcionTransferencia,
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensajeTransferencia('Transferencia registrada')
@@ -65,6 +68,7 @@ function PaginaTransferencias() {
       id_cuenta_destino: parseInt(idCuentaIngreso),
       monto: parseFloat(montoIngreso),
       descripcion: descripcionIngreso,
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensajeIngreso('Ingreso externo registrado')

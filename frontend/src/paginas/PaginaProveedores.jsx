@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { fmtNumero } from '../formato'
 
 // Proveedores (mejora 5.1): registrar una vez a cada proveedor (nombre,
 // celular, ubicacion para el futuro ruteo con Maps) y declarar que materias
@@ -241,10 +242,10 @@ function PaginaProveedores() {
               <td>{r.nombre_materia} ({r.unidad})</td>
               <td>{r.nombre_proveedor}</td>
               <td>{r.compras}</td>
-              <td>{r.precio_min}</td>
-              <td>{r.precio_promedio}</td>
-              <td>{r.precio_max}</td>
-              <td>{r.precio_ultimo}</td>
+              <td>{fmtNumero(r.precio_min, 4)}</td>
+              <td>{fmtNumero(r.precio_promedio, 4)}</td>
+              <td>{fmtNumero(r.precio_max, 4)}</td>
+              <td>{fmtNumero(r.precio_ultimo, 4)}</td>
             </tr>
           ))}
         </tbody>

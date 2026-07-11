@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtMoneda } from '../formato'
 
 // Deudas y amortizacion (mejoras 7.0 y 7.3). Tres acciones:
 //   - Deuda simple: sube el pasivo sin mover caja (interes, gasto que pago un tercero).
@@ -8,6 +10,7 @@ import SelectorBuscable from '../componentes/SelectorBuscable'
 //   - Pago: baja el pasivo descontando de una cuenta elegida.
 // El balance ya resta las deudas, asi que se reflejan solas en el patrimonio.
 function PaginaDeudas() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [deudas, setDeudas] = useState([])
   const [cuentas, setCuentas] = useState([])
 
@@ -39,7 +42,7 @@ function PaginaDeudas() {
       setMensaje('Completa descripción y monto de la deuda')
       return
     }
-    apiPost('/deudas/simple', { descripcion: descSimple, monto: parseFloat(montoSimple) })
+    apiPost('/deudas/simple', { descripcion: descSimple, monto: parseFloat(montoSimple), fecha: fechaParaEnviar })
       .then(() => { setMensaje('Deuda registrada'); setDescSimple(''); setMontoSimple(''); cargar() })
       .catch((e) => setMensaje(e.message))
   }
@@ -53,6 +56,7 @@ function PaginaDeudas() {
       descripcion: descPrestamo,
       monto: parseFloat(montoPrestamo),
       id_cuenta_destino: parseInt(idCuentaPrestamo),
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje('Préstamo registrado')
@@ -81,6 +85,7 @@ function PaginaDeudas() {
       id_deuda: parseInt(idDeudaPago),
       monto: parseFloat(montoPago),
       id_cuenta: parseInt(idCuentaPago),
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje('Pago registrado')
@@ -104,7 +109,7 @@ function PaginaDeudas() {
           {deudas.map((d) => (
             <tr key={d.id_deuda} style={d.saldo <= 0 ? { opacity: 0.5 } : {}}>
               <td>{d.descripcion}</td>
-              <td>{d.saldo}</td>
+              <td>{fmtMoneda(d.saldo)}</td>
             </tr>
           ))}
           {deudas.length === 0 && <tr><td colSpan={2}>Sin deudas registradas</td></tr>}

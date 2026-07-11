@@ -195,8 +195,11 @@ def stock_terminado_general(sesion: Session = Depends(get_sesion)):
         pid = p.Id_Producto_Terminado
         if pid not in resumen:
             producto = sesion.get(Producto_Terminado, pid)
-            resumen[pid] = {"descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
-                            "stock_total": 0, "valor_total": 0}
+            resumen[pid] = {
+                "descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
+                "botellas_por_paquete": producto.Botellas_Por_Paquete if producto else 1,
+                "stock_total": 0, "valor_total": 0,
+            }
         cant = float(p.Cantidad_Restante_Produccion)
         costo = float(p.Precio_Unitario_Producto_Terminado or 0)
         resumen[pid]["stock_total"] += cant
@@ -204,10 +207,13 @@ def stock_terminado_general(sesion: Session = Depends(get_sesion)):
     resultado = []
     for pid, d in resumen.items():
         stock = d["stock_total"]
+        botellas_paquete = d["botellas_por_paquete"] or 1
         resultado.append({
             "id_producto_terminado": pid,
             "descripcion": d["descripcion"],
             "stock_total": stock,
             "costo_promedio": round(d["valor_total"] / stock, 4) if stock > 0 else 0,
+            "botellas_por_paquete": botellas_paquete,
+            "paquetes_equivalentes": round(stock / botellas_paquete, 2),
         })
     return resultado

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
 
 function PaginaGastos() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [cuentas, setCuentas] = useState([])
   const [grupos, setGrupos] = useState([])
 
@@ -36,6 +38,7 @@ function PaginaGastos() {
       monto: parseFloat(monto),
       descripcion: descripcion,
       id_grupo: idGrupo ? parseInt(idGrupo) : null,
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje('Gasto registrado')

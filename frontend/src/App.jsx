@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './App.css'
 import MenuCategoria from './componentes/MenuCategoria'
+import { FechaGlobalProvider, useFechaGlobal } from './componentes/FechaGlobal'
 import PaginaClientes from './paginas/PaginaClientes'
 import PaginaCompras from './paginas/PaginaCompras'
 import PaginaCatalogos from './paginas/PaginaCatalogos'
@@ -52,11 +53,30 @@ const categorias = [
   ] },
 ]
 
-function App() {
+// Input de la fecha global (mejora 6.10), junto al título. Si tiene valor,
+// los formularios lo usan como fecha por defecto en vez de "hoy".
+function FechaGlobalInput() {
+  const { fechaGlobal, setFechaGlobal } = useFechaGlobal()
+  return (
+    <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+      <label style={{ fontSize: '0.9em', color: fechaGlobal ? '#a06000' : '#888' }}>
+        Fecha para nuevos registros:{' '}
+        <input type="date" value={fechaGlobal} onChange={(e) => setFechaGlobal(e.target.value)} />
+        {' '}
+        {fechaGlobal
+          ? <span>(se usará esta fecha en vez de hoy — <button onClick={() => setFechaGlobal('')}>usar hoy</button>)</span>
+          : <span>(vacío = hoy, como siempre)</span>}
+      </label>
+    </div>
+  )
+}
+
+function AppInterno() {
   return (
     <BrowserRouter>
       <div>
         <h1>Fábrica V2</h1>
+        <FechaGlobalInput />
 
         {/* Menú de navegación agrupado por categorías */}
         <nav style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -87,6 +107,14 @@ function App() {
         </Routes>
       </div>
     </BrowserRouter>
+  )
+}
+
+function App() {
+  return (
+    <FechaGlobalProvider>
+      <AppInterno />
+    </FechaGlobalProvider>
   )
 }
 

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
 
 function PaginaPagos() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [trabajadores, setTrabajadores] = useState([])
   const [cuentas, setCuentas] = useState([])
 
@@ -52,6 +54,7 @@ function PaginaPagos() {
       id_trabajador: parseInt(idTrabajador),
       id_cuenta: parseInt(idCuenta),
       monto_real: parseFloat(montoReal),
+      fecha: fechaParaEnviar,
     })
       .then((data) => {
         setMensaje(`Pago registrado. Sugerido: ${data.sugerido}, pagado: ${data.real}`)

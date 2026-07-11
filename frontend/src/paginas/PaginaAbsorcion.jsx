@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtNumero, fmtMoneda } from '../formato'
 
 // Absorcion de costos indirectos por botella (mejora 1.4). Se registran
 // utensilios/equipos y feriados: sale dinero de una cuenta y su costo se
@@ -8,6 +10,7 @@ import SelectorBuscable from '../componentes/SelectorBuscable'
 // items solas (al registrar la merma). "Botellas estimadas" es cuantas
 // botellas se calcula que cubriran el costo; el sistema sugiere costo x tasa.
 function PaginaAbsorcion() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [cuentas, setCuentas] = useState([])
   const [items, setItems] = useState([])
   const [tasa, setTasa] = useState(10)
@@ -44,6 +47,7 @@ function PaginaAbsorcion() {
       costo: parseFloat(costo),
       id_cuenta: parseInt(idCuenta),
       botellas_estimadas: botellas !== '' ? parseFloat(botellas) : null,
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje(`${etiqueta} registrado`)
@@ -109,9 +113,9 @@ function PaginaAbsorcion() {
             <tr key={it.id_item_absorcion} style={it.saldado ? { opacity: 0.5 } : {}}>
               <td>{tipoTexto[it.tipo] || it.tipo}</td>
               <td>{it.descripcion}</td>
-              <td>{it.costo}</td>
-              <td>{it.costo_por_botella}</td>
-              <td>{it.botellas_restantes} / {it.botellas_estimadas}</td>
+              <td>{fmtMoneda(it.costo)}</td>
+              <td>{fmtNumero(it.costo_por_botella, 4)}</td>
+              <td>{fmtNumero(it.botellas_restantes)} / {fmtNumero(it.botellas_estimadas)}</td>
               <td>{it.saldado ? 'Saldado' : 'Absorbiendo'}</td>
             </tr>
           ))}

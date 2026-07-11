@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtMoneda } from '../formato'
 
 function PaginaVentas() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [clientes, setClientes] = useState([])
   const [lotes, setLotes] = useState([])       // lotes de producto terminado con stock
   const [cuentas, setCuentas] = useState([])
@@ -69,6 +72,7 @@ function PaginaVentas() {
     apiPost('/ventas', {
       id_cliente: parseInt(idCliente),
       lineas: lineas,
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje('Venta registrada correctamente')
@@ -176,7 +180,7 @@ function PaginaVentas() {
         <tbody>
           {ventas.map((v) => (
             <tr key={v.id_venta}>
-              <td>{v.id_venta}</td><td>{v.cliente}</td><td>{v.fecha}</td><td>{v.lineas}</td><td>{v.total}</td>
+              <td>{v.id_venta}</td><td>{v.cliente}</td><td>{v.fecha}</td><td>{v.lineas}</td><td>{fmtMoneda(v.total)}</td>
             </tr>
           ))}
         </tbody>

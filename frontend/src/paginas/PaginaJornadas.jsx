@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { fmtNumero } from '../formato'
 
 function PaginaJornadas() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [trabajadores, setTrabajadores] = useState([])
   const [jornadas, setJornadas] = useState([])
 
@@ -32,6 +35,7 @@ function PaginaJornadas() {
     apiPost('/jornadas', {
       id_trabajador: parseInt(idTrabajador),
       horas: parseFloat(horas),
+      fecha: fechaParaEnviar,
     })
       .then(() => {
         setMensaje('Jornada registrada')
@@ -130,7 +134,7 @@ function PaginaJornadas() {
                       <input type="number" style={{ width: '70px' }}
                         value={editHoras} onChange={(e) => setEditHoras(e.target.value)} />
                     </td>
-                    <td>{j.horas_restantes}</td>
+                    <td>{fmtNumero(j.horas_restantes)}</td>
                     <td>{j.pagada ? 'Sí' : 'No'}</td>
                     <td>
                       <button onClick={() => guardarEdicion(j.id_jornada)}>Guardar</button>
@@ -141,8 +145,8 @@ function PaginaJornadas() {
                   <>
                     <td>{j.nombre_trabajador}</td>
                     <td>{j.fecha}</td>
-                    <td>{j.horas}</td>
-                    <td>{j.horas_restantes}</td>
+                    <td>{fmtNumero(j.horas)}</td>
+                    <td>{fmtNumero(j.horas_restantes)}</td>
                     <td>{j.pagada ? 'Sí' : 'No'}</td>
                     <td>
                       {filaHover === j.id_jornada && j.intacta && (
