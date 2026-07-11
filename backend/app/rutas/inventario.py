@@ -26,6 +26,11 @@ class MovimientoInventarioEntrada(BaseModel):
     id_produccion: int | None = None
     id_prod_intermedio: int | None = None
     fecha: date | None = None
+    # Solo aplica a MERMA (mejora 1.4): si su costo se reparte entre las
+    # botellas futuras, y con cuantas botellas estimadas (None = tasa por
+    # defecto). El control vive en la pantalla de Mermas.
+    absorber_costo: bool = True
+    botellas_estimadas_absorcion: Decimal | None = None
 
 
 @router.post("/movimientos-inventario")
@@ -43,6 +48,8 @@ def crear_movimiento_inventario(datos: MovimientoInventarioEntrada, sesion: Sess
             id_produccion=datos.id_produccion,
             id_prod_intermedio=datos.id_prod_intermedio,
             fecha=datos.fecha or date.today(),
+            absorber_costo=datos.absorber_costo,
+            botellas_estimadas_absorcion=datos.botellas_estimadas_absorcion,
         )
         return {"mensaje": "Movimiento de inventario registrado", "id": mov.Id_Movimiento_Inventario}
     except ValueError as e:

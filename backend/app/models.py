@@ -126,8 +126,10 @@ class Deuda(Base):
     Id_Deuda = Column(Integer, primary_key=True)
     Descripcion_Deuda = Column(String, unique=True, nullable=False)
     Saldo_Actual_Deuda = Column(Numeric, nullable=False, default=0)
+    Id_Proveedor = Column(Integer, ForeignKey("Proveedor.Id_Proveedor"), nullable=True)
 
     movimientos = relationship("Movimiento_Deuda", back_populates="deuda")
+    proveedor = relationship("Proveedor")
 
 
 class Tipo_Bien(Base):
@@ -217,6 +219,7 @@ class Compra(Base):
     Cantidad_Restante_Compra = Column(Numeric, nullable=False)
     Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
     Id_Proveedor = Column(Integer, ForeignKey("Proveedor.Id_Proveedor"), nullable=True)
+    Recibida_Compra = Column(Boolean, nullable=False, server_default="true")
 
     materia_prima = relationship("Materia_Prima", back_populates="compras")
     movimiento = relationship("Movimiento")
@@ -338,6 +341,38 @@ class Produccion(Base):
     detalle_mp = relationship("Detalle_Prod_Materia_Prima", back_populates="produccion")
     detalle_trabajo = relationship("Detalle_Prod_Trabajador", back_populates="produccion")
     ventas = relationship("Detalle_Venta", back_populates="produccion")
+    absorciones = relationship("Absorcion_Produccion", back_populates="produccion")
+
+
+# =========================================================
+# ABSORCION DE COSTOS INDIRECTOS POR BOTELLA (mejora 1.4)
+# =========================================================
+
+class Item_Absorcion(Base):
+    __tablename__ = "Item_Absorcion"
+
+    Id_Item_Absorcion = Column(Integer, primary_key=True)
+    Tipo_Item_Absorcion = Column(String, nullable=False)  # UTENSILIO/FERIADO/MERMA
+    Descripcion_Item_Absorcion = Column(String, nullable=False)
+    Costo_Item_Absorcion = Column(Numeric, nullable=False)
+    Botellas_Estimadas_Item_Absorcion = Column(Numeric, nullable=False)
+    Botellas_Restantes_Item_Absorcion = Column(Numeric, nullable=False)
+    Fecha_Item_Absorcion = Column(Date, nullable=False)
+
+    absorciones = relationship("Absorcion_Produccion", back_populates="item")
+
+
+class Absorcion_Produccion(Base):
+    __tablename__ = "Absorcion_Produccion"
+
+    Id_Absorcion_Produccion = Column(Integer, primary_key=True)
+    Id_Item_Absorcion = Column(Integer, ForeignKey("Item_Absorcion.Id_Item_Absorcion"), nullable=False)
+    Id_Produccion = Column(Integer, ForeignKey("Produccion.Id_Produccion"), nullable=False)
+    Botellas_Absorbidas = Column(Numeric, nullable=False)
+    Monto_Absorbido = Column(Numeric, nullable=False)
+
+    item = relationship("Item_Absorcion", back_populates="absorciones")
+    produccion = relationship("Produccion", back_populates="absorciones")
 
 
 class Detalle_Prod_Intermedio(Base):

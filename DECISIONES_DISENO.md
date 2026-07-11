@@ -184,6 +184,24 @@ impresión nativa del navegador (que ya ofrece "Guardar como PDF") en vez de
 generar el PDF en el backend: cero dependencias nuevas y el usuario controla
 formato/márgenes desde el diálogo del sistema.
 
+### 3.8 Absorción de costos indirectos por botella (mejora 1.4)
+Costos que no son insumo directo (utensilios/equipos, feriados, mermas) se
+reparten entre las botellas producidas después, como una línea de costo más
+en cada producción, hasta saldar el ítem (`Item_Absorcion`, con botellas
+estimadas y restantes). Dos decisiones:
+- **Un solo camino por compra:** un utensilio va SOLO a absorción, nunca
+  también a Activo fijo — si fuera ambos, su costo se contaría dos veces
+  (una en el patrimonio como activo, otra capitalizado en el stock vía
+  absorción). Se descartó la alternativa "activo con depreciación" por
+  complejidad.
+- **La absorción capitaliza el costo en el stock terminado:** al sumarse al
+  `Precio_Unitario_Producto_Terminado`, el costo indirecto entra al valor
+  del stock. Es intencional (que el precio de venta cubra estos gastos, como
+  en el Excel). Efecto en el balance: el costo pendiente de absorber baja el
+  patrimonio al comprarse (el utensilio no es activo), y se recupera a
+  medida que las producciones lo trasladan al stock. Es costeo gerencial,
+  no una merma de patrimonio permanente.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)
@@ -212,6 +230,12 @@ Operaciones construidas (con backend, API y pantalla):
 - Transferencia entre cuentas propias e ingreso externo (mejora 7.5).
 - Deuda: registrar (simple o préstamo con ingreso) y pagar/amortizar
   (mejoras 7.0/7.3).
+- Compra a crédito parcial y pedido pendiente (mejora 5.1 ampliación): el
+  lote guarda el precio completo (costo real), el faltante se vuelve deuda
+  al proveedor, y un pedido pendiente no cuenta como stock hasta recibirlo.
+- Absorción de costos indirectos por botella (mejora 1.4): registrar
+  utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
+  producción.
 
 **Categorizar una SALIDA sin adivinar:** para separar compras / pagos a
 trabajadores / gastos dentro de los movimientos de dinero (todos

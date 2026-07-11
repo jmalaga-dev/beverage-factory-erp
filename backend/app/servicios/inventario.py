@@ -8,6 +8,7 @@ lote, una ENTRADA suma. El reproceso son dos registros enlazados por Ref_Reproce
 from app.models import (
     Movimiento_Inventario, Compra, Produccion, Produccion_Intermedio
 )
+from app.servicios.absorcion import crear_item_merma
 
 
 def _get_lote(sesion, origen_lote, id_compra, id_produccion, id_prod_intermedio):
@@ -30,10 +31,25 @@ def _get_lote(sesion, origen_lote, id_compra, id_produccion, id_prod_intermedio)
     return lote, campo
 
 
+def _costo_unitario_lote(lote, origen_lote):
+    """Costo unitario del lote, para valorar el stock que se pierde en una
+    merma (mejora 1.4). Cada origen guarda su costo de forma distinta."""
+    if origen_lote == "COMPRA":
+        if not lote.Cantidad_Compra:
+            return 0
+        return lote.Precio_Compra / lote.Cantidad_Compra
+    if origen_lote == "PRODUCCION":
+        return lote.Precio_Unitario_Producto_Terminado or 0
+    if origen_lote == "PRODUCCION_INTERMEDIO":
+        return lote.Costo_Unitario_Produccion_Intermedio or 0
+    return 0
+
+
 def registrar_movimiento_inventario(
     sesion, tipo, sentido, origen_lote, cantidad, motivo=None,
     id_compra=None, id_produccion=None, id_prod_intermedio=None,
     ref_reproceso=None, fecha=None,
+    absorber_costo=True, botellas_estimadas_absorcion=None,
 ):
     """
     Registra un movimiento de inventario sobre un lote.
@@ -83,6 +99,18 @@ def registrar_movimiento_inventario(
             setattr(lote, campo, restante_actual - cantidad)
         else:  # ENTRADA
             setattr(lote, campo, restante_actual + cantidad)
+
+        # Absorcion del costo de la merma (mejora 1.4): solo una MERMA real
+        # (perdida de stock) genera un costo a repartir entre las botellas
+        # futuras, y solo si el usuario lo pidio (absorber_costo). Ajustes/
+        # devoluciones/reprocesos nunca. Las botellas estimadas las decide la
+        # pantalla de Mermas (o la tasa por defecto si no se indican).
+        if tipo == "MERMA" and sentido == "SALIDA" and absorber_costo:
+            costo_perdido = cantidad * _costo_unitario_lote(lote, origen_lote)
+            if costo_perdido > 0:
+                desc = motivo.strip() if motivo and motivo.strip() else f"Merma de lote {origen_lote}"
+                crear_item_merma(sesion, costo_perdido, f"Merma: {desc}", fecha,
+                                 botellas_estimadas=botellas_estimadas_absorcion)
 
         sesion.commit()
         return movimiento

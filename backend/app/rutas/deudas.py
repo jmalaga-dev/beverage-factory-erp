@@ -29,6 +29,7 @@ def listar_deudas(sesion: Session = Depends(get_sesion)):
             "id_deuda": d.Id_Deuda,
             "descripcion": d.Descripcion_Deuda,
             "saldo": float(d.Saldo_Actual_Deuda),
+            "id_proveedor": d.Id_Proveedor,
         }
         for d in deudas
     ]

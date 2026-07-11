@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import UMBRAL_STOCK_MINIMO
 from app.dependencias import get_sesion
 from app.models import Compra, Materia_Prima, Proveedor
-from app.servicios.compras import registrar_compra
+from app.servicios.compras import registrar_compra, recibir_compra
 
 router = APIRouter(tags=["compras"])
 
@@ -24,6 +24,10 @@ class CompraEntrada(BaseModel):
     precio_total: Decimal
     fecha: date | None = None
     id_proveedor: int | None = None
+    # None = pago total. Si es menor al precio, el faltante va a deuda (5.1).
+    monto_pagado: Decimal | None = None
+    # False = pedido pendiente (aun no llego, no cuenta como stock) (5.1).
+    recibida: bool = True
 
 
 @router.post("/compras")
@@ -42,9 +46,44 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
             precio_total=datos.precio_total,
             fecha=datos.fecha or date.today(),
             id_proveedor=datos.id_proveedor,
+            monto_pagado=datos.monto_pagado,
+            recibida=datos.recibida,
         )
         return {
-            "mensaje": "Compra registrada",
+            "mensaje": "Compra registrada" if compra.Recibida_Compra else "Pedido pendiente registrado",
+            "id_compra": compra.Id_Compra,
+            "cantidad_restante": float(compra.Cantidad_Restante_Compra),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/pedidos-pendientes")
+def listar_pedidos_pendientes(sesion: Session = Depends(get_sesion)):
+    """Compras registradas como pedido pero aún no recibidas (sin stock)."""
+    pedidos = sesion.query(Compra).filter(Compra.Recibida_Compra.is_(False)).all()
+    resultado = []
+    for c in pedidos:
+        mp = sesion.get(Materia_Prima, c.Id_Materia_Prima)
+        prov = sesion.get(Proveedor, c.Id_Proveedor) if c.Id_Proveedor else None
+        resultado.append({
+            "id_compra": c.Id_Compra,
+            "nombre_materia": mp.Descripcion_Materia_Prima if mp else "?",
+            "cantidad": float(c.Cantidad_Compra),
+            "precio_compra": float(c.Precio_Compra),
+            "proveedor": prov.Nombre_Proveedor if prov else None,
+            "fecha": c.Fecha_Compra.isoformat() if c.Fecha_Compra else None,
+        })
+    return resultado
+
+
+@router.post("/compras/{id_compra}/recibir")
+def recibir_pedido(id_compra: int, sesion: Session = Depends(get_sesion)):
+    """Marca un pedido pendiente como recibido: el stock aparece."""
+    try:
+        compra = recibir_compra(sesion, id_compra)
+        return {
+            "mensaje": "Pedido recibido",
             "id_compra": compra.Id_Compra,
             "cantidad_restante": float(compra.Cantidad_Restante_Compra),
         }

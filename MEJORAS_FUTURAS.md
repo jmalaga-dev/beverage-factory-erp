@@ -99,6 +99,42 @@ su costo se absorbe al producto habría doble contabilización. Propuesta:
 una sola vía por compra — utensilios menores van a absorción, bienes
 durables van a activo.
 
+**Estado: implementado (jul 2026).** Migración 014 crea `Item_Absorcion`
+(tipo UTENSILIO/FERIADO/MERMA, costo, botellas estimadas, botellas
+restantes) y `Absorcion_Produccion` (libro inmutable de qué producción
+absorbió cuánto de cada ítem). Servicio `absorcion.py`:
+- **Motor `absorber_en_produccion`:** enganchado en `producir_terminado`,
+  cada producción de N botellas descuenta de cada ítem con saldo
+  `min(N, restante) × (costo/botellas_estimadas)` (regla de 3 si al ítem le
+  queda menos que N) y lo suma al costo del producto, como una línea más.
+- **Utensilios y feriados:** `POST /utensilios` y `/feriados` — sale dinero
+  de una cuenta (SALIDA, gasto real) y se crea el ítem. La tasa por defecto
+  (`TASA_ABSORCION_DEFECTO = 10` botellas/Bs en `config.py`) sugiere las
+  botellas estimadas; editable al registrar.
+- **Mermas:** la merma se registra en **Cierre → Mermas** (que descuenta el
+  stock del lote, lo estructural), y esa misma acción atómica crea el ítem
+  MERMA valorado al costo del stock perdido. No es un segundo lugar de
+  registro: es una acción con dos efectos (descontar stock + repartir su
+  costo). El control vive en la pantalla de Mermas: al elegir tipo MERMA se
+  ve el costo a absorber, se pueden editar las botellas estimadas (tasa) y
+  hay un checkbox "absorber este costo" (marcado por defecto) por si una
+  merma no debe encarecer los productos. Ajustes/devoluciones/reprocesos
+  nunca absorben. La pantalla de Absorción solo muestra estos ítems (aclara
+  que nacen en Cierre) y registra utensilios/feriados.
+
+**Decisión de negocio (jul 2026):** un solo camino por compra — un utensilio
+va SOLO a absorción, nunca a Activo fijo, para no contar su costo dos veces
+(la otra opción, activo con depreciación, se descartó por complejidad).
+
+**Nota contable:** al sumar la absorción al costo del producto, ese costo se
+capitaliza en el valor del stock terminado. Es el comportamiento buscado
+(que el precio de venta cubra estos gastos indirectos) y replica el Excel;
+en el balance, el costo pendiente de absorber baja el patrimonio hasta que
+las producciones lo trasladan al stock. Nueva pantalla **Absorción** (grupo
+*Producción*). Verificado: motor (reparto, regla de 3, ítem saldado) con
+script de rollback, y las tres puntas (utensilio/feriado/merma → absorbidas
+en una producción real) contra la BD; datos de prueba limpiados.
+
 ### 1.5 Simulación de nuevo producto (3 escenarios de costo) — del Excel
 Réplica de la hoja de simulación del Excel (de las más usadas y más lentas).
 Para una receta hipotética (ej. 20 L de jarabe base + 5 kg de azúcar para
@@ -404,16 +440,31 @@ datos de prueba limpiados.
 proveedores se complete. Si en la práctica molesta, se puede relajar a
 opcional en el servicio (un solo punto).
 
-**Ampliación pendiente (jul 2026) — compras a crédito y pedidos pendientes:**
-- **Crédito parcial:** proveedores de confianza entregan MP pagando solo una
-  parte ("cuesta 100, dame 20 y luego el resto"): la MP entra al stock
-  usable ya, y se crea una deuda a ese proveedor (ver 7.0) por el saldo. El
-  costo del lote es el precio COMPLETO (pagado + adeudado), no solo lo
-  desembolsado — si no, el costo del producto sale mentiroso.
-- **Pedido pendiente:** mismo caso pero la MP aún no llegó a la fábrica: se
-  registra como pendiente (sin stock usable) con su deuda ya creada; el día
-  que llega se convierte en lote disponible. Requiere un estado o tabla de
-  pedidos y la acción "recibir".
+**Ampliación: implementado (jul 2026) — compras a crédito y pedidos pendientes.**
+Migración 013 agrega `Compra.Recibida_Compra` y `Deuda.Id_Proveedor`.
+`registrar_compra` ganó dos parámetros retrocompatibles:
+- **Crédito parcial (`monto_pagado`):** el lote guarda siempre el precio
+  COMPLETO (costo real del producto); se paga solo `monto_pagado` de la
+  cuenta y el faltante se vuelve deuda al proveedor. La deuda se agrupa
+  **por proveedor** (una deuda que acumula, `deuda_de_proveedor` con
+  `Id_Proveedor`), decisión de negocio de jul 2026, y aparece/paga desde la
+  pantalla de Deudas.
+- **Pedido pendiente (`recibida=False`):** el lote nace con
+  `Cantidad_Restante = 0` (invisible como stock, sin tocar las ~13 consultas
+  que ya filtran por restante > 0) hasta `recibir_compra`, que pone el
+  restante en la cantidad y hace aparecer el stock. Endpoints
+  `GET /pedidos-pendientes` y `POST /compras/{id}/recibir`.
+
+En el frontend, Compras tiene checkboxes "a crédito" (con aviso "se creará
+deuda de X a [proveedor]") y "pedido pendiente", más la sección de pedidos
+por recibir. Verificado contra el balance en vivo: compra full (patrimonio
+estable), crédito (efectivo −pagado, stock +completo, deuda +faltante,
+patrimonio estable), pendiente (patrimonio baja temporalmente hasta recibir).
+
+**Limitación conocida:** un pedido pendiente ya pagado en parte baja el
+efectivo y sube la deuda, pero como el stock aún no llegó, el balance no lo
+cuenta como activo hasta recibirlo (no se modela "anticipo a proveedores").
+Para pedidos de pocos días es despreciable.
 
 ---
 

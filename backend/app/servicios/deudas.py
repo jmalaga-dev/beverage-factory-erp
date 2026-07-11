@@ -21,7 +21,44 @@ El balance ya resta la suma de Saldo_Actual_Deuda (Total_Deudas), asi que
 estas operaciones se reflejan solas en patrimonio y escenarios.
 """
 
-from app.models import Deuda, Cuenta, Movimiento, Movimiento_Deuda
+from app.models import Deuda, Cuenta, Movimiento, Movimiento_Deuda, Proveedor
+
+
+def aumentar_deuda_proveedor(sesion, id_proveedor, monto, fecha=None):
+    """Suma 'monto' a la deuda del proveedor (una deuda por proveedor, se
+    busca por Id_Proveedor o se crea). Registra un Movimiento_Deuda AUMENTO
+    y sube el saldo. NO hace commit: pensado para usarse DENTRO de otra
+    transacción (ej. una compra a crédito), que confirma o revierte todo
+    junto. Devuelve la deuda.
+    """
+    proveedor = sesion.get(Proveedor, id_proveedor)
+    if proveedor is None:
+        raise ValueError(f"No existe proveedor con Id {id_proveedor}")
+    if monto <= 0:
+        raise ValueError("El monto adeudado debe ser mayor a cero")
+
+    deuda = sesion.query(Deuda).filter(Deuda.Id_Proveedor == id_proveedor).first()
+    if deuda is None:
+        # Descripcion con el id para no chocar con el UNIQUE si dos
+        # proveedores se llaman igual.
+        deuda = Deuda(
+            Descripcion_Deuda=f"Proveedor: {proveedor.Nombre_Proveedor} (#{id_proveedor})",
+            Saldo_Actual_Deuda=0,
+            Id_Proveedor=id_proveedor,
+        )
+        sesion.add(deuda)
+        sesion.flush()
+
+    mov = Movimiento_Deuda(
+        Id_Deuda=deuda.Id_Deuda,
+        Fecha_Movimiento_Deuda=fecha,
+        Tipo_Movimiento_Deuda="AUMENTO",
+        Monto_Movimiento_Deuda=monto,
+        Id_Cuenta_Pago=None,
+    )
+    sesion.add(mov)
+    deuda.Saldo_Actual_Deuda = deuda.Saldo_Actual_Deuda + monto
+    return deuda
 
 
 def _crear_o_ubicar_deuda(sesion, id_deuda, descripcion):

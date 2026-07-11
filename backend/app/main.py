@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.rutas import (
+    absorcion,
     activos,
     balance,
     catalogos,
@@ -71,3 +72,4 @@ app.include_router(balance.router)
 app.include_router(transferencias.router)
 app.include_router(proveedores.router)
 app.include_router(deudas.router)
+app.include_router(absorcion.router)

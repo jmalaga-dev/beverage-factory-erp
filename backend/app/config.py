@@ -12,6 +12,14 @@ from decimal import Decimal
 # este valor segun que tan chico es, en la practica, un resto inutilizable.
 UMBRAL_STOCK_MINIMO = Decimal("0.0001")
 
+# Tasa por defecto para la absorcion de costos indirectos por botella (mejora
+# 1.4): cuantas botellas se estima que absorberan cada boliviano de un costo
+# indirecto (utensilio, feriado, merma). Ej: 10 => un costo de 100 Bs se
+# reparte entre 100*10 = 1000 botellas (0.10 Bs/botella). Es solo el valor
+# SUGERIDO al registrar un utensilio/feriado (editable en el formulario), y el
+# usado al crear automaticamente el item de una merma. Ajustable en un lugar.
+TASA_ABSORCION_DEFECTO = 10
+
 # Categorias fijas para clasificar Tipo_Bien en el balance (mejora 4.2).
 # Elegidas explicitamente al crear/editar un tipo de bien, en vez de
 # adivinar por texto en el nombre. Ligadas a las columnas de Balance

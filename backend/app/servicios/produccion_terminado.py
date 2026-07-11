@@ -11,6 +11,7 @@ from app.models import (
     Detalle_Prod_Intermedio, Detalle_Prod_Materia_Prima, Detalle_Prod_Trabajador,
     Produccion_Intermedio, Compra, Registro_Trabajador, Trabajador,
 )
+from app.servicios.absorcion import absorber_en_produccion
 
 
 def producir_terminado(
@@ -95,18 +96,17 @@ def producir_terminado(
         trabajador = sesion.get(Trabajador, registro.Id_Trabajador)
         costo_total += horas * trabajador.Pago_Trabajador
 
-    # Costo unitario del producto terminado
-    costo_unitario = costo_total / cantidad_producida
-
     # ----- 2. EJECUTAR (todo o nada) -----
+    # El costo unitario se fija DESPUES de la absorcion (2f), porque esta
+    # depende del Id_Produccion (que se asigna al hacer flush).
 
     try:
-        # 2a. Cabecera de produccion, con su costo unitario y stock lleno
+        # 2a. Cabecera de produccion (el costo unitario se completa en 2f)
         produccion = Produccion(
             Id_Producto_Terminado=id_producto_terminado,
             Fecha_Produccion=fecha,
             Cantidad_Producida_Produccion=cantidad_producida,
-            Precio_Unitario_Producto_Terminado=costo_unitario,
+            Precio_Unitario_Producto_Terminado=None,
             Cantidad_Restante_Produccion=cantidad_producida,
         )
         sesion.add(produccion)
@@ -146,7 +146,14 @@ def producir_terminado(
                 registro.Horas_Restante_Registro_Trabajador - horas
             )
 
-        # 2e. Confirmar todo
+        # 2e. Absorcion de costos indirectos por botella (mejora 1.4): los
+        # utensilios/feriados/mermas con saldo cargan su parte a estas botellas.
+        costo_absorbido = absorber_en_produccion(sesion, produccion.Id_Produccion, cantidad_producida)
+
+        # 2f. Fijar el costo unitario final (insumos + absorcion)
+        produccion.Precio_Unitario_Producto_Terminado = (costo_total + costo_absorbido) / cantidad_producida
+
+        # 2g. Confirmar todo
         sesion.commit()
 
         return produccion
