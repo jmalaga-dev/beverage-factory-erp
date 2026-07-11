@@ -16,12 +16,14 @@ from app.rutas import (
     catalogos,
     clientes,
     compras,
+    deudas,
     gastos,
     inventario,
     jornadas,
     pagos,
     produccion,
     prorrateo,
+    proveedores,
     transferencias,
     ventas,
 )
@@ -67,3 +69,5 @@ app.include_router(prorrateo.router)
 app.include_router(activos.router)
 app.include_router(balance.router)
 app.include_router(transferencias.router)
+app.include_router(proveedores.router)
+app.include_router(deudas.router)

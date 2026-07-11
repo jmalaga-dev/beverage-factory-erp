@@ -4,6 +4,7 @@ import MenuCategoria from './componentes/MenuCategoria'
 import PaginaClientes from './paginas/PaginaClientes'
 import PaginaCompras from './paginas/PaginaCompras'
 import PaginaCatalogos from './paginas/PaginaCatalogos'
+import PaginaProveedores from './paginas/PaginaProveedores'
 import PaginaJornadas from './paginas/PaginaJornadas'
 import PaginaProduccionIntermedia from './paginas/PaginaProduccionIntermedia'
 import PaginaProduccionTerminada from './paginas/PaginaProduccionTerminada'
@@ -11,6 +12,7 @@ import PaginaVentas from './paginas/PaginaVentas'
 import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
 import PaginaTransferencias from './paginas/PaginaTransferencias'
+import PaginaDeudas from './paginas/PaginaDeudas'
 import PaginaMermas from './paginas/PaginaMermas'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaActivos from './paginas/PaginaActivos'
@@ -22,6 +24,7 @@ import PaginaComparativaBalances from './paginas/PaginaComparativaBalances'
 const categorias = [
   { titulo: 'Configurar', links: [
     { to: '/catalogos', label: 'Catálogos' },
+    { to: '/proveedores', label: 'Proveedores' },
   ] },
   { titulo: 'Producción', links: [
     { to: '/compras', label: 'Compras' },
@@ -37,6 +40,7 @@ const categorias = [
     { to: '/pagos', label: 'Pagos' },
     { to: '/gastos', label: 'Gastos' },
     { to: '/transferencias', label: 'Transferencias' },
+    { to: '/deudas', label: 'Deudas' },
   ] },
   { titulo: 'Cierre', links: [
     { to: '/mermas', label: 'Mermas' },
@@ -64,6 +68,7 @@ function App() {
           <Route path="/clientes" element={<PaginaClientes />} />
           <Route path="/compras" element={<PaginaCompras />} />
           <Route path="/catalogos" element={<PaginaCatalogos />} />
+          <Route path="/proveedores" element={<PaginaProveedores />} />
           <Route path="/jornadas" element={<PaginaJornadas />} />
           <Route path="/produccion-intermedia" element={<PaginaProduccionIntermedia />} />
           <Route path="/produccion-terminada" element={<PaginaProduccionTerminada />} />
@@ -71,6 +76,7 @@ function App() {
           <Route path="/pagos" element={<PaginaPagos />} />
           <Route path="/gastos" element={<PaginaGastos />} />
           <Route path="/transferencias" element={<PaginaTransferencias />} />
+          <Route path="/deudas" element={<PaginaDeudas />} />
           <Route path="/mermas" element={<PaginaMermas />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />

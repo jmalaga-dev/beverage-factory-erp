@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import UMBRAL_STOCK_MINIMO
 from app.dependencias import get_sesion
-from app.models import Compra, Materia_Prima
+from app.models import Compra, Materia_Prima, Proveedor
 from app.servicios.compras import registrar_compra
 
 router = APIRouter(tags=["compras"])
@@ -23,6 +23,7 @@ class CompraEntrada(BaseModel):
     cantidad: Decimal
     precio_total: Decimal
     fecha: date | None = None
+    id_proveedor: int | None = None
 
 
 @router.post("/compras")
@@ -40,6 +41,7 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
             cantidad=datos.cantidad,
             precio_total=datos.precio_total,
             fecha=datos.fecha or date.today(),
+            id_proveedor=datos.id_proveedor,
         )
         return {
             "mensaje": "Compra registrada",
@@ -57,6 +59,7 @@ def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
     resultado = []
     for c in lotes:
         mp = sesion.get(Materia_Prima, c.Id_Materia_Prima)
+        prov = sesion.get(Proveedor, c.Id_Proveedor) if c.Id_Proveedor else None
         resultado.append({
             "id_compra": c.Id_Compra,
             "id_materia_prima": c.Id_Materia_Prima,
@@ -64,7 +67,49 @@ def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
             "cantidad_restante": float(c.Cantidad_Restante_Compra),
             "precio_compra": float(c.Precio_Compra),
             "cantidad_compra": float(c.Cantidad_Compra),
+            "proveedor": prov.Nombre_Proveedor if prov else None,
         })
+    return resultado
+
+
+@router.get("/comparacion-precios-proveedor")
+def comparacion_precios_proveedor(sesion: Session = Depends(get_sesion)):
+    """Precio unitario (precio/cantidad) de cada materia prima por proveedor,
+    a partir del historial de compras: minimo, promedio, maximo y ultimo.
+    Sirve para decidir a que proveedor conviene comprar (mejora 5.1)."""
+    compras = (
+        sesion.query(Compra)
+        .filter(Compra.Id_Proveedor.isnot(None))
+        .order_by(Compra.Fecha_Compra, Compra.Id_Compra)
+        .all()
+    )
+    # (id_materia, id_proveedor) -> lista de (unitario, nombres)
+    acum = {}
+    for c in compras:
+        if not c.Cantidad_Compra:
+            continue
+        unit = float(c.Precio_Compra) / float(c.Cantidad_Compra)
+        clave = (c.Id_Materia_Prima, c.Id_Proveedor)
+        acum.setdefault(clave, []).append(unit)
+
+    resultado = []
+    for (id_mp, id_prov), unitarios in acum.items():
+        mp = sesion.get(Materia_Prima, id_mp)
+        prov = sesion.get(Proveedor, id_prov)
+        resultado.append({
+            "id_materia_prima": id_mp,
+            "nombre_materia": mp.Descripcion_Materia_Prima if mp else "?",
+            "unidad": mp.Unidad_Materia_Prima if mp else "",
+            "id_proveedor": id_prov,
+            "nombre_proveedor": prov.Nombre_Proveedor if prov else "?",
+            "compras": len(unitarios),
+            "precio_min": round(min(unitarios), 4),
+            "precio_promedio": round(sum(unitarios) / len(unitarios), 4),
+            "precio_max": round(max(unitarios), 4),
+            "precio_ultimo": round(unitarios[-1], 4),
+        })
+    # Ordenar por materia y luego por precio promedio (mas barato primero)
+    resultado.sort(key=lambda r: (r["nombre_materia"], r["precio_promedio"]))
     return resultado
 
 

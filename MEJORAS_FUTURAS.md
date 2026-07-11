@@ -376,7 +376,35 @@ cálculos internos siguen en `Decimal` completo).
 Agregar tabla `Proveedor` y un `Id_Proveedor` en `Compra`, para comparar precios
 de la misma materia prima entre proveedores y decidir cuál conviene.
 
-**Ampliación (jul 2026) — compras a crédito y pedidos pendientes:**
+**Estado: implementado (base).** Migración 011 agrega:
+- `Proveedor` (nombre, celular, latitud/longitud para el futuro ruteo con
+  Maps —mismo patrón que `Cliente`—, `Habilitado_Proveedor`).
+- `Proveedor_Materia_Prima`: tabla puente "qué proveedor vende qué", con su
+  propio `Habilitado_*` y UNIQUE por par. Permite deshabilitar "Juan-azúcar"
+  sin tocar "Juan-alcohol", sin perder el historial de compras a Juan.
+- `Compra.Id_Proveedor` (nullable: las compras históricas no tienen
+  proveedor; el flujo nuevo lo exige).
+
+CRUD completo en `rutas/proveedores.py` (editar/habilitar/borrar con el
+guardrail de 6.1: solo se borra si no tiene compras), gestión de las
+materias que vende cada proveedor, y `GET /proveedores-por-materia/{id}`
+que alimenta el **desplegable inteligente** de Compras: 0 proveedores
+activos → se bloquea la compra pidiendo registrar uno (así el catálogo se
+llena y nadie queda "solo en la cabeza"); 1 → autoselección sin desplegable;
+>1 → se elige. La regla vive en el servicio `compras.py` (fuente única de
+verdad), el frontend solo la refleja. Nueva pantalla **Proveedores** (grupo
+*Configurar*) y `GET /comparacion-precios-proveedor` (precio unitario
+mín/promedio/máx/último por materia y proveedor, desde el historial de
+compras) mostrado como tabla. Verificado con curl (los 4 caminos de
+validación de compra, toggle de vínculo, comparación) y build de frontend;
+datos de prueba limpiados.
+
+**Decisión de negocio (jul 2026):** toda compra queda atada a un proveedor
+(se eligió obligar, no solo sugerir), para forzar que el catálogo de
+proveedores se complete. Si en la práctica molesta, se puede relajar a
+opcional en el servicio (un solo punto).
+
+**Ampliación pendiente (jul 2026) — compras a crédito y pedidos pendientes:**
 - **Crédito parcial:** proveedores de confianza entregan MP pagando solo una
   parte ("cuesta 100, dame 20 y luego el resto"): la MP entra al stock
   usable ya, y se crea una deuda a ese proveedor (ver 7.0) por el saldo. El
@@ -541,14 +569,26 @@ pantalla para gestionarlas. Falta: registrar deudas, amortizarlas (con la lógic
 de reparto por prioridad de cuentas, ver sección 2), y verlas reflejadas en el
 balance. Es parte del flujo financiero completo.
 
-**Ampliación (jul 2026) — casos concretos que debe cubrir:**
-- **Deuda simple sin ingreso:** alguien pagó 200 Bs de un gasto por
-  nosotros, o el interés que cobra el banco por un préstamo: sube la deuda,
-  no toca ninguna cuenta.
-- **Préstamo con ingreso:** el banco presta 100 a Billetera Fábrica: deuda
-  + movimiento ENTRADA a la cuenta, en una sola operación atómica. El
-  interés de ese préstamo entra como deuda simple del punto anterior.
-- **Deuda a proveedor** nacida de una compra a crédito parcial (ver 5.1).
+**Estado: implementado** (con 7.3). Servicio `deudas.py` con tres
+operaciones atómicas y pantalla **Deudas** (grupo *Finanzas*):
+- **Deuda simple sin ingreso:** sube el pasivo sin mover caja (interés del
+  banco, o un gasto que un tercero pagó por nosotros).
+- **Préstamo con ingreso:** sube la deuda **y** entra dinero a una cuenta en
+  un solo acto. El lado de caja usa un `Movimiento` tipo `INGRESO_EXTERNO`
+  (ya excluido de las ventas de la semana), no `ENTRADA`, para no contarlo
+  como venta.
+- El saldo de la `Deuda` se mantiene como el de una `Cuenta` (campo cacheado
+  + un `Movimiento_Deuda` AUMENTO/PAGO por cada operación). El balance ya
+  resta `Total_Deudas`, así que se refleja solo: una deuda simple baja el
+  patrimonio, un préstamo lo deja igual (activo + pasivo se cancelan) —
+  verificado con curl contra `/balance-actual`.
+
+Verificado: deuda simple, préstamo, pago, los guardrails (pago > saldo de
+deuda, saldo de cuenta insuficiente) y la deduplicación por descripción.
+Datos de prueba limpiados.
+
+**Pendiente:** la **deuda a proveedor** nacida de una compra a crédito
+parcial (ver la ampliación de 5.1) se conecta cuando se implemente ese caso.
 
 ### 7.1 Códigos QR para etiquetas físicas
 Generar códigos QR (en el backend, no se guardan en BD) para etiquetar físicamente
@@ -578,6 +618,18 @@ es-BO) aplicado en Balance y Activos.
 Complementa el módulo de deudas (7.0): pagar una deuda eligiendo de qué cuenta
 sale el dinero, bajando el saldo de la deuda y descontando la cuenta. Usa la
 lógica de reparto por prioridad (sección 2). El balance ya resta las deudas.
+
+**Estado: implementado (base).** `pagar_deuda` en `deudas.py` +
+`POST /deudas/pago`: baja el saldo de la deuda y descuenta de **una** cuenta
+elegida. El lado de caja usa un `Movimiento` tipo `PAGO_DEUDA` (migración
+012 amplía el CHECK), a propósito distinto de `SALIDA` para que el balance
+no lo cuente como gasto de la semana (mismo principio de categorizar-sin-
+adivinar de 4.1). Pagar una deuda no cambia el patrimonio (baja efectivo y
+pasivo por igual) — verificado.
+
+**Pendiente:** el reparto por prioridad de cuentas (sección 2) — hoy se paga
+desde una sola cuenta a mano. Cuando exista esa capa, `pagar_deuda` será una
+de las operaciones base que orqueste.
 
 ### 7.4 Columnas de balance para fotos históricas
 Ya se agregaron Valor_Stock_Intermedio y Valor_Horas_Standby al balance (migración

@@ -29,6 +29,31 @@ class Materia_Prima(Base):
     compras = relationship("Compra", back_populates="materia_prima")
 
 
+class Proveedor(Base):
+    __tablename__ = "Proveedor"
+
+    Id_Proveedor = Column(Integer, primary_key=True)
+    Nombre_Proveedor = Column(String, nullable=False)
+    Celular_Proveedor = Column(String)
+    Latitud_Proveedor = Column(Numeric)
+    Longitud_Proveedor = Column(Numeric)
+    Habilitado_Proveedor = Column(Boolean, nullable=False, server_default="true")
+
+    materias = relationship("Proveedor_Materia_Prima", back_populates="proveedor")
+
+
+class Proveedor_Materia_Prima(Base):
+    __tablename__ = "Proveedor_Materia_Prima"
+
+    Id_Proveedor_Materia_Prima = Column(Integer, primary_key=True)
+    Id_Proveedor = Column(Integer, ForeignKey("Proveedor.Id_Proveedor"), nullable=False)
+    Id_Materia_Prima = Column(Integer, ForeignKey("Materia_Prima.Id_Materia_Prima"), nullable=False)
+    Habilitado_Proveedor_Materia_Prima = Column(Boolean, nullable=False, server_default="true")
+
+    proveedor = relationship("Proveedor", back_populates="materias")
+    materia_prima = relationship("Materia_Prima")
+
+
 class Trabajador(Base):
     __tablename__ = "Trabajador"
 
@@ -191,9 +216,11 @@ class Compra(Base):
     Precio_Compra = Column(Numeric, nullable=False)
     Cantidad_Restante_Compra = Column(Numeric, nullable=False)
     Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
+    Id_Proveedor = Column(Integer, ForeignKey("Proveedor.Id_Proveedor"), nullable=True)
 
     materia_prima = relationship("Materia_Prima", back_populates="compras")
     movimiento = relationship("Movimiento")
+    proveedor = relationship("Proveedor")
 
 
 # =========================================================

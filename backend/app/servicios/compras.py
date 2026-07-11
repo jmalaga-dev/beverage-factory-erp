@@ -6,10 +6,29 @@ y crear la compra. Todo de forma ATOMICA (o pasa todo, o no pasa nada).
 """
 
 from datetime import date
-from app.models import Compra, Cuenta, Movimiento, Materia_Prima
+from app.models import Compra, Cuenta, Movimiento, Materia_Prima, Proveedor, Proveedor_Materia_Prima
 
 
-def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total, fecha=None):
+def _proveedores_activos_de(sesion, id_materia_prima):
+    """Ids de proveedores activos (proveedor habilitado + vinculo habilitado)
+    que venden una materia prima."""
+    vinculos = (
+        sesion.query(Proveedor_Materia_Prima)
+        .filter(
+            Proveedor_Materia_Prima.Id_Materia_Prima == id_materia_prima,
+            Proveedor_Materia_Prima.Habilitado_Proveedor_Materia_Prima.is_(True),
+        )
+        .all()
+    )
+    activos = set()
+    for v in vinculos:
+        p = sesion.get(Proveedor, v.Id_Proveedor)
+        if p is not None and p.Habilitado_Proveedor:
+            activos.add(p.Id_Proveedor)
+    return activos
+
+
+def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total, fecha=None, id_proveedor=None):
     """
     Registra una compra de materia prima pagada desde una cuenta.
 
@@ -20,6 +39,10 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
         cantidad: cuanto se compro
         precio_total: cuanto costo en total
         fecha: fecha de la compra (si no se da, no se asume hoy todavia)
+        id_proveedor: de quien se compro. Obligatorio cuando la materia
+            prima ya tiene proveedores activos (para llenar el catalogo de
+            proveedores); si la materia no tiene ninguno, se bloquea pidiendo
+            registrar uno primero (mejora 5.1).
 
     Devuelve: el objeto Compra creado.
     Lanza ValueError si algo no es valido (ej: saldo insuficiente).
@@ -42,6 +65,21 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
         raise ValueError("El precio total debe ser mayor a cero")
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a cero")
+
+    # Proveedor (mejora 5.1): toda compra debe quedar atada a un proveedor.
+    activos = _proveedores_activos_de(sesion, id_materia_prima)
+    if not activos:
+        raise ValueError(
+            f"'{materia.Descripcion_Materia_Prima}' no tiene ningún proveedor. "
+            "Registra un proveedor para esta materia prima antes de comprarla."
+        )
+    if id_proveedor is None:
+        raise ValueError("Debes indicar de qué proveedor se compró")
+    if id_proveedor not in activos:
+        raise ValueError(
+            f"El proveedor indicado no vende '{materia.Descripcion_Materia_Prima}' "
+            "(o está deshabilitado para esa materia)"
+        )
 
     # LA validacion clave: hay saldo suficiente?
     if cuenta.Saldo_Actual_Cuenta < precio_total:
@@ -68,7 +106,7 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
         # 2b. Descontar el dinero de la cuenta (mantener el saldo)
         cuenta.Saldo_Actual_Cuenta = cuenta.Saldo_Actual_Cuenta - precio_total
 
-        # 2c. Crear la compra, vinculada al movimiento
+        # 2c. Crear la compra, vinculada al movimiento y al proveedor
         compra = Compra(
             Id_Materia_Prima=id_materia_prima,
             Fecha_Compra=fecha,
@@ -76,6 +114,7 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
             Precio_Compra=precio_total,
             Cantidad_Restante_Compra=cantidad,   # al comprar, queda todo disponible
             Id_Movimiento=movimiento.Id_Movimiento,
+            Id_Proveedor=id_proveedor,
         )
         sesion.add(compra)
 

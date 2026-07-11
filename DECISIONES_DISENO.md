@@ -194,7 +194,8 @@ que operaciones que afectan varias tablas (dinero + inventario) pasen completas 
 no pasen (integridad).
 
 Operaciones construidas (con backend, API y pantalla):
-- Compra de materia prima (valida saldo, crea movimiento SALIDA, descuenta cuenta).
+- Compra de materia prima (valida saldo, crea movimiento SALIDA, descuenta
+  cuenta; exige proveedor de esa materia prima — ver mejora 5.1).
 - Registro de jornada de trabajo (solo horas, no mueve dinero).
 - Pago semanal a trabajador (calcula sugerido = horas pendientes × tarifa; paga
   monto real que puede diferir; marca jornadas como pagadas sin borrarlas).
@@ -208,6 +209,9 @@ Operaciones construidas (con backend, API y pantalla):
 - Balance (foto congelada: efectivo, stocks valorizados, deudas, escenarios,
   patrimonio).
 - Prorrateo mensual (reparte gastos extra entre productos según horas).
+- Transferencia entre cuentas propias e ingreso externo (mejora 7.5).
+- Deuda: registrar (simple o préstamo con ingreso) y pagar/amortizar
+  (mejoras 7.0/7.3).
 
 **Categorizar una SALIDA sin adivinar:** para separar compras / pagos a
 trabajadores / gastos dentro de los movimientos de dinero (todos
@@ -215,6 +219,25 @@ trabajadores / gastos dentro de los movimientos de dinero (todos
 con `Movimiento` (`Compra.Id_Movimiento`, `Pago_Trabajador.Id_Movimiento`) en
 vez de adivinar por texto o grupo. Lo que no está vinculado a ninguna de las
 dos es, por descarte, un gasto.
+
+**Tipos de movimiento propios en vez de forzar ENTRADA/SALIDA (mejoras 7.5,
+7.0/7.3):** los movimientos de dinero que no son ni venta ni compra/pago/
+gasto usan su propio `Tipo_Movimiento` para no contaminar los cálculos
+semanales del balance (que definen ventas como `ENTRADA` y gastos como las
+`SALIDA` sin vínculo). Se agregaron `TRANSFERENCIA` (entre cuentas propias),
+`INGRESO_EXTERNO` (aporte de fuera, y el desembolso de un préstamo) y
+`PAGO_DEUDA` (amortización). El esquema base ya preveía `TRANSFERENCIA` en
+el CHECK; `INGRESO_EXTERNO` y `PAGO_DEUDA` se agregaron por migración (010 y
+012). Es el mismo principio de "categorizar sin adivinar": el tipo hace
+explícita la naturaleza del movimiento en vez de deducirla.
+
+**Saldo de deuda derivado, igual que el de una cuenta:** `Saldo_Actual_Deuda`
+es un campo cacheado que refleja la suma de sus `Movimiento_Deuda`
+(AUMENTO/PAGO), mismo patrón que `Saldo_Actual_Cuenta` con los `Movimiento`.
+El balance ya resta `Total_Deudas`, así que registrar/pagar una deuda se
+refleja solo en patrimonio y escenarios (una deuda simple baja el
+patrimonio; un préstamo lo deja igual porque el efectivo que entra y el
+pasivo que sube se cancelan).
 
 **Clasificar sin adivinar por texto (mismo principio, aplicado a activos):**
 la clasificación Inmueble/Equipo/Otro de los activos fijos en el balance
@@ -235,6 +258,17 @@ validadas en tablas aparte. Al registrar (un cliente, un gasto), se **elige** de
 la lista existente, no se escribe libre. Esto evita duplicados por variantes
 ("Av. Simón" vs "AV Simon"). La creación de sectores/grupos normaliza con
 `ilike` + `strip` para atrapar duplicados por mayúsculas/espacios.
+
+**Proveedores como relación, no como texto (mejora 5.1):** qué proveedor
+vende qué materia prima se modela con una tabla puente
+`Proveedor_Materia_Prima` (con su propio `Habilitado_*`), no con un campo
+libre ni infiriéndolo del historial. Eso permite: pre-registrar a un
+proveedor antes de la primera compra, deshabilitar un par concreto
+(Juan-azúcar) sin afectar los demás, y que la compra ofrezca solo
+proveedores válidos de esa materia. La compra **exige** proveedor (se
+decidió obligar, no sugerir) para que el catálogo se llene solo; la regla
+del desplegable (0 bloquea / 1 autoselecciona / >1 elige) vive en el
+servicio de compras, no en el frontend.
 
 ---
 

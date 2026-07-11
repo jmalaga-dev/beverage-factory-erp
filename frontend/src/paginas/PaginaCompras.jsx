@@ -14,6 +14,11 @@ function PaginaCompras() {
   const [cantidad, setCantidad] = useState('')
   const [precioTotal, setPrecioTotal] = useState('')
 
+  // Proveedores activos de la materia elegida (mejora 5.1). Segun cuantos
+  // haya: 0 -> bloquear y pedir registrar; 1 -> autoseleccion; >1 -> elegir.
+  const [proveedores, setProveedores] = useState([])
+  const [idProveedor, setIdProveedor] = useState('')
+
   const [mensaje, setMensaje] = useState('')
 
   // Cargar todos los datos que la pantalla necesita
@@ -28,9 +33,35 @@ function PaginaCompras() {
     cargarDatos()
   }, [])
 
+  // Cuando cambia la materia prima, traer sus proveedores activos
+  useEffect(() => {
+    if (idMateria === '') {
+      setProveedores([])
+      setIdProveedor('')
+      return
+    }
+    apiGet(`/proveedores-por-materia/${idMateria}`)
+      .then((provs) => {
+        setProveedores(provs)
+        // Autoseleccion si hay exactamente uno
+        setIdProveedor(provs.length === 1 ? String(provs[0].id_proveedor) : '')
+      })
+      .catch(console.error)
+  }, [idMateria])
+
   function registrarCompra() {
     if (idMateria === '' || idCuenta === '' || cantidad === '' || precioTotal === '') {
       setMensaje('Completa todos los campos')
+      return
+    }
+
+    // Proveedor obligatorio (mejora 5.1)
+    if (proveedores.length === 0) {
+      setMensaje('Esta materia prima no tiene proveedores. Regístrale uno en la pantalla de Proveedores antes de comprar.')
+      return
+    }
+    if (idProveedor === '') {
+      setMensaje('Elige de qué proveedor se compró')
       return
     }
 
@@ -46,6 +77,7 @@ function PaginaCompras() {
       id_cuenta: parseInt(idCuenta),
       cantidad: parseFloat(cantidad),
       precio_total: parseFloat(precioTotal),
+      id_proveedor: parseInt(idProveedor),
     })
       .then(() => {
         setMensaje('Compra registrada correctamente')
@@ -53,6 +85,8 @@ function PaginaCompras() {
         setIdCuenta('')
         setCantidad('')
         setPrecioTotal('')
+        setProveedores([])
+        setIdProveedor('')
         cargarDatos()   // recargar todo: stock y lotes cambiaron
       })
       .catch((e) => setMensaje(e.message))
@@ -86,6 +120,27 @@ function PaginaCompras() {
           obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
           placeholder="-- Cuenta --"
         />
+
+        {/* Proveedor (mejora 5.1): solo aparece desplegable si hay mas de uno.
+            Con uno, ya quedo autoseleccionado. Con ninguno, se avisa. */}
+        {idMateria !== '' && proveedores.length === 0 && (
+          <span style={{ color: '#a00' }}>
+            Sin proveedores para esta materia — regístrale uno en Proveedores.
+          </span>
+        )}
+        {proveedores.length === 1 && (
+          <span>Proveedor: {proveedores[0].nombre}</span>
+        )}
+        {proveedores.length > 1 && (
+          <SelectorBuscable
+            opciones={proveedores}
+            valor={idProveedor}
+            onCambiar={setIdProveedor}
+            obtenerId={(p) => p.id_proveedor}
+            obtenerTexto={(p) => p.nombre}
+            placeholder="-- Proveedor --"
+          />
+        )}
 
         <input type="text" placeholder="Cantidad"
           value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
