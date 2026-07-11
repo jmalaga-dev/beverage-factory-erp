@@ -245,7 +245,7 @@ Los campos monetarios/de cantidad en los esquemas Pydantic de entrada están
 tipados directo como `Decimal` (no `float`); Pydantic v2 hace la conversión
 `Decimal(str(valor))` internamente al validar, el mismo criterio que evita
 arrastrar el error de punto flotante, sin necesidad de convertir a mano en
-cada endpoint (mejora 8.1/9 de `MEJORAS_FUTURAS.md`).
+cada endpoint (mejora 9.1 de `MEJORAS_FUTURAS.md`).
 
 Además, los endpoints que crean registros con fecha usan `fecha or date.today()`:
 si el frontend no envía fecha, se usa la de hoy (evita el error de NOT NULL en las

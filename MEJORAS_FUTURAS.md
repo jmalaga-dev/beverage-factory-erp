@@ -40,6 +40,16 @@ columna de Excel), y modificar el servicio de prorrateo para calcular desde las
 producciones reales del mes en vez de leer una tabla `Horas_Producto_Mes` llenada
 a mano. Es un mini-proyecto en sí mismo.
 
+**Diseño confirmado (comparación con el Excel, jul 2026):** columnas de
+"horas acumuladas" (y su equivalente en dinero) en `Produccion_Intermedia` y
+`Produccion`. Una producción nace con la suma de horas de sus jornadas más
+las heredadas de los intermedios que consumió; al consumirse parcialmente
+traslada horas y dinero en proporción a la cantidad consumida. Así el
+producto terminado responde directo "cuánto costó, cuántas botellas y
+cuántas horas hombre", y el prorrateo mensual se vuelve una suma simple
+sobre esas columnas en vez de una recursión al vuelo. Las horas directas de
+la semana se asignan con el cierre semanal de 3.7.
+
 ### Estado del prorrateo (oculto en MVP)
 La pantalla PaginaProrrateo.jsx existe pero está oculta (sin enlace ni ruta en
 App.jsx) porque depende de la lógica de horas heredadas (1.1), no construida aún.
@@ -67,6 +77,40 @@ terminados. Verificar que esté completo en todas las vistas de stock.
 `costo_promedio` ahora (antes solo intermedios y terminados lo tenían), mismo
 patrón de cálculo. Hecho como parte del trabajo de 4.5.
 
+### 1.4 Absorción de costos indirectos por botella producida — del Excel
+Lógica del Excel sin equivalente hoy: ciertas compras y costos que no son
+insumos directos deben ser "absorbidos" de a poco por las botellas
+producidas, para que nada quede sin que alguien lo pague:
+- **Utensilios y equipos** (ej. un barril de roble): tabla con descripción,
+  costo de compra, fecha, "botellas estimadas a prorratear" (tasa móvil que
+  se elige al comprar; ej. 10 botellas por cada boliviano) y botellas
+  restantes. Cada producción consulta los items con saldo pendiente y agrega
+  una línea de costo como si fuera una materia prima más (ej. "PU pagado por
+  utensilios: 168 botellas → 56.28 Bs" = 0.335 Bs/botella), descontando las
+  botellas de cada item hasta llegar a 0.
+- **Horas pagadas por feriado** (se paga al trabajador sin producción a
+  cambio): en el Excel vivían en la misma tabla de absorción.
+- **Desechos/mermas**: hoy la merma solo descuenta stock; en el Excel su
+  costo también lo absorbían las botellas producidas después.
+
+Decisión pendiente al implementar: cómo convive con **Activos fijos** (7.2)
+— un barril hoy se registraría como activo (suma al patrimonio); si además
+su costo se absorbe al producto habría doble contabilización. Propuesta:
+una sola vía por compra — utensilios menores van a absorción, bienes
+durables van a activo.
+
+### 1.5 Simulación de nuevo producto (3 escenarios de costo) — del Excel
+Réplica de la hoja de simulación del Excel (de las más usadas y más lentas).
+Para una receta hipotética (ej. 20 L de jarabe base + 5 kg de azúcar para
+30 L de producto nuevo), calcular el costo unitario por litro en 3
+escenarios según el histórico real de cada insumo: la vez más barata, el
+promedio ponderado y la vez más cara (para intermedios, por litro producido;
+para MP, por kilo comprado). Con la capacidad de la botella (ej. 0.75 L →
+litros/0.75 botellas) y las botellas por paquete (3.9), da el costo por
+botella y por paquete en los 3 escenarios. Todo dinámico: se ajustan las
+cantidades para ver hasta dónde el producto nuevo es rentable. Es solo
+lectura (no toca stock ni dinero): un servicio de consulta + una pantalla.
+
 ---
 
 ## 2. LÓGICA FINANCIERA DE REPARTO POR PRIORIDAD DE CUENTAS
@@ -87,6 +131,21 @@ existen). Probablemente requiere endpoints nuevos que reciban el reparto complet
 y ejecuten varias operaciones coordinadas. Corresponde a las pantallas del Excel
 con columnas FUENTE / DISPONIBLE / UTILIZADO / ESPECIFICACIÓN / GRUPO.
 
+**Detalle del 70/30 según el Excel (jul 2026):** el reparto de una venta no
+es un 70/30 plano. Cada producto terminado lleva un acumulado de todos los
+tiempos (ventas, entradas, salidas, gastos extra prorrateados → saldo):
+- Si su saldo es <= 0 (el producto aún no devolvió a la fábrica lo invertido
+  en producirlo), el 100% del ingreso va a Billetera Fábrica hasta llegar a
+  0; si una venta cruza el cero, solo el remanente se reparte 70/30.
+- Si su saldo ya es positivo, se aplica el 70/30 directo.
+
+La "inversión de la fábrica" en un producto es todo lo gastado en
+producirlo (se deriva de las producciones). El porcentaje (70) es
+configurable — en el Excel era una celda global; candidato a
+`app/config.py`. Este acumulado por producto además responde "¿este
+producto ya rentó la fábrica?"; hoy es de todos los tiempos — evaluar
+verlo también por mes (Power BI, 8.1).
+
 ---
 
 ## 3. INVENTARIO Y PRODUCCIÓN
@@ -96,6 +155,12 @@ En vez de que el usuario elija lote a lote qué consumir, el sistema descontarí
 automáticamente de los lotes más antiguos primero. El usuario diría "usé 5 kg de
 azúcar" y el sistema resuelve de qué lotes. Simplifica mucho la experiencia.
 Cambio de lógica en el backend (los servicios hoy reciben el lote explícito).
+
+**Ampliación (jul 2026):** FIFO es además la base de las pre-recetas (3.6),
+del cierre semanal (3.7) y de la venta con lotes automáticos (6.12). El
+patrón preferido: el sistema **propone** los lotes del más antiguo al más
+nuevo (respetando restos) y el usuario puede editar antes de confirmar —
+sugerencia FIFO, no imposición.
 
 ### 3.2 Redondeo a cero bajo umbral
 Si un lote queda con un resto minúsculo legítimo, considerarlo agotado bajo cierto
@@ -113,6 +178,14 @@ sigue existiendo en la BD (ver 3.5).
 El backend soporta reproceso (dos registros enlazados por Ref_Reproceso). La
 pantalla de mermas cubre merma/ajuste/devolución sobre los tres orígenes, pero el
 reproceso completo no tiene interfaz aún.
+
+**Ampliación (jul 2026):** verificado en el código — hoy una DEVOLUCION solo
+suma stock al lote, no mueve dinero. Falta el caso real completo: el cliente
+devuelve producto echado a perder, se le devuelve su dinero (SALIDA de una
+cuenta, idealmente vinculada a la venta original) y el producto devuelto o
+se desecha (merma cuyo costo absorben las producciones futuras, ver 1.4) o
+se reprocesa (ej. reciclar solo la botella). La edición actual sirve para
+errores de tipeo (puse 15 y eran 16), no para este flujo.
 
 ### 3.4 Corrección de jornadas mal registradas
 Caso: registré 8 horas a Juan pero eran de Pedro, o Juan no vino ese día. Necesita
@@ -136,6 +209,44 @@ merma automática (evento de inventario, no borrar la fila — ver el principio
 de inmutabilidad del histórico) cuando un consumo deja el resto bajo el
 umbral. Falta decidir el disparador: ¿en cada consumo?, ¿una acción manual
 "limpiar residuos"? No es urgente: sin impacto financiero ni visual hoy.
+
+### 3.6 Pre-recetas (producción intermedia pre-llenada) — del Excel
+Plantilla por producto intermedio ("Jarabe Base 1 = 5 kg de azúcar + 3 L de
+alcohol"): al elegirla, el formulario de producción se pre-llena resolviendo
+los lotes por FIFO (3.1) y respetando restos (si al lote más viejo le quedan
+2 kg, propone 2 de ese y 3 del siguiente). Siempre editable y no
+restrictivo: las horas de trabajadores cambian cada día, y un lote puede
+llevar algo extra o de menos. Requiere tablas nuevas de receta (cabecera +
+detalle de insumos).
+
+### 3.7 Cierre semanal de producción con prorrateo de horas standby — del Excel
+Cómo se asignan hoy las horas directas en la práctica (no hay capataz que
+mida qué produjo cada quien, y una producción puede quedar a medias hasta el
+día siguiente): las jornadas de la semana se acumulan en standby y el
+sábado, al cerrar, se reparten entre los productos producidos esa semana en
+proporción a sus botellas equivalentes. Ej: 32 botellas totales (20 de A, 7
+de B, 5 de C) → PROD A se lleva 20/32 de las horas de **cada** jornada de la
+semana. Cada producto conserva sus insumos reales (MP e intermedios se
+registran por producción); solo las horas se prorratean. Hoy este cálculo se
+hace a mano fuera del sistema; falta una pantalla de "cierre semanal" que
+tome las jornadas en standby + las producciones de la semana y genere el
+detalle de trabajo de cada una. Alimenta directamente las horas acumuladas
+de 1.1.
+
+### 3.8 Compra dividida en proporción (pliegos de etiquetas) — del Excel
+Un pliego doble oficio cuesta 100 Bs y salen 5 etiquetas de A, 3 de B y 4 de
+C, de tamaños distintos: el costo se reparte por **área** (área de cada
+etiqueta × cantidad / área total del pliego) y cada tipo de etiqueta entra
+como materia prima con su costo proporcional. Hoy se calcula a mano y se
+ingresan como compras separadas. Pantalla auxiliar: una compra "madre" que
+se despieza en N materias primas con reparto proporcional por área (o por
+un factor genérico).
+
+### 3.9 Botellas por paquete en Producto_Terminado — del Excel
+Columna nueva `Botellas_Por_Paquete` (6, 8 o 1 según el producto, migración
+simple). Habilita: resúmenes en paquetes equivalentes (4.7), el costo por
+paquete en la simulación (1.5), y registrar producción/venta por paquete
+con conversión automática a botellas.
 
 ---
 
@@ -250,6 +361,13 @@ Para mostrarlo también en la columna "Última foto" haría falta:
   prima en cada foto (cambio de esquema, migración nueva), o si se deja el
   detalle histórico solo para terminado.
 
+### 4.7 Paquetes equivalentes y redondeo a 2 decimales — del Excel
+En el detalle de producto terminado del balance (y donde aplique), además de
+botellas mostrar una columna "paquetes equivalentes" (botellas /
+`Botellas_Por_Paquete`, ver 3.9). Y redondear la **presentación** de los
+números no enteros a 2 decimales en todas las tablas (solo presentación: los
+cálculos internos siguen en `Decimal` completo).
+
 ---
 
 ## 5. PROVEEDORES
@@ -257,6 +375,17 @@ Para mostrarlo también en la columna "Última foto" haría falta:
 ### 5.1 Base de datos de proveedores
 Agregar tabla `Proveedor` y un `Id_Proveedor` en `Compra`, para comparar precios
 de la misma materia prima entre proveedores y decidir cuál conviene.
+
+**Ampliación (jul 2026) — compras a crédito y pedidos pendientes:**
+- **Crédito parcial:** proveedores de confianza entregan MP pagando solo una
+  parte ("cuesta 100, dame 20 y luego el resto"): la MP entra al stock
+  usable ya, y se crea una deuda a ese proveedor (ver 7.0) por el saldo. El
+  costo del lote es el precio COMPLETO (pagado + adeudado), no solo lo
+  desembolsado — si no, el costo del producto sale mentiroso.
+- **Pedido pendiente:** mismo caso pero la MP aún no llegó a la fábrica: se
+  registra como pendiente (sin stock usable) con su deuda ya creada; el día
+  que llega se convierte en lote disponible. Requiere un estado o tabla de
+  pedidos y la acción "recibir".
 
 ---
 
@@ -371,6 +500,37 @@ El MVP usa estilos por defecto (tablas con border=1, modo oscuro de Vite). Dise�
 una identidad visual propia: colores, tipografía, espaciado, tablas con mejor
 formato.
 
+### 6.10 Fecha única de registro (global) — del Excel
+Campo de fecha junto al título de la app: si tiene valor, todos los
+registros que se hagan usan esa fecha; si está vacío, hoy (comportamiento
+actual). Caso real: una semana sin poder pasar datos, se anota en papel y el
+fin de semana se registra todo cronológicamente con su fecha verdadera —
+hoy habría que cambiar la fecha formulario por formulario. Implementación:
+estado global en el frontend (contexto de React) que los formularios leen
+como valor por defecto; el backend ya acepta fecha explícita en todo
+(`fecha or date.today()`), no necesita cambios.
+
+### 6.11 Indicadores en vivo al armar una producción — del Excel
+En producción intermedia y terminada, junto al botón de confirmar, dos
+etiquetas que se recalculan al agregar/quitar insumos: costo unitario
+parcial (por litro o botella) y horas hombre invertidas hasta el momento.
+Para tener esos números frescos día a día sin esperar al cierre.
+
+### 6.12 Venta mejorada (tabla, precio sugerido, taxi/delivery, ganancia) — del Excel
+Mejoras de la hoja de ventas del Excel sobre la pantalla actual:
+- Las líneas agregadas como **tabla** (no lista), con columnas: costo
+  unitario del lote, precio recomendado, ganancia por línea y % de ganancia.
+- **Precio sugerido con margen mínimo:** margen configurable (35% en el
+  Excel, celda global → candidato a `app/config.py`); sugerir el **mayor**
+  entre el precio recomendado del catálogo y costo × (1/(1−margen)),
+  redondeado a 2 decimales por botella.
+- **Taxi/delivery:** campo con el costo del transporte de la venta,
+  prorrateado entre todas las botellas, para ver el ingreso neto real por
+  línea (permite "jugar": hasta dónde descontar, quién paga el taxi, qué
+  combinación de productos conviene pushear).
+- Totales de la venta: ganancia neta y % de ganancia ponderado.
+- Lotes automáticos por FIFO (3.1) en vez de elegir lote por lote.
+
 ---
 
 ## 7. MÓDULOS CON BACKEND PERO SIN PANTALLA (o parciales)
@@ -380,6 +540,15 @@ El sistema tiene tablas de Deuda y Movimiento_Deuda en el diseño, pero no hay
 pantalla para gestionarlas. Falta: registrar deudas, amortizarlas (con la lógica
 de reparto por prioridad de cuentas, ver sección 2), y verlas reflejadas en el
 balance. Es parte del flujo financiero completo.
+
+**Ampliación (jul 2026) — casos concretos que debe cubrir:**
+- **Deuda simple sin ingreso:** alguien pagó 200 Bs de un gasto por
+  nosotros, o el interés que cobra el banco por un préstamo: sube la deuda,
+  no toca ninguna cuenta.
+- **Préstamo con ingreso:** el banco presta 100 a Billetera Fábrica: deuda
+  + movimiento ENTRADA a la cuenta, en una sola operación atómica. El
+  interés de ese préstamo entra como deuda simple del punto anterior.
+- **Deuda a proveedor** nacida de una compra a crédito parcial (ver 5.1).
 
 ### 7.1 Códigos QR para etiquetas físicas
 Generar códigos QR (en el backend, no se guardan en BD) para etiquetar físicamente
@@ -416,28 +585,65 @@ Ya se agregaron Valor_Stock_Intermedio y Valor_Horas_Standby al balance (migraci
 como columnas para que las fotos históricas los guarden y la comparación temporal
 sea completa.
 
+### 7.5 Transferencias entre cuentas e ingresos externos — del Excel
+Hoy no existe forma de mover dinero entre cuentas/billeteras ni de registrar
+un ingreso que no sea una venta (ej. "ingresan 500 Bs externos a Billetera
+Fábrica", con descripción de dónde viene). En el Excel había una hoja de
+transacciones que hacía ambas cosas. La tabla `Movimiento` ya está
+preparada: tiene `Id_Cuenta_Origen` e `Id_Cuenta_Destino` — una
+transferencia llena ambas (resta de una, suma a la otra), un ingreso externo
+solo el destino. Falta servicio + endpoint + pantalla. Con el reparto por
+prioridad (sección 2) las transferencias manuales deberían volverse raras,
+pero el ingreso externo sigue siendo necesario siempre.
+
 ---
 
 ## 8. INTEGRACIONES Y DESPLIEGUE
 
-### 7.1 Power BI conectado a PostgreSQL
+### 8.1 Power BI conectado a PostgreSQL
 Para reportería avanzada sin construir todo el frontend de reportes. Conectar
 Power BI directamente a la base para dashboards.
 
-### 7.2 Google Maps API
+**Ampliación (jul 2026) — qué dashboards van ahí (no en el frontend):**
+- Pareto 80/20 de rentabilidad: qué 20% de los productos deja el 80% de la
+  ganancia.
+- Producto más vendido y producto con más margen, por período.
+- Mejor cliente / mejor zona (ya hay sector y lat/long).
+- Evolución mensual de patrimonio y escenarios (las fotos de Balance).
+- Rentabilidad real por producto con el acumulado de la sección 2 ("¿este
+  producto ya devolvió la inversión a la fábrica?"), cortado por mes.
+- Análisis de precios por proveedor (cuando exista 5.1).
+
+Criterio de reparto: el frontend web se queda con lo **operativo** del día a
+día (registrar, validar, balance, resumen diario); el análisis exploratorio
+e histórico va a Power BI (Desktop es gratis; conexión con usuario de solo
+lectura a PostgreSQL).
+
+### 8.2 Google Maps API
 Para los sectores/zonas de clientes: mostrar clientes en un mapa, análisis de
 ventas por zona. Ya se guardan latitud/longitud (con extracción desde link de Maps).
 
-### 7.3 Respaldos automáticos (pg_dump)
+**Ampliación (jul 2026) — ruteo de venta:** elegir los sectores a visitar y
+trazar la ruta entre los clientes de esa zona (vecino más cercano iterado, o
+el optimizador de la API de rutas de Google, que ya considera tráfico,
+sentidos de vía y calles cerradas — antes se aproximaba con Pitágoras sin
+API). Para el final, después de lo funcional.
+
+### 8.3 Respaldos automáticos (pg_dump)
 Los datos viven en PostgreSQL, NO en Git. Git no los protege. Configurar respaldos
 periódicos con `pg_dump` antes de manejar datos reales del negocio, para no
 perderlos ante una falla de disco.
 
-### 7.4 Migración de datos reales del Excel
+### 8.4 Migración de datos reales del Excel (incluye limpieza previa)
+Antes de migrar: **borrar todos los datos de prueba** acumulados durante el
+desarrollo y dejar la BD limpia (script de reset: TRUNCATE de las tablas de
+datos con reinicio de secuencias/ids; decidir si los catálogos de prueba se
+conservan o también se recrean desde el Excel). Con respaldo previo (8.3)
+por si acaso.
 Al final, cuando el sistema esté probado, migrar los 3 archivos de Excel con los
 datos históricos reales, con pruebas de paridad contra el Excel.
 
-### 7.5 Subir el repositorio a GitHub
+### 8.5 Subir el repositorio a GitHub
 Actualmente el versionado es local. Subir a GitHub cuando haya una beta, con el
 README y la documentación, para que el repositorio sea visible (útil para CV).
 
@@ -445,7 +651,7 @@ README y la documentación, para que el repositorio sea visible (útil para CV).
 
 ## 9. TIPOS Y VALIDACIONES
 
-### 8.1 Conversión Decimal automática en Pydantic
+### 9.1 Conversión Decimal automática en Pydantic (antes numerada 8.1)
 
 **Estado: implementado.** Todos los campos monetarios/de cantidad en los
 esquemas Pydantic de entrada (`rutas/*.py`) pasaron de `float` a `Decimal`
@@ -460,7 +666,7 @@ frontera. Verificado con curl (POST/PATCH `/activos` con `1234.57` y
 `999.99`, sin arrastrar basura de punto flotante) y build de frontend sin
 cambios necesarios ahí (el frontend sigue mandando JSON números normales).
 
-### 8.2 Validación en frontend (comodidad)
+### 9.2 Validación en frontend (comodidad, antes numerada 8.2)
 El backend valida todo (seguridad). Agregar validaciones en el frontend como
 comodidad: avisar antes de enviar (ej. horas pedidas > horas disponibles) sin
 esperar el viaje al servidor.
