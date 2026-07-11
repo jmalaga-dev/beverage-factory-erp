@@ -10,6 +10,7 @@ import PaginaProduccionTerminada from './paginas/PaginaProduccionTerminada'
 import PaginaVentas from './paginas/PaginaVentas'
 import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
+import PaginaTransferencias from './paginas/PaginaTransferencias'
 import PaginaMermas from './paginas/PaginaMermas'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaActivos from './paginas/PaginaActivos'
@@ -35,6 +36,7 @@ const categorias = [
   { titulo: 'Finanzas', links: [
     { to: '/pagos', label: 'Pagos' },
     { to: '/gastos', label: 'Gastos' },
+    { to: '/transferencias', label: 'Transferencias' },
   ] },
   { titulo: 'Cierre', links: [
     { to: '/mermas', label: 'Mermas' },
@@ -68,6 +70,7 @@ function App() {
           <Route path="/ventas" element={<PaginaVentas />} />
           <Route path="/pagos" element={<PaginaPagos />} />
           <Route path="/gastos" element={<PaginaGastos />} />
+          <Route path="/transferencias" element={<PaginaTransferencias />} />
           <Route path="/mermas" element={<PaginaMermas />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />

@@ -59,6 +59,7 @@ class Producto_Terminado(Base):
     Descripcion_Producto_Terminado = Column(String, nullable=False)
     Precio_Venta_Recomendado_Producto_Terminado = Column(Numeric)
     Habilitado_Producto_Terminado = Column(Boolean, nullable=False, server_default="true")
+    Botellas_Por_Paquete = Column(Integer, nullable=False, server_default="1")
 
     producciones = relationship("Produccion", back_populates="producto_terminado")
     horas_mes = relationship("Horas_Producto_Mes", back_populates="producto_terminado")

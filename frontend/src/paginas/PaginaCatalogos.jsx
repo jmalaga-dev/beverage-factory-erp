@@ -53,10 +53,12 @@ function PaginaCatalogos() {
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'precio_recomendado', label: 'Precio recomendado', tipo: 'number' },
+          { nombre: 'botellas_por_paquete', label: 'Botellas por paquete', tipo: 'number' },
         ]}
         camposTabla={[
           { key: 'descripcion', label: 'Descripción' },
           { key: 'precio_recomendado', label: 'Precio rec.' },
+          { key: 'botellas_por_paquete', label: 'Botellas/paquete' },
         ]}
       />
 

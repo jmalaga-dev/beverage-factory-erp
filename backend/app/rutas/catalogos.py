@@ -21,7 +21,7 @@ Edicion / deshabilitar / borrar (mejora 6.1):
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
@@ -335,6 +335,7 @@ def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
             "id_producto_terminado": p.Id_Producto_Terminado,
             "descripcion": p.Descripcion_Producto_Terminado,
             "precio_recomendado": float(p.Precio_Venta_Recomendado_Producto_Terminado or 0),
+            "botellas_por_paquete": p.Botellas_Por_Paquete,
             "habilitado": p.Habilitado_Producto_Terminado,
             "en_uso": p.Id_Producto_Terminado in usados,
         }
@@ -345,6 +346,14 @@ def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
 class ProductoTerminadoEntrada(BaseModel):
     descripcion: str
     precio_recomendado: Decimal | None = None
+    botellas_por_paquete: int | None = None
+
+    @field_validator("botellas_por_paquete")
+    @classmethod
+    def _validar_botellas_por_paquete(cls, v):
+        if v is not None and v < 1:
+            raise ValueError("Botellas por paquete debe ser al menos 1")
+        return v
 
 
 @router.post("/productos-terminados")
@@ -352,7 +361,8 @@ def crear_producto_terminado(datos: ProductoTerminadoEntrada, sesion: Session = 
     if not datos.descripcion.strip():
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
     p = Producto_Terminado(Descripcion_Producto_Terminado=datos.descripcion,
-                           Precio_Venta_Recomendado_Producto_Terminado=datos.precio_recomendado or None)
+                           Precio_Venta_Recomendado_Producto_Terminado=datos.precio_recomendado or None,
+                           Botellas_Por_Paquete=datos.botellas_por_paquete or 1)
     sesion.add(p)
     sesion.commit()
     return {"mensaje": "Producto terminado creado", "id": p.Id_Producto_Terminado}
@@ -361,6 +371,14 @@ def crear_producto_terminado(datos: ProductoTerminadoEntrada, sesion: Session = 
 class ProductoTerminadoEdicion(BaseModel):
     descripcion: str | None = None
     precio_recomendado: Decimal | None = None
+    botellas_por_paquete: int | None = None
+
+    @field_validator("botellas_por_paquete")
+    @classmethod
+    def _validar_botellas_por_paquete(cls, v):
+        if v is not None and v < 1:
+            raise ValueError("Botellas por paquete debe ser al menos 1")
+        return v
 
 
 @router.patch("/productos-terminados/{id_producto}")
@@ -374,6 +392,8 @@ def actualizar_producto_terminado(id_producto: int, datos: ProductoTerminadoEdic
         p.Descripcion_Producto_Terminado = datos.descripcion.strip()
     if datos.precio_recomendado is not None:
         p.Precio_Venta_Recomendado_Producto_Terminado = datos.precio_recomendado
+    if datos.botellas_por_paquete is not None:
+        p.Botellas_Por_Paquete = datos.botellas_por_paquete
     sesion.commit()
     return {"mensaje": "Producto terminado actualizado", "id": p.Id_Producto_Terminado}
 
