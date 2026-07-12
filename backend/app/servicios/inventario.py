@@ -45,20 +45,22 @@ def _costo_unitario_lote(lote, origen_lote):
     return 0
 
 
-def registrar_movimiento_inventario(
+def _aplicar_movimiento_inventario(
     sesion, tipo, sentido, origen_lote, cantidad, motivo=None,
     id_compra=None, id_produccion=None, id_prod_intermedio=None,
     ref_reproceso=None, fecha=None,
     absorber_costo=True, botellas_estimadas_absorcion=None,
 ):
     """
-    Registra un movimiento de inventario sobre un lote.
+    Aplica un movimiento de inventario sobre un lote SIN hacer commit: valida,
+    crea el registro, ajusta el stock y (si es merma) absorbe el costo. Se deja
+    sin commit para poder COMPONER varias operaciones en una sola transaccion
+    (una devolucion = reembolso + entrada + merma/reproceso; ver devoluciones.py
+    y reproceso.py). Devuelve el Movimiento_Inventario creado.
 
     tipo: MERMA, AJUSTE, DEVOLUCION o REPROCESO
     sentido: SALIDA (resta del lote) o ENTRADA (suma al lote)
     origen_lote: COMPRA, PRODUCCION o PRODUCCION_INTERMEDIO
-    cantidad: cuanto se mueve
-    Devuelve el Movimiento_Inventario creado.
     """
 
     # ----- VALIDACIONES -----
@@ -78,43 +80,59 @@ def registrar_movimiento_inventario(
             f"El lote no tiene suficiente. Restante: {restante_actual}, se pide: {cantidad}"
         )
 
-    # ----- EJECUTAR -----
+    movimiento = Movimiento_Inventario(
+        Fecha_Movimiento_Inventario=fecha,
+        Tipo_Movimiento_Inventario=tipo,
+        Sentido_Movimiento_Inventario=sentido,
+        Origen_Lote=origen_lote,
+        Id_Compra=id_compra,
+        Id_Produccion=id_produccion,
+        Id_Produccion_Intermedio=id_prod_intermedio,
+        Cantidad_Movimiento_Inventario=cantidad,
+        Motivo_Movimiento_Inventario=motivo,
+        Ref_Reproceso=ref_reproceso,
+    )
+    sesion.add(movimiento)
+
+    # Ajustar el restante del lote segun el sentido
+    if sentido == "SALIDA":
+        setattr(lote, campo, restante_actual - cantidad)
+    else:  # ENTRADA
+        setattr(lote, campo, restante_actual + cantidad)
+
+    # Absorcion del costo de la merma (mejora 1.4): solo una MERMA real
+    # (perdida de stock) genera un costo a repartir entre las botellas
+    # futuras, y solo si el usuario lo pidio (absorber_costo). Ajustes/
+    # devoluciones/reprocesos nunca. Las botellas estimadas las decide la
+    # pantalla (o la tasa por defecto si no se indican).
+    if tipo == "MERMA" and sentido == "SALIDA" and absorber_costo:
+        costo_perdido = cantidad * _costo_unitario_lote(lote, origen_lote)
+        if costo_perdido > 0:
+            desc = motivo.strip() if motivo and motivo.strip() else f"Merma de lote {origen_lote}"
+            crear_item_merma(sesion, costo_perdido, f"Merma: {desc}", fecha,
+                             botellas_estimadas=botellas_estimadas_absorcion)
+
+    return movimiento
+
+
+def registrar_movimiento_inventario(
+    sesion, tipo, sentido, origen_lote, cantidad, motivo=None,
+    id_compra=None, id_produccion=None, id_prod_intermedio=None,
+    ref_reproceso=None, fecha=None,
+    absorber_costo=True, botellas_estimadas_absorcion=None,
+):
+    """Registra un movimiento de inventario suelto (merma/ajuste/devolucion
+    simple) y hace commit. Envuelve a _aplicar_movimiento_inventario."""
     try:
-        movimiento = Movimiento_Inventario(
-            Fecha_Movimiento_Inventario=fecha,
-            Tipo_Movimiento_Inventario=tipo,
-            Sentido_Movimiento_Inventario=sentido,
-            Origen_Lote=origen_lote,
-            Id_Compra=id_compra,
-            Id_Produccion=id_produccion,
-            Id_Produccion_Intermedio=id_prod_intermedio,
-            Cantidad_Movimiento_Inventario=cantidad,
-            Motivo_Movimiento_Inventario=motivo,
-            Ref_Reproceso=ref_reproceso,
+        movimiento = _aplicar_movimiento_inventario(
+            sesion, tipo, sentido, origen_lote, cantidad, motivo=motivo,
+            id_compra=id_compra, id_produccion=id_produccion,
+            id_prod_intermedio=id_prod_intermedio, ref_reproceso=ref_reproceso,
+            fecha=fecha, absorber_costo=absorber_costo,
+            botellas_estimadas_absorcion=botellas_estimadas_absorcion,
         )
-        sesion.add(movimiento)
-
-        # Ajustar el restante del lote segun el sentido
-        if sentido == "SALIDA":
-            setattr(lote, campo, restante_actual - cantidad)
-        else:  # ENTRADA
-            setattr(lote, campo, restante_actual + cantidad)
-
-        # Absorcion del costo de la merma (mejora 1.4): solo una MERMA real
-        # (perdida de stock) genera un costo a repartir entre las botellas
-        # futuras, y solo si el usuario lo pidio (absorber_costo). Ajustes/
-        # devoluciones/reprocesos nunca. Las botellas estimadas las decide la
-        # pantalla de Mermas (o la tasa por defecto si no se indican).
-        if tipo == "MERMA" and sentido == "SALIDA" and absorber_costo:
-            costo_perdido = cantidad * _costo_unitario_lote(lote, origen_lote)
-            if costo_perdido > 0:
-                desc = motivo.strip() if motivo and motivo.strip() else f"Merma de lote {origen_lote}"
-                crear_item_merma(sesion, costo_perdido, f"Merma: {desc}", fecha,
-                                 botellas_estimadas=botellas_estimadas_absorcion)
-
         sesion.commit()
         return movimiento
-
     except Exception as e:
         sesion.rollback()
         raise e

@@ -251,6 +251,28 @@ errores de tipeo (puse 15 y eran 16), no para este flujo.
   nuevo**, enlazado con el de origen por `Ref_Reproceso` (columna que ya
   existe en `Movimiento_Inventario`, aún sin usar).
 
+**Estado: implementado.** Alcance decidido (jul 2026): devolución con vínculo
+**opcional** a la venta, y reproceso **terminado→mismo producto** con insumos
+nuevos. Nueva pantalla **Devoluciones** (grupo *Cierre*).
+- Servicio `devoluciones.py` (`registrar_devolucion`): una operación atómica
+  que hace el **reembolso** (SALIDA de una cuenta, puede ser 0) y **siempre**
+  devuelve el producto al stock del lote original (`DEVOLUCION` ENTRADA), y
+  según el destino: **STOCK** (se queda), **MERMA** (lo desecha con `MERMA`
+  SALIDA + absorción del costo, ver 1.4) o **REPROCESO**. El "entra y después
+  sale" deja el rastro real en inventario. Con `id_venta` valida que el lote
+  se vendió ahí y que no se devuelva más de lo vendido.
+- Servicio `reproceso.py` (`reprocesar`): SALIDA parcial del lote origen
+  (marcada `REPROCESO`, `Ref_Reproceso` = lote nuevo) + crea un lote nuevo del
+  mismo producto cuyo costo = *(costo del origen × cantidad)* + insumos nuevos
+  (tapas=MP + trabajo), **sin re-absorción** (esas botellas ya absorbieron).
+  Se expone también suelto (`POST /reprocesos`) para roturas en depósito.
+- Se refactorizó `inventario.py` a un core sin commit (`_aplicar_movimiento_
+  inventario`) para componer dinero + stock + merma/reproceso en una sola
+  transacción. Rutas: `POST /devoluciones`, `POST /reprocesos`, y
+  `GET /ventas/{id}` (detalle para el vínculo). Verificado con una prueba de
+  integración de los 4 caminos sobre la BD real (datos `__TEST`, borrados) y
+  `vite build`.
+
 ### 3.4 Corrección de jornadas mal registradas
 Caso: registré 8 horas a Juan pero eran de Pedro, o Juan no vino ese día. Necesita
 poder editar/anular una jornada (operación de edición, distinta de una merma de

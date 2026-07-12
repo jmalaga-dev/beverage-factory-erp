@@ -228,6 +228,39 @@ estimadas y restantes). Dos decisiones:
   contable atado a la venta; si se pagó de verdad, se registra aparte como un
   Gasto normal. Por eso `ventas.py` y la tabla `Venta` no cambiaron.
 
+### 3.10 Devolución y reproceso (mejora 3.3)
+- **La devolución es una sola operación atómica que compone tres cosas:** el
+  reembolso (SALIDA de dinero de una cuenta), la vuelta del producto al stock
+  del lote original (`DEVOLUCION` ENTRADA), y —según el destino elegido— nada
+  más (STOCK), una merma (`MERMA` SALIDA + absorción del costo, 1.4) o un
+  reproceso. Decisión clave: **el producto SIEMPRE vuelve primero al stock y
+  luego, si corresponde, se merma o reprocesa** (entra y sale). No es un rodeo:
+  deja en inventario el rastro real de lo que pasó (volvió, y después se
+  desechó/reprocesó), en vez de un salto contable sin traza.
+- **El reembolso y el costo van por caminos separados.** El dinero que se
+  devuelve es el PRECIO que pagó el cliente (lo elige el usuario, o se
+  autocompleta desde la venta vinculada); el efecto en inventario/costo usa el
+  COSTO del lote. Son magnitudes distintas y no se mezclan.
+- **Vínculo con la venta = opcional.** Si se indica `id_venta`, se valida que
+  ese lote se haya vendido en esa venta y que no se devuelva más de lo vendido,
+  y el frontend autocompleta el reembolso (precio real × cantidad). Sin
+  vínculo, se elige el lote y el monto a mano (devoluciones viejas, negociadas,
+  o cuando no importa rastrear la venta exacta).
+- **Reproceso = terminado → mismo producto, arrastrando su costo.** Consume una
+  cantidad PARCIAL de un lote y crea un lote NUEVO del mismo producto; su costo
+  = *(costo unitario del origen × cantidad)* + insumos nuevos (tapas=MP +
+  trabajo). Se enlazan por `Ref_Reproceso` (el movimiento de SALIDA del origen
+  apunta al lote nuevo). **No corre absorción de indirectos (1.4):** esas
+  botellas ya absorbieron su parte al producirse; volver a absorber las cobraría
+  doble. La `cantidad_producida` puede ser ≤ a la consumida (algunas se rompen
+  del todo); nunca mayor (no se crea producto de la nada). Se puede reprocesar
+  también sin devolución (rotura en depósito), misma lógica.
+- **Un core de inventario sin commit para poder componer.** Se separó
+  `_aplicar_movimiento_inventario` (valida, mueve stock, absorbe; sin commit)
+  de `registrar_movimiento_inventario` (lo envuelve y hace commit). Así la
+  devolución encadena reembolso + entrada + merma/reproceso en UNA transacción
+  (todo o nada), reutilizando la lógica de merma/absorción ya probada.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)

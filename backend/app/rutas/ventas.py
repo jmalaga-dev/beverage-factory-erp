@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.models import Cliente, Detalle_Venta, Venta
+from app.models import Cliente, Detalle_Venta, Produccion, Producto_Terminado, Venta
 from app.servicios.ventas import registrar_venta
 
 router = APIRouter(tags=["ventas"])
@@ -70,3 +70,31 @@ def listar_ventas(sesion: Session = Depends(get_sesion)):
             "total": round(total, 2),
         })
     return resultado
+
+
+@router.get("/ventas/{id_venta}")
+def detalle_venta(id_venta: int, sesion: Session = Depends(get_sesion)):
+    """Detalle de una venta: sus lineas con lote, producto, cantidad y precio.
+    Lo usa la pantalla de Devoluciones para vincular la devolucion a la venta
+    original (autocompletar el reembolso y validar la cantidad)."""
+    venta = sesion.get(Venta, id_venta)
+    if venta is None:
+        raise HTTPException(status_code=404, detail=f"No existe venta con Id {id_venta}")
+    cliente = sesion.get(Cliente, venta.Id_Cliente)
+    detalles = sesion.query(Detalle_Venta).filter_by(Id_Venta=id_venta).all()
+    lineas = []
+    for d in detalles:
+        produccion = sesion.get(Produccion, d.Id_Produccion)
+        producto = sesion.get(Producto_Terminado, produccion.Id_Producto_Terminado) if produccion else None
+        lineas.append({
+            "id_produccion": d.Id_Produccion,
+            "nombre_producto": producto.Descripcion_Producto_Terminado if producto else "?",
+            "cantidad": float(d.Cantidad_Venta),
+            "precio_real": float(d.Precio_Venta_Real),
+        })
+    return {
+        "id_venta": venta.Id_Venta,
+        "cliente": cliente.Nombre_Cliente if cliente else "?",
+        "fecha": str(venta.Fecha_Venta),
+        "lineas": lineas,
+    }

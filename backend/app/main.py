@@ -18,6 +18,7 @@ from app.rutas import (
     clientes,
     compras,
     deudas,
+    devoluciones,
     fifo,
     gastos,
     inventario,
@@ -77,3 +78,4 @@ app.include_router(deudas.router)
 app.include_router(absorcion.router)
 app.include_router(fifo.router)
 app.include_router(recetas.router)
+app.include_router(devoluciones.router)

@@ -17,6 +17,7 @@ import PaginaTransferencias from './paginas/PaginaTransferencias'
 import PaginaDeudas from './paginas/PaginaDeudas'
 import PaginaAbsorcion from './paginas/PaginaAbsorcion'
 import PaginaMermas from './paginas/PaginaMermas'
+import PaginaDevoluciones from './paginas/PaginaDevoluciones'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaActivos from './paginas/PaginaActivos'
 import PaginaBalance from './paginas/PaginaBalance'
@@ -49,6 +50,7 @@ const categorias = [
   ] },
   { titulo: 'Cierre', links: [
     { to: '/mermas', label: 'Mermas' },
+    { to: '/devoluciones', label: 'Devoluciones' },
     { to: '/activos', label: 'Activos' },
     { to: '/balance', label: 'Balance' },
     { to: '/comparar-balances', label: 'Comparar cierres' },
@@ -104,6 +106,7 @@ function AppInterno() {
           <Route path="/deudas" element={<PaginaDeudas />} />
           <Route path="/absorcion" element={<PaginaAbsorcion />} />
           <Route path="/mermas" element={<PaginaMermas />} />
+          <Route path="/devoluciones" element={<PaginaDevoluciones />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
           <Route path="/comparar-balances" element={<PaginaComparativaBalances />} />
