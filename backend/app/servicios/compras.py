@@ -29,10 +29,13 @@ def _proveedores_activos_de(sesion, id_materia_prima):
     return activos
 
 
-def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total,
-                     fecha=None, id_proveedor=None, monto_pagado=None, recibida=True):
+def _aplicar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total,
+                    fecha=None, id_proveedor=None, monto_pagado=None, recibida=True):
     """
-    Registra una compra de materia prima.
+    Aplica una compra de materia prima SIN hacer commit: valida, mueve dinero,
+    crea deuda si corresponde y crea el lote. Se deja sin commit para poder
+    COMPONER varias compras en una sola transaccion (una compra dividida por
+    area = N compras que se registran todas o ninguna; ver compra_dividida.py).
 
     Parametros:
         sesion: la sesion de SQLAlchemy (la "conversacion" con la base)
@@ -53,7 +56,7 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
             pedido pendiente: se registra el lote con restante 0 (invisible
             como stock) hasta llamar a recibir_compra (5.1).
 
-    Devuelve: el objeto Compra creado.
+    Devuelve: el objeto Compra creado (sin commit).
     Lanza ValueError si algo no es valido (ej: saldo insuficiente).
     """
 
@@ -107,50 +110,57 @@ def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total
             f"{cuenta.Saldo_Actual_Cuenta} Bs y el pago es de {monto_pagado} Bs"
         )
 
-    # ----- 2. EJECUTAR LA OPERACION (todo o nada) -----
+    # ----- 2. EJECUTAR (sin commit) -----
 
-    try:
-        id_movimiento = None
-        # 2a. Movimiento de dinero solo por lo que se paga ahora (si se paga algo)
-        if monto_pagado > 0:
-            movimiento = Movimiento(
-                Fecha_Movimiento=fecha,
-                Tipo_Movimiento="SALIDA",
-                Id_Cuenta_Origen=id_cuenta,
-                Id_Cuenta_Destino=None,        # sale del sistema (pago a proveedor)
-                Monto_Movimiento=monto_pagado,
-                Descripcion_Movimiento=f"Compra de {materia.Descripcion_Materia_Prima}",
-            )
-            sesion.add(movimiento)
-            sesion.flush()   # asigna el Id_Movimiento sin confirmar aun
-            id_movimiento = movimiento.Id_Movimiento
-            cuenta.Saldo_Actual_Cuenta = cuenta.Saldo_Actual_Cuenta - monto_pagado
-
-        # 2b. El faltante se vuelve deuda al proveedor (compra a credito)
-        if faltante > 0:
-            aumentar_deuda_proveedor(sesion, id_proveedor, faltante, fecha)
-
-        # 2c. Crear la compra. El precio guardado es el COMPLETO (costo real).
-        #     Si es un pedido pendiente, no hay stock disponible aun (restante 0).
-        compra = Compra(
-            Id_Materia_Prima=id_materia_prima,
-            Fecha_Compra=fecha,
-            Cantidad_Compra=cantidad,
-            Precio_Compra=precio_total,
-            Cantidad_Restante_Compra=(cantidad if recibida else 0),
-            Id_Movimiento=id_movimiento,
-            Id_Proveedor=id_proveedor,
-            Recibida_Compra=recibida,
+    id_movimiento = None
+    # 2a. Movimiento de dinero solo por lo que se paga ahora (si se paga algo)
+    if monto_pagado > 0:
+        movimiento = Movimiento(
+            Fecha_Movimiento=fecha,
+            Tipo_Movimiento="SALIDA",
+            Id_Cuenta_Origen=id_cuenta,
+            Id_Cuenta_Destino=None,        # sale del sistema (pago a proveedor)
+            Monto_Movimiento=monto_pagado,
+            Descripcion_Movimiento=f"Compra de {materia.Descripcion_Materia_Prima}",
         )
-        sesion.add(compra)
+        sesion.add(movimiento)
+        sesion.flush()   # asigna el Id_Movimiento sin confirmar aun
+        id_movimiento = movimiento.Id_Movimiento
+        cuenta.Saldo_Actual_Cuenta = cuenta.Saldo_Actual_Cuenta - monto_pagado
 
-        # 2d. Confirmar TODO junto: aqui se guarda de verdad
+    # 2b. El faltante se vuelve deuda al proveedor (compra a credito)
+    if faltante > 0:
+        aumentar_deuda_proveedor(sesion, id_proveedor, faltante, fecha)
+
+    # 2c. Crear la compra. El precio guardado es el COMPLETO (costo real).
+    #     Si es un pedido pendiente, no hay stock disponible aun (restante 0).
+    compra = Compra(
+        Id_Materia_Prima=id_materia_prima,
+        Fecha_Compra=fecha,
+        Cantidad_Compra=cantidad,
+        Precio_Compra=precio_total,
+        Cantidad_Restante_Compra=(cantidad if recibida else 0),
+        Id_Movimiento=id_movimiento,
+        Id_Proveedor=id_proveedor,
+        Recibida_Compra=recibida,
+    )
+    sesion.add(compra)
+
+    return compra
+
+
+def registrar_compra(sesion, id_materia_prima, id_cuenta, cantidad, precio_total,
+                     fecha=None, id_proveedor=None, monto_pagado=None, recibida=True):
+    """Registra una compra suelta y hace commit. Envuelve a _aplicar_compra."""
+    try:
+        compra = _aplicar_compra(
+            sesion, id_materia_prima, id_cuenta, cantidad, precio_total,
+            fecha=fecha, id_proveedor=id_proveedor, monto_pagado=monto_pagado,
+            recibida=recibida,
+        )
         sesion.commit()
-
         return compra
-
     except Exception as e:
-        # Si algo fallo a mitad, deshacer TODO
         sesion.rollback()
         raise e
 

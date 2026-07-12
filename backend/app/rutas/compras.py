@@ -13,6 +13,7 @@ from app.config import UMBRAL_STOCK_MINIMO
 from app.dependencias import get_sesion
 from app.models import Compra, Materia_Prima, Proveedor
 from app.servicios.compras import registrar_compra, recibir_compra
+from app.servicios.compra_dividida import registrar_compra_dividida
 
 router = APIRouter(tags=["compras"])
 
@@ -53,6 +54,58 @@ def crear_compra(datos: CompraEntrada, sesion: Session = Depends(get_sesion)):
             "mensaje": "Compra registrada" if compra.Recibida_Compra else "Pedido pendiente registrado",
             "id_compra": compra.Id_Compra,
             "cantidad_restante": float(compra.Cantidad_Restante_Compra),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class LineaCompraDividida(BaseModel):
+    id_materia_prima: int
+    cantidad: Decimal
+    factor: Decimal   # ej. area de una unidad; proporcional a lo que se reparte
+
+
+class CompraDivididaEntrada(BaseModel):
+    id_cuenta: int
+    precio_total: Decimal
+    lineas: list[LineaCompraDividida]
+    fecha: date | None = None
+    id_proveedor: int | None = None
+    monto_pagado: Decimal | None = None
+    recibida: bool = True
+
+
+@router.post("/compras-divididas")
+def crear_compra_dividida(datos: CompraDivididaEntrada, sesion: Session = Depends(get_sesion)):
+    """Compra 'madre' (ej. un pliego) que se reparte proporcionalmente entre
+    varias materias primas (mejora 3.8). Registra una Compra por linea."""
+    try:
+        lineas = [
+            {"id_materia_prima": l.id_materia_prima, "cantidad": l.cantidad, "factor": l.factor}
+            for l in datos.lineas
+        ]
+        resultado = registrar_compra_dividida(
+            sesion,
+            id_cuenta=datos.id_cuenta,
+            precio_total=datos.precio_total,
+            lineas=lineas,
+            fecha=datos.fecha or date.today(),
+            id_proveedor=datos.id_proveedor,
+            monto_pagado=datos.monto_pagado,
+            recibida=datos.recibida,
+        )
+        return {
+            "mensaje": "Compra dividida registrada",
+            "lineas": [
+                {
+                    "id_compra": r["id_compra"],
+                    "id_materia_prima": r["id_materia_prima"],
+                    "cantidad": float(r["cantidad"]),
+                    "proporcion": round(float(r["proporcion"]) * 100, 2),
+                    "precio_asignado": float(r["precio_asignado"]),
+                }
+                for r in resultado
+            ],
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

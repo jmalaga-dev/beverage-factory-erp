@@ -366,6 +366,29 @@ ingresan como compras separadas. Pantalla auxiliar: una compra "madre" que
 se despieza en N materias primas con reparto proporcional por área (o por
 un factor genérico).
 
+**Estado: implementado.** No fue necesaria una tabla nueva: la "compra madre"
+es una sección de la pantalla **Compras** que reparte un `precio_total` entre
+N líneas y registra **una `Compra` normal por línea**, todas del mismo
+proveedor y cuenta, en **una sola transacción atómica** (o se registran todas
+o ninguna). Cada línea lleva un **factor genérico** (no solo área: cualquier
+número proporcional — peso, volumen...); el reparto es **solo por factor**
+(`factor_línea / factor_total`) — la **cantidad NO pesa en el reparto**,
+solo sirve para registrar el lote y calcular el precio unitario resultante
+(así se ingresan bien los datos aunque cantidad y factor no guarden relación,
+ej. 500 unidades chicas vs. 3 unidades grandes reparten por su factor, no por
+cuántas hay). La **última línea absorbe el redondeo** para que la suma cierre
+exacto con el total (no queda un resto de centavos suelto). El proveedor
+elegible es la **intersección** de los proveedores activos de todas las
+materias primas de las líneas (debe vender todas). Reutiliza crédito parcial
+y pedido pendiente (5.1) repartidos con el mismo factor: si se paga solo una
+parte, el faltante también se reparte y genera deuda al proveedor por línea
+(la suma da la deuda total correcta). Se refactorizó `compras.py` igual que
+`inventario.py` en 3.3: un core sin commit (`_aplicar_compra`) reutilizable
+para componer varias compras en una transacción. Verificado con pruebas de
+integración sobre la BD real (reparto exacto, crédito parcial, cantidad
+desproporcionada al factor sin distorsionar el %, y que un fallo en una línea
+no deja compras a medias) y `vite build`.
+
 ### 3.9 Botellas por paquete en Producto_Terminado — del Excel
 Columna nueva `Botellas_Por_Paquete` (6, 8 o 1 según el producto, migración
 simple). Habilita: resúmenes en paquetes equivalentes (4.7), el costo por

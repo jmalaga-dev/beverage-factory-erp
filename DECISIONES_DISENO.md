@@ -261,6 +261,45 @@ estimadas y restantes). Dos decisiones:
   devolución encadena reembolso + entrada + merma/reproceso en UNA transacción
   (todo o nada), reutilizando la lógica de merma/absorción ya probada.
 
+### 3.11 Compra dividida por proporción (mejora 3.8)
+- **No hay tabla "compra madre".** El pliego se reparte y el resultado son N
+  filas `Compra` normales (una por materia prima), indistinguibles de una
+  compra suelta salvo por haberse creado en el mismo lote de la transacción.
+  No hacía falta modelar el vínculo entre ellas: nada en el negocio necesita
+  "deshacer el pliego completo" después, cada materia prima vive su vida como
+  cualquier otro lote (FIFO, mermas, etc. no necesitan saber que vino de un
+  reparto).
+- **Factor genérico, no "área" a secas — y el reparto es SOLO por factor.**
+  Cada línea tiene un `factor` cualquiera (área total que ocupa esa materia en
+  el pliego es el caso típico del Excel, pero puede ser peso, volumen, o
+  cualquier número proporcional); la parte del precio de una línea es
+  `factor_línea / factor_total`. **La cantidad NO participa del reparto** —
+  solo se usa para registrar `Cantidad_Compra` del lote y calcular el precio
+  unitario resultante (`precio_asignado / cantidad`). Se probó explícitamente
+  que una cantidad grande (500) junto a un factor chico no infla el % de esa
+  línea: el peso de mezclar ambos en el reparto rompía casos reales donde
+  cantidad y factor no son proporcionales entre sí.
+- **La última línea absorbe el redondeo.** Repartir con `round(..., 2)` línea
+  por línea puede dejar un resto de centavos que no cierra contra el total; en
+  vez de eso, todas las líneas salvo la última usan la proporción redondeada,
+  y la última toma "lo que falta" (`precio_total − suma_de_las_anteriores`).
+  Así la suma siempre cierra exacto.
+- **Proveedor = intersección, no elección libre.** El pliego se compra a UN
+  proveedor que vende TODAS las materias primas de las líneas; el frontend
+  calcula la intersección de proveedores activos por cada materia (vía
+  `/proveedores-por-materia/{id}`) y solo ofrece esos. Si la intersección es
+  vacía, se bloquea y se pide registrar el proveedor para las que falten.
+- **Reutiliza crédito parcial y pedido pendiente (5.1) sin reinventarlos.**
+  `monto_pagado` y `recibida` de la compra madre se reparten con el mismo
+  factor que el precio; cada línea corre exactamente la misma lógica que una
+  compra suelta (deuda al proveedor por el faltante, stock invisible hasta
+  recibir), porque literalmente reutiliza `_aplicar_compra`.
+- **Un core de compras sin commit, mismo patrón que 3.3.** Se separó
+  `_aplicar_compra` (valida, mueve dinero/deuda, crea el lote; sin commit) de
+  `registrar_compra` (lo envuelve y hace commit), para que la compra dividida
+  encadene N líneas en una transacción atómica (todo o nada): si una materia
+  prima no tiene el proveedor elegido, ninguna línea del pliego se registra.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)
@@ -292,6 +331,9 @@ Operaciones construidas (con backend, API y pantalla):
 - Compra a crédito parcial y pedido pendiente (mejora 5.1 ampliación): el
   lote guarda el precio completo (costo real), el faltante se vuelve deuda
   al proveedor, y un pedido pendiente no cuenta como stock hasta recibirlo.
+- Compra dividida por proporción (mejora 3.8): un pliego se reparte por
+  factor × cantidad entre N materias primas, cada una registrada como una
+  Compra normal, todas en una sola transacción atómica.
 - Absorción de costos indirectos por botella (mejora 1.4): registrar
   utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
   producción.
