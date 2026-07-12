@@ -160,6 +160,7 @@ def listar_producciones_terminadas(sesion: Session = Depends(get_sesion)):
             "descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
             "cantidad_restante": float(p.Cantidad_Restante_Produccion),
             "costo_unitario": float(p.Precio_Unitario_Producto_Terminado or 0),
+            "horas_acumuladas": float(p.Horas_Acumuladas or 0),
         })
     return resultado
 

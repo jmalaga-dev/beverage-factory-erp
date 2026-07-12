@@ -12,6 +12,7 @@ from app.models import (
     Compra, Registro_Trabajador, Trabajador,
 )
 from app.servicios.agrupar import agrupar_pares
+from app.servicios.horas import horas_heredadas_de
 
 
 def producir_intermedio(
@@ -49,6 +50,10 @@ def producir_intermedio(
         raise ValueError("Debe consumir al menos un insumo para producir")
 
     costo_total = 0
+    # Horas-hombre del lote (mejora 1.1): directas (jornadas) + heredadas
+    # (de los intermedios consumidos).
+    horas_directas = sum(horas for _, horas in insumos_trabajo)
+    horas_heredadas = 0
 
     # Materia prima: validar lote y sumar su costo (precio real del lote)
     for id_compra, cantidad in insumos_mp:
@@ -99,9 +104,12 @@ def producir_intermedio(
                 f"La produccion intermedia {id_prod_origen} no tiene costo unitario calculado"
             )
         costo_total += cantidad * costo_unitario_origen
+        # Hereda las horas del intermedio consumido (mejora 1.1)
+        horas_heredadas += horas_heredadas_de(prod_origen, cantidad)
 
     # Costo unitario del producto que estamos produciendo
     costo_unitario = costo_total / cantidad_producida
+    horas_acumuladas = horas_directas + horas_heredadas
 
     # ----- 2. EJECUTAR (todo o nada) -----
 
@@ -113,6 +121,7 @@ def producir_intermedio(
             Cantidad_Producida=cantidad_producida,
             Cantidad_Restante_Producida=cantidad_producida,
             Costo_Unitario_Produccion_Intermedio=costo_unitario,
+            Horas_Acumuladas=horas_acumuladas,
         )
         sesion.add(produccion)
         sesion.flush()

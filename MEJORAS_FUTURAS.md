@@ -50,17 +50,43 @@ cuántas horas hombre", y el prorrateo mensual se vuelve una suma simple
 sobre esas columnas en vez de una recursión al vuelo. Las horas directas de
 la semana se asignan con el cierre semanal de 3.7.
 
-### Estado del prorrateo (oculto en MVP)
-La pantalla PaginaProrrateo.jsx existe pero está oculta (sin enlace ni ruta en
-App.jsx) porque depende de la lógica de horas heredadas (1.1), no construida aún.
-Lo que le falta para ser funcional:
-- Registro de gastos extra POR MES con su monto variable y su FECHA DE PAGO
-  (la factura de luz cambia cada mes; el pago se hace el último día del mes).
-- Control visual de qué gastos del mes ya se pagaron (en Excel se hacía por color).
-- El prorrateo se dispara cuando todos los gastos del mes están pagados.
-- Cálculo de horas reales por producto en el período mensual (depende de 1.1).
-- Reparto proporcional de los gastos solo entre los productos que usaron la
-  fábrica ese mes, según sus horas (directas + heredadas).
+**Estado: implementado (todo de una).** Migración 018: columna
+`Horas_Acumuladas` en `Produccion_Intermedio` y `Produccion`, y tabla
+`Gasto_Extra_Mes` (monto real y pago de un gasto en un mes).
+- **Motor de horas** (`app/servicios/horas.py`): una producción nace con sus
+  horas directas (jornadas) + las **heredadas** de los intermedios que
+  consumió (`cantidad × Horas_Acumuladas_origen / Cantidad_Producida_origen`,
+  tasa por unidad constante). Se llena en `producir_intermedio`,
+  `producir_terminado` (heredadas; directas = 0 hasta el cierre), el **cierre
+  3.7** (suma las horas que asigna) y el **reproceso** (hereda del origen +
+  trabajo nuevo). Se hizo **backfill** de las producciones existentes
+  (recalculado desde sus detalles de trabajo, en orden de dependencia; solo
+  llena la columna, no toca costos/stock).
+- **Prorrateo mensual** (`app/servicios/prorrateo.py`): ya no lee horas a mano
+  — las computa sumando `Horas_Acumuladas` de los terminados del mes por
+  producto (atribución por mes de producción). Vista previa + ejecutar, con la
+  foto en `Prorrateo_Mensual` (última línea absorbe el redondeo).
+- **Gastos variables por mes** (`app/servicios/gastos_mensuales.py`): se
+  registra el monto real de cada gasto del mes y se paga (SALIDA de una
+  cuenta); el prorrateo **exige que todos estén pagados**.
+- Frontend: pantalla **Cierre de mes** (grupo *Cierre*, antes oculta): gestiona
+  los montos del mes, sus pagos, y el reparto por horas con preview. El stock
+  por lote de Prod. Terminada ahora muestra las horas acumuladas.
+- Verificado con pruebas de integración: cadena
+  concentrado→jarabe→terminado→cierre→reproceso (herencia exacta) y el flujo
+  mensual (montos→pago→reparto 75/25 sin fugas, re-ejecución bloqueada), más el
+  backfill sobre datos reales y `vite build`.
+
+### Estado del prorrateo — RESUELTO (con 1.1)
+La pantalla `PaginaProrrateo.jsx` ya está **visible y funcional** (grupo
+*Cierre* → "Cierre de mes"). Todo lo que le faltaba quedó cubierto por 1.1:
+- ✅ Gastos extra POR MES con monto variable y su pago (`Gasto_Extra_Mes`).
+- ✅ Control de qué gastos del mes están pagados (estado por fila en la pantalla).
+- ✅ El prorrateo exige que todos los gastos del mes estén pagados.
+- ✅ Horas reales por producto computadas desde `Horas_Acumuladas` (1.1).
+- ✅ Reparto proporcional solo entre los productos que produjeron ese mes.
+- Pendiente menor (no urgente): marcar visualmente el mes completo/incompleto en
+  un calendario, y editar/anular un prorrateo ya hecho.
 
 ### 1.2 Recálculo fiel del costo de trabajo (Camino 2)
 En el MVP, el costo del trabajo se calcula con la **tarifa pactada** al producir

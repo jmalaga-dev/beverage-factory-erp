@@ -1,54 +1,78 @@
 """
-Rutas de prorrateo mensual: reparto de gastos extra entre productos
-segun las horas de fabrica que uso cada uno.
+Rutas del cierre de mes (mejora 1.1): montos de gastos extra por mes y su pago,
+y el prorrateo de esos gastos entre los productos según sus horas-hombre.
 """
+
+from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.models import Gasto_Extra, Horas_Producto_Mes, Producto_Terminado
-from app.servicios.prorrateo import calcular_prorrateo_mensual
+from app.servicios.gastos_mensuales import registrar_monto_mes, pagar_monto_mes, estado_mes
+from app.servicios.prorrateo import preview_prorrateo, ejecutar_prorrateo
 
 router = APIRouter(tags=["prorrateo"])
 
 
-class ProrrateoEntrada(BaseModel):
-    anio_mes: str   # ej "2026-06"
+# ---------- Gastos extra por mes ----------
+
+class MontoMesEntrada(BaseModel):
+    id_gasto_extra: int
+    anio_mes: str          # 'YYYY-MM'
+    monto: Decimal
 
 
-@router.post("/prorrateos")
-def crear_prorrateo(datos: ProrrateoEntrada, sesion: Session = Depends(get_sesion)):
-    """Reparte los gastos extra del mes entre los productos segun horas."""
+@router.post("/gastos-mes")
+def registrar_gasto_mes(datos: MontoMesEntrada, sesion: Session = Depends(get_sesion)):
+    """Fija el monto real de un gasto recurrente en un mes concreto."""
     try:
-        creados = calcular_prorrateo_mensual(sesion, datos.anio_mes)
-        return {"mensaje": "Prorrateo calculado", "asignaciones": len(creados)}
+        fila = registrar_monto_mes(sesion, datos.id_gasto_extra, datos.anio_mes, datos.monto)
+        return {"mensaje": "Monto del mes guardado", "id_gasto_extra_mes": fila.Id_Gasto_Extra_Mes}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/horas-producto-mes/{anio_mes}")
-def ver_horas_producto_mes(anio_mes: str, sesion: Session = Depends(get_sesion)):
-    """Qué productos usaron la fábrica ese mes y cuántas horas cada uno."""
-    filas = sesion.query(Horas_Producto_Mes).filter_by(Anio_Mes=anio_mes).all()
-    resultado = []
-    total = 0
-    for f in filas:
-        producto = sesion.get(Producto_Terminado, f.Id_Producto_Terminado)
-        horas = float(f.Horas_Producto_Mes)
-        total += horas
-        resultado.append({
-            "producto": producto.Descripcion_Producto_Terminado if producto else "?",
-            "horas": horas,
-        })
-    return {"total_horas": total, "detalle": resultado}
+class PagoMesEntrada(BaseModel):
+    id_cuenta: int
+    fecha: date | None = None
 
 
-@router.get("/gastos-extra-total")
-def ver_gastos_extra_total(sesion: Session = Depends(get_sesion)):
-    """Lista de gastos extra mensuales y su total."""
-    gastos = sesion.query(Gasto_Extra).all()
-    total = sum(float(g.Precio_Mensual_Gasto_Extra or 0) for g in gastos)
-    detalle = [{"descripcion": g.Descripcion_Gasto_Extra, "precio": float(g.Precio_Mensual_Gasto_Extra or 0)} for g in gastos]
-    return {"total": total, "detalle": detalle}
+@router.post("/gastos-mes/{id_gasto_extra_mes}/pagar")
+def pagar_gasto_mes(id_gasto_extra_mes: int, datos: PagoMesEntrada, sesion: Session = Depends(get_sesion)):
+    """Paga el gasto del mes (SALIDA de una cuenta) y lo marca pagado."""
+    try:
+        fila = pagar_monto_mes(sesion, id_gasto_extra_mes, datos.id_cuenta, datos.fecha or date.today())
+        return {"mensaje": "Gasto del mes pagado", "id_gasto_extra_mes": fila.Id_Gasto_Extra_Mes}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/gastos-mes/{anio_mes}")
+def ver_gastos_mes(anio_mes: str, sesion: Session = Depends(get_sesion)):
+    """Los gastos del mes con su estado de pago, y si están todos pagados."""
+    return estado_mes(sesion, anio_mes)
+
+
+# ---------- Prorrateo ----------
+
+@router.get("/prorrateo/preview/{anio_mes}")
+def ver_preview_prorrateo(anio_mes: str, sesion: Session = Depends(get_sesion)):
+    """Vista previa del reparto del mes (horas por producto + gastos), sin tocar nada."""
+    return preview_prorrateo(sesion, anio_mes)
+
+
+class ProrrateoEntrada(BaseModel):
+    anio_mes: str
+
+
+@router.post("/prorrateos")
+def crear_prorrateo(datos: ProrrateoEntrada, sesion: Session = Depends(get_sesion)):
+    """Ejecuta el prorrateo del mes: reparte los gastos entre los productos según horas."""
+    try:
+        resultado = ejecutar_prorrateo(sesion, datos.anio_mes)
+        return {"mensaje": "Prorrateo calculado", **resultado}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

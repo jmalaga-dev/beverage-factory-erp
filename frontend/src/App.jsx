@@ -19,7 +19,7 @@ import PaginaAbsorcion from './paginas/PaginaAbsorcion'
 import PaginaMermas from './paginas/PaginaMermas'
 import PaginaDevoluciones from './paginas/PaginaDevoluciones'
 import PaginaCierreSemanal from './paginas/PaginaCierreSemanal'
-//import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
+import PaginaProrrateo from './paginas/PaginaProrrateo'
 import PaginaActivos from './paginas/PaginaActivos'
 import PaginaBalance from './paginas/PaginaBalance'
 import PaginaComparativaBalances from './paginas/PaginaComparativaBalances'
@@ -56,6 +56,7 @@ const categorias = [
   // trabajo), tomar la foto de balance y compararla con las anteriores.
   { titulo: 'Cierre', links: [
     { to: '/cierre-semanal', label: 'Cierre producción' },
+    { to: '/prorrateo', label: 'Cierre de mes' },
     { to: '/balance', label: 'Balance' },
     { to: '/comparar-balances', label: 'Comparar cierres' },
   ] },
@@ -112,6 +113,7 @@ function AppInterno() {
           <Route path="/mermas" element={<PaginaMermas />} />
           <Route path="/devoluciones" element={<PaginaDevoluciones />} />
           <Route path="/cierre-semanal" element={<PaginaCierreSemanal />} />
+          <Route path="/prorrateo" element={<PaginaProrrateo />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
           <Route path="/comparar-balances" element={<PaginaComparativaBalances />} />

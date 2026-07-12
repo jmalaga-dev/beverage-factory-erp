@@ -190,6 +190,10 @@ def ejecutar_cierre(sesion, fecha_desde, fecha_hasta):
                 )
             # Actualizar el costo del lote sumandole su trabajo
             produccion.Precio_Unitario_Producto_Terminado = prod["costo_unit_nuevo"]
+            # Sumar las horas directas asignadas a las horas acumuladas (1.1):
+            # el lote nacio solo con las heredadas de sus intermedios.
+            horas_asignadas = sum(a["horas"] for a in prod["asignaciones"])
+            produccion.Horas_Acumuladas = (produccion.Horas_Acumuladas or Decimal(0)) + horas_asignadas
 
         # Descontar las horas consumidas de cada jornada (quedan en standby 0)
         for id_jornada, horas in consumido_por_jornada.items():

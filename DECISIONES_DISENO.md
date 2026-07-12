@@ -300,6 +300,35 @@ estimadas y restantes). Dos decisiones:
   encadene N líneas en una transacción atómica (todo o nada): si una materia
   prima no tiene el proveedor elegido, ninguna línea del pliego se registra.
 
+### 3.13 Horas-hombre acumuladas/heredadas y prorrateo mensual (mejora 1.1)
+- **Una columna de horas, no un pool que se vacía.** Cada producción guarda
+  `Horas_Acumuladas` (horas-hombre del lote completo). La herencia al consumir
+  `q` unidades es `q × Horas_Acumuladas / Cantidad_Producida`: como la tasa por
+  unidad es constante, lo que se consume se lleva su parte y lo que queda
+  conserva la suya, sin necesidad de una segunda columna de "horas restantes"
+  (el remanente es `Cantidad_Restante × tasa`). Es el mismo mecanismo que ya usa
+  el costo unitario, aplicado a horas.
+- **Solo horas, no su equivalente en dinero.** La plata del trabajo (directo e
+  intermedio) ya está dentro del costo unitario; duplicarla en una columna
+  aparte agregaba bookkeeping por poco valor. La dimensión NUEVA que aporta 1.1
+  es las horas-hombre, que el costo no expresaba.
+- **Atribución por mes de producción del terminado.** Un jarabe hecho hace
+  meses, al consumirse este mes, hereda sus horas a la producción de este mes;
+  por eso el prorrateo agrupa los terminados por su mes de producción y suma
+  `Horas_Acumuladas`. El prorrateo dejó de ser una recursión al vuelo: es una
+  suma sobre la columna.
+- **El motor se llena en las cuatro rutas de producción.** `producir_intermedio`
+  (directas + heredadas), `producir_terminado` (heredadas; las directas llegan
+  después), el **cierre 3.7** (suma las horas directas que asigna) y el
+  **reproceso** (hereda del lote origen + trabajo nuevo). El backfill de los
+  datos viejos recalcula desde los detalles reales en orden de dependencia.
+- **Gastos variables por mes, separados del gasto recurrente.** `Gasto_Extra` es
+  el gasto recurrente (luz, agua) con su monto típico; `Gasto_Extra_Mes` es el
+  monto REAL de un mes y su pago (SALIDA de una cuenta). El prorrateo usa esos
+  montos y **exige que todos estén pagados** antes de correr. El prorrateo en sí
+  NO mueve dinero (el dinero salió al pagar cada gasto): es una asignación
+  analítica congelada (`Prorrateo_Mensual`), como el resto de las "fotos".
+
 ### 3.12 Cierre de producción con prorrateo de horas standby (mejora 3.7)
 - **Se separa la mano de obra del momento de producir.** En la práctica no hay
   quien mida qué produjo cada quien, así que los terminados se producen solo
@@ -370,6 +399,9 @@ Operaciones construidas (con backend, API y pantalla):
 - Cierre de producción (mejora 3.7): reparte las horas standby de un rango
   entre los terminados producidos, por botellas, y suma el trabajo al costo
   de cada lote (vista previa + confirmar, atómico).
+- Horas-hombre acumuladas/heredadas (mejora 1.1): cada producción arrastra sus
+  horas directas + heredadas de los intermedios; el cierre de mes reparte los
+  gastos extra (pagados) entre los terminados según esas horas.
 - Absorción de costos indirectos por botella (mejora 1.4): registrar
   utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
   producción.

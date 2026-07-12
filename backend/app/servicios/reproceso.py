@@ -21,6 +21,7 @@ from app.models import (
     Detalle_Prod_Materia_Prima, Detalle_Prod_Trabajador,
 )
 from app.servicios.agrupar import agrupar_pares
+from app.servicios.horas import horas_por_unidad
 from app.servicios.inventario import _aplicar_movimiento_inventario
 
 
@@ -61,6 +62,12 @@ def reprocesar(
 
     # Costo arrastrado de las botellas de origen (ya incluye su absorcion previa)
     costo_total = cantidad * (origen.Precio_Unitario_Producto_Terminado or 0)
+    # Horas-hombre (mejora 1.1): hereda las de las botellas de origen que
+    # consume + el trabajo nuevo del reproceso.
+    horas_directas = sum(horas for _, horas in insumos_trabajo)
+    horas_heredadas = cantidad * horas_por_unidad(
+        origen.Horas_Acumuladas, origen.Cantidad_Producida_Produccion
+    )
 
     # Insumos nuevos: materia prima directa (tapas, etiquetas...) y trabajo
     for id_compra, cant in insumos_mp:
@@ -99,6 +106,7 @@ def reprocesar(
             Cantidad_Producida_Produccion=cantidad_producida,
             Precio_Unitario_Producto_Terminado=costo_total / cantidad_producida,
             Cantidad_Restante_Produccion=cantidad_producida,
+            Horas_Acumuladas=horas_directas + horas_heredadas,
         )
         sesion.add(nuevo)
         sesion.flush()  # para obtener el Id_Produccion del lote nuevo

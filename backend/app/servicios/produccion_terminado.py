@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.servicios.absorcion import absorber_en_produccion
 from app.servicios.agrupar import agrupar_pares
+from app.servicios.horas import horas_heredadas_de
 
 
 def producir_terminado(
@@ -49,6 +50,10 @@ def producir_terminado(
         raise ValueError("Debe consumir al menos un insumo para producir")
 
     costo_total = 0
+    # Horas-hombre del lote (mejora 1.1): directas (normalmente 0 bajo el flujo
+    # de 3.7, se asignan en el cierre) + heredadas de los intermedios consumidos.
+    horas_directas = sum(horas for _, horas in insumos_trabajo)
+    horas_heredadas = 0
 
     # Producciones intermedias: validar lote, costo y stock
     for id_prod_int, cantidad in insumos_intermedio:
@@ -68,6 +73,8 @@ def producir_terminado(
                 f"La produccion intermedia {id_prod_int} no tiene costo unitario calculado"
             )
         costo_total += cantidad * costo_unitario_int
+        # Hereda las horas del intermedio consumido (mejora 1.1)
+        horas_heredadas += horas_heredadas_de(prod_int, cantidad)
 
     # Materia prima directa: validar lote, costo (precio real del lote) y stock
     for id_compra, cantidad in insumos_mp:
@@ -111,6 +118,7 @@ def producir_terminado(
             Cantidad_Producida_Produccion=cantidad_producida,
             Precio_Unitario_Producto_Terminado=None,
             Cantidad_Restante_Produccion=cantidad_producida,
+            Horas_Acumuladas=horas_directas + horas_heredadas,
         )
         sesion.add(produccion)
         sesion.flush()  # para obtener el Id_Produccion

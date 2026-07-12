@@ -334,11 +334,11 @@ function PaginaProduccionTerminada() {
 
       <h2>Stock por lote</h2>
       <table border="1">
-        <thead><tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Costo unitario</th></tr></thead>
+        <thead><tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Costo unitario</th><th>Horas acum.</th></tr></thead>
         <tbody>
           {porLote.map((p) => (
             <tr key={p.id_produccion}>
-              <td>{p.id_produccion}</td><td>{p.descripcion}</td><td>{fmtNumero(p.cantidad_restante)}</td><td>{fmtNumero(p.costo_unitario, 4)}</td>
+              <td>{p.id_produccion}</td><td>{p.descripcion}</td><td>{fmtNumero(p.cantidad_restante)}</td><td>{fmtNumero(p.costo_unitario, 4)}</td><td>{fmtNumero(p.horas_acumuladas, 2)}</td>
             </tr>
           ))}
         </tbody>

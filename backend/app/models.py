@@ -176,10 +176,31 @@ class Gasto_Extra(Base):
 
     Id_Gasto_Extra = Column(Integer, primary_key=True)
     Descripcion_Gasto_Extra = Column(String, nullable=False)
-    Precio_Mensual_Gasto_Extra = Column(Numeric)
+    Precio_Mensual_Gasto_Extra = Column(Numeric)  # monto tipico/sugerido por mes
     Habilitado_Gasto_Extra = Column(Boolean, nullable=False, server_default="true")
 
     prorrateos = relationship("Prorrateo_Mensual", back_populates="gasto_extra")
+    montos_mes = relationship("Gasto_Extra_Mes", back_populates="gasto_extra")
+
+
+class Gasto_Extra_Mes(Base):
+    """Monto real de un gasto extra en un mes concreto, con su pago (mejora 1.1).
+    La factura de luz/agua cambia cada mes; aca vive el monto de ese mes y si ya
+    se pago (fecha, cuenta y el Movimiento de SALIDA). El prorrateo del mes usa
+    estos montos y exige que todos esten pagados."""
+    __tablename__ = "Gasto_Extra_Mes"
+
+    Id_Gasto_Extra_Mes = Column(Integer, primary_key=True)
+    Id_Gasto_Extra = Column(Integer, ForeignKey("Gasto_Extra.Id_Gasto_Extra"), nullable=False)
+    Anio_Mes = Column(String, nullable=False)  # 'YYYY-MM'
+    Monto_Gasto_Extra_Mes = Column(Numeric, nullable=False)
+    Fecha_Pago_Gasto_Extra_Mes = Column(Date)  # NULL = aun no pagado
+    Id_Cuenta_Pago = Column(Integer, ForeignKey("Cuenta.Id_Cuenta"), nullable=True)
+    Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
+
+    gasto_extra = relationship("Gasto_Extra", back_populates="montos_mes")
+    cuenta_pago = relationship("Cuenta")
+    movimiento = relationship("Movimiento")
 
 
 # =========================================================
@@ -308,6 +329,7 @@ class Produccion_Intermedio(Base):
     Cantidad_Producida = Column(Numeric, nullable=False)
     Cantidad_Restante_Producida = Column(Numeric, nullable=False)
     Costo_Unitario_Produccion_Intermedio = Column(Numeric)  # NUEVO
+    Horas_Acumuladas = Column(Numeric)  # mejora 1.1: horas-hombre embebidas (directas + heredadas)
 
     producto_intermedio = relationship("Producto_Intermedio", back_populates="producciones")
     detalle_mp = relationship("Detalle_PI_Materia_Prima", back_populates="produccion")
@@ -364,6 +386,7 @@ class Produccion(Base):
     Cantidad_Producida_Produccion = Column(Numeric, nullable=False)
     Precio_Unitario_Producto_Terminado = Column(Numeric)
     Cantidad_Restante_Produccion = Column(Numeric, nullable=False)
+    Horas_Acumuladas = Column(Numeric)  # mejora 1.1: horas-hombre embebidas (heredadas + directas del cierre)
 
     producto_terminado = relationship("Producto_Terminado", back_populates="producciones")
     detalle_intermedio = relationship("Detalle_Prod_Intermedio", back_populates="produccion")
