@@ -300,6 +300,39 @@ estimadas y restantes). Dos decisiones:
   encadene N líneas en una transacción atómica (todo o nada): si una materia
   prima no tiene el proveedor elegido, ninguna línea del pliego se registra.
 
+### 3.12 Cierre de producción con prorrateo de horas standby (mejora 3.7)
+- **Se separa la mano de obra del momento de producir.** En la práctica no hay
+  quien mida qué produjo cada quien, así que los terminados se producen solo
+  con MP e intermedios (sin trabajo) y las jornadas quedan en standby (horas
+  registradas sin consumir, que el balance ya valoriza). El trabajo se asigna
+  después, en el cierre, repartiéndolo entre lo que efectivamente se produjo.
+- **No hubo que cambiar el flujo de producción.** `producir_terminado` ya
+  permite producir sin trabajo (exige al menos un insumo, que puede ser solo
+  MP/intermedios). El cierre es una herramienta que se suma; quien quiera puede
+  seguir asignando trabajo a mano en un caso puntual (esos lotes se saltan).
+- **El costo se ACTUALIZA sumando, no se recalcula.** Cada lote nació con su
+  costo parcial (MP+intermedios+absorción). El cierre le suma
+  `trabajo_asignado / botellas_producidas` al costo unitario, sin volver a
+  tocar lo anterior. Así no hay riesgo de perder la absorción ni de recomputar
+  mal los insumos.
+- **Reparto por botellas PRODUCIDAS, no restantes.** El peso de cada lote es su
+  `Cantidad_Producida` (no lo que queda en stock): la mano de obra fue para
+  hacer todo el lote, aunque ya se haya vendido parte. Y cada jornada standby
+  se reparte ENTERA (queda en 0), con la última línea absorbiendo el redondeo
+  para que la suma de horas cierre exacta.
+- **Solo terminados (decisión de negocio 3.7).** Los intermedios del rango no
+  reciben horas; su mano de obra la absorben las botellas de la semana. El
+  modelo de horas heredadas en intermedios (1.1) es aparte. Esto puede
+  subvalorar el stock de intermedios que se guarda para otra semana, aceptado
+  como simplificación (replica el Excel).
+- **Idempotente por construcción.** El cierre consume el standby de las
+  jornadas; re-correrlo no encuentra horas que repartir. Y solo toma los lotes
+  del rango SIN trabajo asignado, así que nunca duplica sobre uno ya cerrado.
+- **Preview y ejecución comparten el mismo cálculo.** `calcular_cierre` arma el
+  plan sin tocar la BD (lo usa la vista previa) y `ejecutar_cierre` lo recalcula
+  desde la BD y lo aplica (no confía en números del cliente), así lo que se ve
+  es exactamente lo que se confirma. Rango libre de dos fechas, no semana fija.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)
@@ -332,8 +365,11 @@ Operaciones construidas (con backend, API y pantalla):
   lote guarda el precio completo (costo real), el faltante se vuelve deuda
   al proveedor, y un pedido pendiente no cuenta como stock hasta recibirlo.
 - Compra dividida por proporción (mejora 3.8): un pliego se reparte por
-  factor × cantidad entre N materias primas, cada una registrada como una
-  Compra normal, todas en una sola transacción atómica.
+  factor entre N materias primas, cada una registrada como una Compra normal,
+  todas en una sola transacción atómica.
+- Cierre de producción (mejora 3.7): reparte las horas standby de un rango
+  entre los terminados producidos, por botellas, y suma el trabajo al costo
+  de cada lote (vista previa + confirmar, atómico).
 - Absorción de costos indirectos por botella (mejora 1.4): registrar
   utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
   producción.

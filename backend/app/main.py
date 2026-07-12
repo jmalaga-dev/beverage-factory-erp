@@ -15,6 +15,7 @@ from app.rutas import (
     activos,
     balance,
     catalogos,
+    cierre,
     clientes,
     compras,
     deudas,
@@ -79,3 +80,4 @@ app.include_router(absorcion.router)
 app.include_router(fifo.router)
 app.include_router(recetas.router)
 app.include_router(devoluciones.router)
+app.include_router(cierre.router)

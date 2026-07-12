@@ -18,6 +18,7 @@ import PaginaDeudas from './paginas/PaginaDeudas'
 import PaginaAbsorcion from './paginas/PaginaAbsorcion'
 import PaginaMermas from './paginas/PaginaMermas'
 import PaginaDevoluciones from './paginas/PaginaDevoluciones'
+import PaginaCierreSemanal from './paginas/PaginaCierreSemanal'
 //import PaginaProrrateo from './paginas/PaginaProrrateo'  // oculto en MVP: requiere horas heredadas (v2)
 import PaginaActivos from './paginas/PaginaActivos'
 import PaginaBalance from './paginas/PaginaBalance'
@@ -29,6 +30,7 @@ const categorias = [
   { titulo: 'Configurar', links: [
     { to: '/catalogos', label: 'Catálogos' },
     { to: '/proveedores', label: 'Proveedores' },
+    { to: '/activos', label: 'Activos' },   // registro de bienes, no un cierre
   ] },
   { titulo: 'Producción', links: [
     { to: '/compras', label: 'Compras' },
@@ -37,10 +39,12 @@ const categorias = [
     { to: '/produccion-intermedia', label: 'Prod. Intermedia' },
     { to: '/produccion-terminada', label: 'Prod. Terminada' },
     { to: '/absorcion', label: 'Absorción' },
+    { to: '/mermas', label: 'Mermas' },     // ajuste de inventario
   ] },
   { titulo: 'Ventas', links: [
     { to: '/clientes', label: 'Clientes' },
     { to: '/ventas', label: 'Ventas' },
+    { to: '/devoluciones', label: 'Devoluciones' },  // evento post-venta
   ] },
   { titulo: 'Finanzas', links: [
     { to: '/pagos', label: 'Pagos' },
@@ -48,10 +52,10 @@ const categorias = [
     { to: '/transferencias', label: 'Transferencias' },
     { to: '/deudas', label: 'Deudas' },
   ] },
+  // Cierre = el cierre de periodo de verdad: cerrar produccion (asignar
+  // trabajo), tomar la foto de balance y compararla con las anteriores.
   { titulo: 'Cierre', links: [
-    { to: '/mermas', label: 'Mermas' },
-    { to: '/devoluciones', label: 'Devoluciones' },
-    { to: '/activos', label: 'Activos' },
+    { to: '/cierre-semanal', label: 'Cierre producción' },
     { to: '/balance', label: 'Balance' },
     { to: '/comparar-balances', label: 'Comparar cierres' },
   ] },
@@ -107,6 +111,7 @@ function AppInterno() {
           <Route path="/absorcion" element={<PaginaAbsorcion />} />
           <Route path="/mermas" element={<PaginaMermas />} />
           <Route path="/devoluciones" element={<PaginaDevoluciones />} />
+          <Route path="/cierre-semanal" element={<PaginaCierreSemanal />} />
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
           <Route path="/comparar-balances" element={<PaginaComparativaBalances />} />

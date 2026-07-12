@@ -357,6 +357,25 @@ tome las jornadas en standby + las producciones de la semana y genere el
 detalle de trabajo de cada una. Alimenta directamente las horas acumuladas
 de 1.1.
 
+**Estado: implementado.** Nueva pantalla **Cierre producción** (grupo
+*Cierre*), con **vista previa + confirmar** sobre un **rango libre de dos
+fechas** (no una semana fija). Flujo: durante la semana se producen los
+terminados solo con MP+intermedios (sin trabajo) y las jornadas quedan en
+standby; al cerrar, el servicio `cierre_semanal.py` reparte cada jornada
+standby del rango **entera** entre los terminados del rango, por
+`Cantidad_Producida` (botellas producidas, no restante), crea los
+`Detalle_Prod_Trabajador` y **suma** el costo de trabajo al costo unitario de
+cada lote (sin recalcular MP/intermedios/absorción). Decisiones: **solo
+terminados** (los intermedios del rango no reciben horas — su mano de obra la
+absorben las botellas; el modelo de horas heredadas es 1.1); **solo lotes sin
+trabajo asignado** (los que ya lo tienen se saltan, no se duplica); la
+**última línea de cada jornada absorbe el redondeo** para que su standby quede
+en 0 exacto. Re-correr es seguro: al consumir el standby, un segundo cierre no
+encuentra nada. `GET /cierre-semanal/preview` y `POST /cierre-semanal`.
+Verificado con una prueba de integración del ejemplo exacto (20/7/5 con Juan
+10h@20 y Pedro 6h@15 → A=181.25 Bs de trabajo, 19.0625 Bs/botella; suma de
+trabajo = 290 sin fugas; re-cierre sin duplicar) y `vite build`.
+
 ### 3.8 Compra dividida en proporción (pliegos de etiquetas) — del Excel
 Un pliego doble oficio cuesta 100 Bs y salen 5 etiquetas de A, 3 de B y 4 de
 C, de tamaños distintos: el costo se reparte por **área** (área de cada
