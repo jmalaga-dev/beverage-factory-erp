@@ -198,6 +198,20 @@ patrón preferido: el sistema **propone** los lotes del más antiguo al más
 nuevo (respetando restos) y el usuario puede editar antes de confirmar —
 sugerencia FIFO, no imposición.
 
+**Estado: implementado.** Servicio `servicios/fifo.py` (`resolver_fifo`) +
+endpoint `GET /fifo/{origen}/{id}?cantidad=X` (origen: MP / INTERMEDIO /
+TERMINADO). Ordena los lotes con stock por (fecha, id) y reparte la cantidad
+del más antiguo al más nuevo respetando restos; devuelve las asignaciones y
+un `faltante` si no hay stock suficiente (no toca la BD, solo propone).
+Componente `SelectorFifo` (botón "Resolver FIFO" = elegir producto +
+cantidad → pre-llena la lista), conectado a Producción Intermedia y
+Terminada (secciones de MP e intermedio); el picker manual por lote sigue
+ahí para casos puntuales. La venta con lotes FIFO se conecta al reconstruir
+esa pantalla en 6.12. Verificado con curl (orden por fecha real, faltante).
+Nota: FIFO calcula sobre el restante actual de cada lote, sin descontar lo
+ya agregado a la lista en curso; como es una sugerencia editable, el usuario
+revisa antes de confirmar y el backend valida igual el stock.
+
 ### 3.2 Redondeo a cero bajo umbral
 Si un lote queda con un resto minúsculo legítimo, considerarlo agotado bajo cierto
 umbral. Nota: el uso de `numeric`/`Decimal` ya evita la basurita de punto flotante
@@ -254,6 +268,44 @@ los lotes por FIFO (3.1) y respetando restos (si al lote más viejo le quedan
 restrictivo: las horas de trabajadores cambian cada día, y un lote puede
 llevar algo extra o de menos. Requiere tablas nuevas de receta (cabecera +
 detalle de insumos).
+
+**Estado: implementado.** Migración 015 crea `Receta` (produce un intermedio,
+con `Rendimiento_Receta` base) y `Receta_Detalle` (insumos MP/intermedio +
+cantidad; el trabajo NO va en la receta). Servicio `recetas.py` con
+`aplicar_receta`: escala cada insumo por `cantidad / rendimiento` (decisión
+de negocio jul 2026: la receta **se escala** a lo que se produce, no es
+cantidad fija) y resuelve los lotes por FIFO (3.1), devolviendo los insumos
+pre-resueltos + los `faltantes` si no hay stock. CRUD en `rutas/recetas.py`
+(crear/editar/habilitar/borrar; editar reemplaza cabecera+detalles, borrar es
+seguro porque la receta es solo plantilla, no la referencia ninguna
+producción). Nueva pantalla **Recetas** (grupo *Producción*) y un control
+"Aplicar receta" en Producción Intermedia que pre-llena producto, cantidad e
+insumos (editable; el trabajo se agrega a mano). Verificado con curl (crear,
+escalar 5+3 con rendimiento 10 a producir 30 → 15+9 resueltos por FIFO,
+faltantes, editar rendimiento, borrar) y build de frontend; datos de prueba
+limpiados.
+
+**Ampliación (jul 2026) — recetas también para producto terminado + fixes.**
+Migración 016: `Receta` gana `Tipo_Receta` (INTERMEDIO/TERMINADO) e
+`Id_Producto_Terminado`, así que una receta puede producir un terminado, no
+solo un intermedio. La pantalla Recetas separa las dos clases en secciones
+plegables (colapsadas al inicio) y "Aplicar receta" está también en
+Producción Terminada (filtrando por tipo). Dos correcciones de raíz al probar:
+- **Insumos repetidos en la receta** (la misma materia dos veces) se **suman**
+  antes de resolver FIFO (`aplicar_receta`); antes cada fila se resolvía por
+  separado desde el stock completo y tomaba el mismo lote dos veces. Además,
+  al **definir/guardar** una receta el mismo insumo se fusiona en una sola
+  fila: en el editor (frontend) y de forma defensiva al guardar (backend).
+  Migración 017 limpió las recetas ya guardadas con insumos duplicados
+  (suma las cantidades en una fila por insumo; totales idénticos).
+- **Lotes repetidos en una producción** (5+5 del mismo lote) ahora se agrupan
+  en el backend antes de validar/descontar (`servicios/agrupar.py`), en
+  Producción Intermedia/Terminada y en Ventas; antes cada línea pasaba la
+  validación por separado y al descontar dejaba el lote en **negativo**. En
+  el frontend, `insumos.js` (`fusionar`) une líneas del mismo lote en una
+  sola (FIFO, receta y agregado manual), para que no se vean filas
+  duplicadas. Verificado: 5+5 de un lote con 5 ahora se rechaza; 3+2 deja el
+  lote en 0, no negativo.
 
 ### 3.7 Cierre semanal de producción con prorrateo de horas standby — del Excel
 Cómo se asignan hoy las horas directas en la práctica (no hay capataz que

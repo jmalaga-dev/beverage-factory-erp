@@ -11,6 +11,7 @@ from app.models import (
     Detalle_PI_Materia_Prima, Detalle_PI_Trabajo, Detalle_PI_Intermedio,
     Compra, Registro_Trabajador, Trabajador,
 )
+from app.servicios.agrupar import agrupar_pares
 
 
 def producir_intermedio(
@@ -28,9 +29,12 @@ def producir_intermedio(
     Lanza ValueError si algun lote no tiene suficiente restante o no existe.
     """
 
-    insumos_mp = insumos_mp or []
-    insumos_trabajo = insumos_trabajo or []
-    insumos_intermedio = insumos_intermedio or []
+    # Agrupar lotes repetidos (5+5 del mismo lote = 10), para que la validacion
+    # de stock y el descuento usen la cantidad total real y no se pueda dejar
+    # el lote en negativo.
+    insumos_mp = agrupar_pares(insumos_mp or [])
+    insumos_trabajo = agrupar_pares(insumos_trabajo or [])
+    insumos_intermedio = agrupar_pares(insumos_intermedio or [])
 
     # ----- 1. VALIDACIONES y calculo del costo total -----
 

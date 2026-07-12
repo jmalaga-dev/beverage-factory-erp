@@ -9,6 +9,7 @@ import PaginaProveedores from './paginas/PaginaProveedores'
 import PaginaJornadas from './paginas/PaginaJornadas'
 import PaginaProduccionIntermedia from './paginas/PaginaProduccionIntermedia'
 import PaginaProduccionTerminada from './paginas/PaginaProduccionTerminada'
+import PaginaRecetas from './paginas/PaginaRecetas'
 import PaginaVentas from './paginas/PaginaVentas'
 import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
@@ -31,6 +32,7 @@ const categorias = [
   { titulo: 'Producción', links: [
     { to: '/compras', label: 'Compras' },
     { to: '/jornadas', label: 'Jornadas' },
+    { to: '/recetas', label: 'Recetas' },
     { to: '/produccion-intermedia', label: 'Prod. Intermedia' },
     { to: '/produccion-terminada', label: 'Prod. Terminada' },
     { to: '/absorcion', label: 'Absorción' },
@@ -92,6 +94,7 @@ function AppInterno() {
           <Route path="/catalogos" element={<PaginaCatalogos />} />
           <Route path="/proveedores" element={<PaginaProveedores />} />
           <Route path="/jornadas" element={<PaginaJornadas />} />
+          <Route path="/recetas" element={<PaginaRecetas />} />
           <Route path="/produccion-intermedia" element={<PaginaProduccionIntermedia />} />
           <Route path="/produccion-terminada" element={<PaginaProduccionTerminada />} />
           <Route path="/ventas" element={<PaginaVentas />} />

@@ -77,6 +77,35 @@ class Producto_Intermedio(Base):
     producciones = relationship("Produccion_Intermedio", back_populates="producto_intermedio")
 
 
+class Receta(Base):
+    __tablename__ = "Receta"
+
+    Id_Receta = Column(Integer, primary_key=True)
+    Tipo_Receta = Column(String, nullable=False, server_default="INTERMEDIO")  # INTERMEDIO / TERMINADO
+    Id_Producto_Intermedio = Column(Integer, ForeignKey("Producto_Intermedio.Id_Producto_Intermedio"), nullable=True)
+    Id_Producto_Terminado = Column(Integer, ForeignKey("Producto_Terminado.Id_Producto_Terminado"), nullable=True)
+    Nombre_Receta = Column(String)
+    Rendimiento_Receta = Column(Numeric, nullable=False)
+    Habilitado_Receta = Column(Boolean, nullable=False, server_default="true")
+
+    producto_intermedio = relationship("Producto_Intermedio", foreign_keys=[Id_Producto_Intermedio])
+    producto_terminado = relationship("Producto_Terminado", foreign_keys=[Id_Producto_Terminado])
+    detalles = relationship("Receta_Detalle", back_populates="receta")
+
+
+class Receta_Detalle(Base):
+    __tablename__ = "Receta_Detalle"
+
+    Id_Receta_Detalle = Column(Integer, primary_key=True)
+    Id_Receta = Column(Integer, ForeignKey("Receta.Id_Receta"), nullable=False)
+    Tipo_Insumo_Receta = Column(String, nullable=False)  # MP / INTERMEDIO
+    Id_Materia_Prima = Column(Integer, ForeignKey("Materia_Prima.Id_Materia_Prima"), nullable=True)
+    Id_Producto_Intermedio = Column(Integer, ForeignKey("Producto_Intermedio.Id_Producto_Intermedio"), nullable=True)
+    Cantidad_Receta = Column(Numeric, nullable=False)
+
+    receta = relationship("Receta", back_populates="detalles")
+
+
 class Producto_Terminado(Base):
     __tablename__ = "Producto_Terminado"
 

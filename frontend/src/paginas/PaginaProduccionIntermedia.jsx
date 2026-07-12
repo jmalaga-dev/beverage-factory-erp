@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import SelectorFifo from '../componentes/SelectorFifo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero } from '../formato'
+import { fusionar } from '../insumos'
 
 function PaginaProduccionIntermedia() {
   const { fechaParaEnviar } = useFechaGlobal()
   // Datos para los desplegables
   const [productos, setProductos] = useState([])
+  const [materias, setMaterias] = useState([])  // catalogo de materias primas (para FIFO)
   const [lotes, setLotes] = useState([])
   const [jornadas, setJornadas] = useState([])
   const [producciones, setProducciones] = useState([])
@@ -37,10 +40,14 @@ function PaginaProduccionIntermedia() {
   // Para resumen produccion intermedio tabla resumen
   const [stockGeneral, setStockGeneral] = useState([])
 
-  
+  // Pre-recetas (3.6)
+  const [recetas, setRecetas] = useState([])
+  const [recetaSel, setRecetaSel] = useState('')
+  const [recetaCantidad, setRecetaCantidad] = useState('')
 
   function cargar() {
     apiGet('/productos-intermedios').then(setProductos).catch(console.error)   // catálogo para el desplegable "a producir"
+    apiGet('/materias-primas').then(setMaterias).catch(console.error)
     apiGet('/lotes-compra').then(setLotes).catch(console.error)
     apiGet('/jornadas')
       .then((datos) => setJornadas(datos.filter((j) => j.horas_restantes > 0)))
@@ -48,9 +55,30 @@ function PaginaProduccionIntermedia() {
     apiGet('/producciones-intermedias').then(setProducciones).catch(console.error)   // lotes producidos con stock
     apiGet('/stock-intermedio-general').then(setStockGeneral).catch(console.error)
     apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
+    apiGet('/recetas').then(setRecetas).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
+
+  // Aplicar una pre-receta (3.6): escala a la cantidad y resuelve por FIFO,
+  // pre-llenando producto, cantidad e insumos (MP e intermedios). Editable.
+  function aplicarReceta() {
+    if (recetaSel === '' || recetaCantidad === '') { setMensaje('Elige receta y cantidad a producir'); return }
+    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${parseFloat(recetaCantidad)}`)
+      .then((d) => {
+        setIdProducto(String(d.id_producto))
+        setCantidad(String(d.cantidad_producir))
+        setInsumosMP(fusionar([], d.insumos_mp.map((a) => ({ id_compra: a.id_compra, cantidad: a.cantidad })), 'id_compra'))
+        setInsumosIntermedio(fusionar([], d.insumos_intermedio.map((a) => ({ id_prod: a.id_prod, cantidad: a.cantidad })), 'id_prod'))
+        setInsumosTrabajo([])  // el trabajo se agrega a mano
+        if (d.faltantes.length > 0) {
+          setMensaje('Receta aplicada. Ojo, falta stock: ' + d.faltantes.map((f) => `${f.nombre} (faltan ${f.faltante})`).join(', '))
+        } else {
+          setMensaje('Receta aplicada. Revisa y agrega el trabajo antes de producir.')
+        }
+      })
+      .catch((e) => setMensaje(e.message))
+  }
 
   // Agregar una materia prima a la lista
   function agregarMP() {
@@ -66,7 +94,7 @@ function PaginaProduccionIntermedia() {
       setMensaje(`Ese lote solo tiene ${lote.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosMP([...insumosMP, { id_compra: parseInt(mpLote), cantidad: parseFloat(mpCantidad) }])
+    setInsumosMP(fusionar(insumosMP, [{ id_compra: parseInt(mpLote), cantidad: parseFloat(mpCantidad) }], 'id_compra'))
     setMpLote('')
     setMpCantidad('')
     setMensaje('')
@@ -80,6 +108,17 @@ function PaginaProduccionIntermedia() {
   // Quitar una materia prima de la lista (por su posición)
   function quitarMP(indice) {
     setInsumosMP(insumosMP.filter((_, i) => i !== indice))
+  }
+
+  // FIFO (3.1): agrega a la lista de MP los lotes que el resolver sugiere.
+  function agregarMPFifo(_idMateria, asignaciones) {
+    setInsumosMP(fusionar(insumosMP, asignaciones.map((a) => ({ id_compra: a.id_lote, cantidad: a.cantidad })), 'id_compra'))
+    setMensaje('')
+  }
+  // FIFO para intermedios usados como insumo
+  function agregarIntermedioFifo(_idProd, asignaciones) {
+    setInsumosIntermedio(fusionar(insumosIntermedio, asignaciones.map((a) => ({ id_prod: a.id_lote, cantidad: a.cantidad })), 'id_prod'))
+    setMensaje('')
   }
 
   // Agregar trabajo a la lista
@@ -119,7 +158,7 @@ function PaginaProduccionIntermedia() {
       setMensaje(`Ese lote solo tiene ${prod.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosIntermedio([...insumosIntermedio, { id_prod: parseInt(intLote), cantidad: parseFloat(intCantidad) }])
+    setInsumosIntermedio(fusionar(insumosIntermedio, [{ id_prod: parseInt(intLote), cantidad: parseFloat(intCantidad) }], 'id_prod'))
     setIntLote('')
     setIntCantidad('')
     setMensaje('')
@@ -204,6 +243,24 @@ function PaginaProduccionIntermedia() {
     <div>
       <h2>Producir producto intermedio</h2>
 
+      {/* Aplicar pre-receta (mejora 3.6): escala + resuelve FIFO y pre-llena */}
+      {recetas.some((r) => r.tipo === 'INTERMEDIO' && r.habilitado) && (
+        <div style={{ background: '#efe', padding: '0.4rem', margin: '0.3rem 0' }}>
+          <span style={{ fontSize: '0.85em', color: '#575' }}>Aplicar receta: </span>
+          <SelectorBuscable
+            opciones={recetas.filter((r) => r.habilitado && r.tipo === 'INTERMEDIO')}
+            valor={recetaSel}
+            onCambiar={setRecetaSel}
+            obtenerId={(r) => r.id_receta}
+            obtenerTexto={(r) => `${r.nombre || r.producto} (rinde ${r.rendimiento})`}
+            placeholder="-- Receta --"
+          />
+          <input type="number" placeholder="Cantidad a producir"
+            value={recetaCantidad} onChange={(e) => setRecetaCantidad(e.target.value)} />
+          <button onClick={aplicarReceta}>Aplicar receta</button>
+        </div>
+      )}
+
       {/* Cabecera */}
       <div>
         <SelectorBuscable
@@ -220,6 +277,14 @@ function PaginaProduccionIntermedia() {
 
       {/* Agregar materia prima */}
       <h3>Materia prima</h3>
+      <SelectorFifo
+        origen="MP"
+        opciones={materias.filter((m) => m.habilitado)}
+        obtenerId={(m) => m.id_materia_prima}
+        obtenerTexto={(m) => m.descripcion}
+        placeholder="-- Materia prima --"
+        onResolver={agregarMPFifo}
+      />
       <div>
         <SelectorBuscable
           opciones={lotes}
@@ -227,7 +292,7 @@ function PaginaProduccionIntermedia() {
           onCambiar={setMpLote}
           obtenerId={(l) => l.id_compra}
           obtenerTexto={(l) => `${l.nombre_materia} - Lote ${l.id_compra} (restante: ${l.cantidad_restante})`}
-          placeholder="-- Lote --"
+          placeholder="-- Lote (manual) --"
         />
         <input type="number" placeholder="Cantidad"
           value={mpCantidad} onChange={(e) => setMpCantidad(e.target.value)} />
@@ -268,6 +333,14 @@ function PaginaProduccionIntermedia() {
 
       {/* Agregar producto intermedio como insumo */}
       <h3>Producto intermedio (usar uno ya producido)</h3>
+      <SelectorFifo
+        origen="INTERMEDIO"
+        opciones={productos.filter((p) => p.habilitado)}
+        obtenerId={(p) => p.id_producto_intermedio}
+        obtenerTexto={(p) => p.descripcion}
+        placeholder="-- Producto intermedio --"
+        onResolver={agregarIntermedioFifo}
+      />
       <div>
         <SelectorBuscable
           opciones={producciones}
@@ -275,7 +348,7 @@ function PaginaProduccionIntermedia() {
           onCambiar={setIntLote}
           obtenerId={(p) => p.id_produccion_intermedio}
           obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}, costo ${p.costo_unitario})`}
-          placeholder="-- Producción intermedia --"
+          placeholder="-- Producción intermedia (manual) --"
         />
         <input type="number" placeholder="Cantidad"
           value={intCantidad} onChange={(e) => setIntCantidad(e.target.value)} />

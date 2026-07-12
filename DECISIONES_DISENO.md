@@ -236,6 +236,20 @@ Operaciones construidas (con backend, API y pantalla):
 - Absorción de costos indirectos por botella (mejora 1.4): registrar
   utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
   producción.
+- Resolución FIFO de lotes (mejora 3.1) y pre-recetas de producción
+  intermedia y terminada (mejora 3.6): sugerencias que pre-llenan las listas
+  de insumos; los servicios de producción/venta siguen recibiendo lotes
+  explícitos, así que FIFO/recetas no cambian su lógica ni su validación.
+
+**Agrupar lotes repetidos antes de descontar (correctitud):** los servicios
+que consumen lotes (producción intermedia/terminada, venta) validan el stock
+y descuentan por **cantidad total por lote**, no línea por línea. Sin esto,
+dos líneas del mismo lote (5+5) pasaban cada una la validación (5 ≤ 5) pero
+al ejecutar descontaban 10 de un lote con 5, dejándolo en negativo. Se agrupa
+con `servicios/agrupar.py` (producción) o sumando por lote en la validación
+(venta). En el frontend, `fusionar` (`src/insumos.js`) une las líneas del
+mismo lote en la UI. El backend sigue siendo la fuente de verdad: aunque el
+frontend no fusionara, el backend ya no puede dejar stock negativo.
 
 **Categorizar una SALIDA sin adivinar:** para separar compras / pagos a
 trabajadores / gastos dentro de los movimientos de dinero (todos

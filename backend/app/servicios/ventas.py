@@ -42,6 +42,10 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None):
     if not lineas:
         raise ValueError("La venta debe tener al menos un producto")
 
+    # Cantidad total pedida por lote (un mismo lote puede venir en varias
+    # lineas, ej. a distinto precio): el stock se valida sobre la SUMA, no
+    # linea por linea, para no dejar el lote en negativo al descontar.
+    pedido_por_lote = {}
     for linea in lineas:
         produccion = sesion.get(Produccion, linea["id_produccion"])
         if produccion is None:
@@ -53,15 +57,19 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None):
         if linea["precio_real"] <= 0:
             raise ValueError("El precio real de venta debe ser mayor a cero")
 
-        if produccion.Cantidad_Restante_Produccion < linea["cantidad"]:
-            raise ValueError(
-                f"Lote {linea['id_produccion']} no tiene suficiente stock. "
-                f"Restante: {produccion.Cantidad_Restante_Produccion}, se pide: {linea['cantidad']}"
-            )
-
         cuenta = sesion.get(Cuenta, linea["id_cuenta"])
         if cuenta is None:
             raise ValueError(f"No existe cuenta con Id {linea['id_cuenta']}")
+
+        pedido_por_lote[linea["id_produccion"]] = pedido_por_lote.get(linea["id_produccion"], 0) + linea["cantidad"]
+
+    for id_produccion, total_pedido in pedido_por_lote.items():
+        produccion = sesion.get(Produccion, id_produccion)
+        if produccion.Cantidad_Restante_Produccion < total_pedido:
+            raise ValueError(
+                f"Lote {id_produccion} no tiene suficiente stock. "
+                f"Restante: {produccion.Cantidad_Restante_Produccion}, se pide: {total_pedido}"
+            )
 
     # ----- 2. EJECUTAR (todo o nada) -----
 
