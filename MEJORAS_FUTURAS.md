@@ -237,6 +237,20 @@ se desecha (merma cuyo costo absorben las producciones futuras, ver 1.4) o
 se reprocesa (ej. reciclar solo la botella). La edición actual sirve para
 errores de tipeo (puse 15 y eran 16), no para este flujo.
 
+**Decisión de alcance (jul 2026) — antes de implementar:**
+- **Devolución = flujo completo**, dos partes en un solo acto:
+  1. **SALIDA de dinero** de una cuenta (idealmente vinculada a la venta
+     original) por lo que se le devuelve al cliente.
+  2. **Destino del producto devuelto**, a elegir: (a) **vuelve al stock**
+     (comportamiento actual: suma stock al lote); (b) **se desecha como
+     merma**, que absorbe su costo hacia producciones futuras (ver 1.4, ya
+     conectado a Cierre→Mermas); o (c) **se reprocesa**.
+- **Reproceso = una producción marcada como reproceso** que consume una
+  cantidad **PARCIAL** de un lote (no necesariamente todo — ej. de 60
+  botellas, reprocesar solo 10 porque se rompió la tapa) y genera un **lote
+  nuevo**, enlazado con el de origen por `Ref_Reproceso` (columna que ya
+  existe en `Movimiento_Inventario`, aún sin usar).
+
 ### 3.4 Corrección de jornadas mal registradas
 Caso: registré 8 horas a Juan pero eran de Pedro, o Juan no vino ese día. Necesita
 poder editar/anular una jornada (operación de edición, distinta de una merma de
@@ -690,6 +704,42 @@ Mejoras de la hoja de ventas del Excel sobre la pantalla actual:
   combinación de productos conviene pushear).
 - Totales de la venta: ganancia neta y % de ganancia ponderado.
 - Lotes automáticos por FIFO (3.1) en vez de elegir lote por lote.
+
+**Decisión de alcance (jul 2026) — antes de implementar:**
+- **Líneas como tabla** con columnas: costo unitario del lote, precio
+  recomendado, ganancia por línea y % de ganancia por línea.
+- **Precio sugerido:** `mayor(precio recomendado del catálogo, costo ×
+  1/(1−margen))`. El `margen` es configurable en `app/config.py`
+  (`MARGEN_VENTA_MINIMO`, 0.35 por defecto). Resultado redondeado a 2
+  decimales por botella.
+- **Taxi/delivery = SOLO cálculo en pantalla.** Prorratea el costo del
+  transporte entre todas las botellas de la venta para ver el neto real por
+  línea/producto ("qué me costó vender esto"). **NO mueve caja, NO crea un
+  `Movimiento`.** Si el taxi se pagó de verdad, se registra aparte como un
+  Gasto normal. Motivo: el taxi es un dato de análisis para decidir precios y
+  descuentos, no un hecho contable atado a la venta.
+- **FIFO automático:** reutilizar el `SelectorFifo` ya existente
+  (`frontend/src/componentes/SelectorFifo.jsx`) para resolver los lotes por
+  producto, en vez de elegir lote por lote.
+
+**Estado: implementado.** Backend: el endpoint `/lotes-producto-terminado`
+entrega por lote `costo_unitario` y `precio_recomendado`; el precio sugerido se
+calcula en el frontend. El servicio `ventas.py` y la tabla `Venta` **no
+cambiaron** (el taxi es solo pantalla). Frontend (`PaginaVentas.jsx`):
+- **Caja de margen editable** (default 35%) arriba de la pantalla: manda sobre
+  el precio sugerido (`max(recomendado, costo/(1−margen))`, 2 decimales) que se
+  usa al autocompletar una línea y al resolver por FIFO. Se puso en el frontend
+  (no en `config.py`) porque cambia seguido y no debería requerir tocar código.
+- **Líneas como tabla** con costo unitario, precio, ganancia por línea y %; el
+  **precio de cada línea es editable en la tabla** (sin quitar y re-agregar).
+- **Taxi/delivery** que prorratea entre todas las botellas y agrega las
+  columnas *Taxi* y *Neto* más el taxi por botella; totales con ganancia (neta
+  si hay taxi) y % ponderado. El "% de ganancia" = `ganancia / ingreso`.
+- **`SelectorFifo` conectado** (origen `TERMINADO`): agrega una línea por lote
+  sugerido con la cuenta destino elegida, **descontando lo ya comprometido** en
+  las líneas actuales (no re-mete lotes agotados ni pasa del stock).
+
+Verificado con `curl` (endpoint) y `vite build` (compila).
 
 ---
 

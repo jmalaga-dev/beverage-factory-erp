@@ -202,6 +202,32 @@ estimadas y restantes). Dos decisiones:
   medida que las producciones lo trasladan al stock. Es costeo gerencial,
   no una merma de patrimonio permanente.
 
+### 3.9 Precio sugerido y taxi en la venta (mejora 6.12)
+- **Precio sugerido de un lote** = el mayor entre el precio recomendado del
+  catálogo y `costo_del_lote / (1 − margen)`, redondeado a 2 decimales. El
+  **margen es una caja editable en la propia pantalla de venta** (default
+  35%), no una constante del backend: puede cambiar seguido y el usuario no
+  debería tocar código para ajustarlo. Por eso el cálculo se hace en el
+  frontend (el backend solo entrega costo y recomendado por lote); al cambiar
+  la caja, el precio sugerido se recalcula en vivo para el autocompletado y el
+  FIFO. El margen se define **sobre el precio de venta** (no sobre el costo)
+  para que coincida con el "% de ganancia" que muestra la pantalla:
+  `ganancia / ingreso`. Es solo una sugerencia: el precio de cada línea es
+  **editable en la tabla** (sin quitar y re-agregar), y un aviso rojo marca si
+  queda bajo el costo del lote, pero no bloquea.
+- **FIFO reconciliado con lo ya cargado:** al resolver un producto por FIFO se
+  descuenta lo que ya está comprometido en las líneas actuales, así resolver
+  el mismo producto dos veces no vuelve a meter lotes agotados ni pasa del
+  stock. El backend igual lo valida al registrar (suma por lote), pero se
+  evita en pantalla para no descubrir el error recién al confirmar.
+- **Taxi/delivery = solo cálculo en pantalla.** Se prorratea de forma uniforme
+  entre todas las botellas de la venta (`taxi / total_botellas`) para ver el
+  neto real por línea y el % ponderado. **No mueve caja ni crea un
+  `Movimiento`**, y no se envía al backend al registrar la venta. Motivo: el
+  taxi es un dato de análisis para decidir precios/descuentos, no un hecho
+  contable atado a la venta; si se pagó de verdad, se registra aparte como un
+  Gasto normal. Por eso `ventas.py` y la tabla `Venta` no cambiaron.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)

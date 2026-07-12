@@ -173,6 +173,9 @@ def listar_lotes_pt(sesion: Session = Depends(get_sesion)):
     resultado = []
     for p in lotes:
         producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        # El precio sugerido (recomendado vs costo/(1-margen)) se calcula en el
+        # frontend, porque el margen es una caja editable por venta (mejora
+        # 6.12): aca solo damos costo y recomendado.
         resultado.append({
             "id_produccion": p.Id_Produccion,
             "id_producto": p.Id_Producto_Terminado,
