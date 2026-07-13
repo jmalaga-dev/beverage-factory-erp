@@ -226,8 +226,26 @@ verlo también por mes (Power BI, 8.1).
   cálculo del balance, requiere cambio de modelo. Y los aportes externos
   integrados al reparto (hoy se cargan con `INGRESO_EXTERNO` y el gasto sale de
   esa cuenta).
-- **2C — Reparto 70/30 de ventas:** pendiente (necesita el acumulador de
-  inversión por producto; es un mini-proyecto analítico aparte).
+- **2C — Reparto 70/30 de ventas (en progreso, por tajadas):**
+  - ✅ **Tajada 1 — Acumulador de inversión/ingresos por producto**
+    (`app/servicios/saldo_producto.py`, `GET /saldo-productos`, de solo
+    lectura). `saldo = ingresos acumulados de sus ventas − inversión
+    acumulada en producirlo` (todos los tiempos, **por producto**, no por
+    lote). Se calcula al vuelo (no se guarda en columna): es una suma sobre
+    `Produccion` + `Detalle_Venta` que ya existen, el volumen es chico, y
+    evita que un total corriente se desincronice del dato real. Incluye
+    `saldo_hace_dias` (default 30) como señal rápida de tendencia reciente
+    en pantalla, sin sustituir el análisis mensual completo (que sigue en
+    Power BI, 8.1) — esto es solo un indicador de recuperación de capital,
+    no de rentabilidad del período. Verificado con curl contra la BD real y
+    cruzado a mano contra las tablas crudas (coincide exacto).
+  - ⬜ **Tajada 2 — Integrar el 70/30 en la venta**: pendiente. Al confirmar
+    una venta, cada línea consulta el saldo de su producto: si sigue ≤ 0
+    después de sumar el ingreso, 100% va a Fábrica; si cruza cero, el
+    remanente se reparte `REPARTO_VENTA_FABRICA` (0.70, `app/config.py`) /
+    resto a Casa. Requiere decidir a qué cuentas concretas va cada parte
+    (¿las cuentas de rol FABRICA/CASA, o la cuenta que eligió la línea?) y
+    tocar el servicio + pantalla de Ventas.
 
 ---
 

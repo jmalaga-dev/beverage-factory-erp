@@ -33,6 +33,11 @@ PRIORIDAD_CUENTAS = {
     "FABRICA": ["FABRICA", "CASA", "OTRA"],    # compra/pago de la fabrica: primero Fabrica
 }
 
+# Porcentaje que se lleva Fabrica en el reparto 70/30 de una venta, una vez
+# que el producto ya recupero su inversion (mejora 2.C). El resto va a Casa.
+# En el Excel era una celda global; candidato natural a config.
+REPARTO_VENTA_FABRICA = Decimal("0.70")
+
 # Categorias fijas para clasificar Tipo_Bien en el balance (mejora 4.2).
 # Elegidas explicitamente al crear/editar un tipo de bien, en vez de
 # adivinar por texto en el nombre. Ligadas a las columnas de Balance
