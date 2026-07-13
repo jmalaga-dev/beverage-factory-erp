@@ -16,12 +16,12 @@ from app.servicios.ventas import registrar_venta
 router = APIRouter(tags=["ventas"])
 
 
-# Esquema de UNA linea de venta
+# Esquema de UNA linea de venta. id_cuenta solo se usa con reparto=False.
 class LineaVentaEntrada(BaseModel):
     id_produccion: int
     cantidad: Decimal
     precio_real: Decimal
-    id_cuenta: int
+    id_cuenta: int | None = None
 
 
 # Esquema de la venta completa: cabecera + lista de lineas
@@ -29,6 +29,7 @@ class VentaEntrada(BaseModel):
     id_cliente: int
     lineas: list[LineaVentaEntrada]
     fecha: date | None = None
+    reparto: bool = True   # True = 70/30 automatico Fabrica/Casa (mejora 2.C)
 
 
 @router.post("/ventas")
@@ -48,10 +49,53 @@ def crear_venta(datos: VentaEntrada, sesion: Session = Depends(get_sesion)):
             id_cliente=datos.id_cliente,
             lineas=lineas,
             fecha=datos.fecha or date.today(),
+            reparto=datos.reparto,
         )
         return {"mensaje": "Venta registrada", "id_venta": venta.Id_Venta, "lineas": len(lineas)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class LineaPreviewReparto(BaseModel):
+    id_produccion: int
+    cantidad: Decimal
+    precio_real: Decimal
+
+
+@router.post("/ventas/preview-reparto")
+def preview_reparto_venta(lineas: list[LineaPreviewReparto], sesion: Session = Depends(get_sesion)):
+    """Muestra cómo se repartiría el ingreso de una venta entre Fábrica y Casa
+    (70/30 con recuperación de inversión), sin registrar nada. Acumula el saldo
+    línea por línea, igual que al registrar."""
+    from app.models import Produccion
+    from app.servicios.saldo_producto import saldo_de_producto, dividir_ingreso
+
+    saldo_por_producto = {}
+    detalle = []
+    total_fabrica = total_casa = 0.0
+    for l in lineas:
+        produccion = sesion.get(Produccion, l.id_produccion)
+        if produccion is None:
+            raise HTTPException(status_code=400, detail=f"No existe lote {l.id_produccion}")
+        pid = produccion.Id_Producto_Terminado
+        if pid not in saldo_por_producto:
+            saldo_por_producto[pid] = saldo_de_producto(sesion, pid)
+        ingreso = l.cantidad * l.precio_real
+        a_fab, a_casa = dividir_ingreso(saldo_por_producto[pid], ingreso)
+        saldo_por_producto[pid] = saldo_por_producto[pid] + ingreso
+        total_fabrica += float(a_fab)
+        total_casa += float(a_casa)
+        detalle.append({
+            "id_produccion": l.id_produccion,
+            "ingreso": round(float(ingreso), 2),
+            "a_fabrica": round(float(a_fab), 2),
+            "a_casa": round(float(a_casa), 2),
+        })
+    return {
+        "detalle": detalle,
+        "total_fabrica": round(total_fabrica, 2),
+        "total_casa": round(total_casa, 2),
+    }
 
 
 @router.get("/ventas")

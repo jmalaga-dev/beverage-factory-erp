@@ -17,6 +17,28 @@ de que un total corriente se desincronice del dato real (mismo criterio que
 from app.models import (
     Produccion, Detalle_Venta, Venta, Producto_Terminado, Movimiento_Inventario,
 )
+from app.config import REPARTO_VENTA_FABRICA
+
+
+def dividir_ingreso(saldo_actual, ingreso, pct_fabrica=None):
+    """Divide el ingreso de una venta entre Fábrica y Casa según el saldo del
+    producto (mejora 2.C). Mientras el producto no recuperó su inversión
+    (saldo < 0), el 100% va a Fábrica hasta llegar a 0; el excedente (y todo el
+    ingreso si el saldo ya es >= 0) se reparte pct_fabrica a Fábrica y el resto
+    a Casa. Devuelve (a_fabrica, a_casa). No toca la BD."""
+    if pct_fabrica is None:
+        pct_fabrica = REPARTO_VENTA_FABRICA
+    if saldo_actual >= 0:
+        a_fabrica = ingreso * pct_fabrica
+    else:
+        faltante = -saldo_actual   # cuánto falta para recuperar la inversión
+        if ingreso <= faltante:
+            a_fabrica = ingreso    # todavía no cruza el cero: todo a Fábrica
+        else:
+            remanente = ingreso - faltante
+            a_fabrica = faltante + remanente * pct_fabrica
+    a_casa = ingreso - a_fabrica
+    return a_fabrica, a_casa
 
 
 def _costo_bruto_por_producto(sesion, fecha_corte=None):
