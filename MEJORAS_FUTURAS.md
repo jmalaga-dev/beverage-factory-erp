@@ -1004,6 +1004,46 @@ Los datos viven en PostgreSQL, NO en Git. Git no los protege. Configurar respald
 periódicos con `pg_dump` antes de manejar datos reales del negocio, para no
 perderlos ante una falla de disco.
 
+**Estado: implementado (versión manual).** Scripts en `backend/scripts/`:
+- `backup_db.ps1`: corre `pg_dump -F c` (formato custom, comprimido) contra
+  la BD definida en `backend/.env`, y guarda el archivo con fecha/hora en el
+  nombre (`fabrica_V2_AAAAMMDD_HHMMSS.dump`) en **D:\Backups_BD_Fabrica**
+  (disco físico distinto al E: donde vive el repo, para que una falla de
+  disco no se lleve el repo y los respaldos juntos). No es parte de Git —
+  vive fuera del repo por completo.
+- `restore_db.ps1 -Archivo <ruta>`: restaura un respaldo puntual con
+  `pg_restore --clean --if-exists` (equivalente a "volver a ese punto"),
+  pidiendo confirmación explícita antes de tocar la base porque es
+  destructivo (reemplaza el contenido actual).
+- `respaldar.bat` / `restaurar.bat`: envoltorios doble-cliqueables de los
+  dos scripts de arriba. Windows no deja correr un `.ps1` con doble clic por
+  defecto (aunque la política de ejecución lo permita) — el `.bat` llama a
+  PowerShell con `-ExecutionPolicy Bypass` solo para esa ejecución puntual,
+  sin cambiar ninguna configuración del sistema.
+- `reset_db.ps1` / `vaciar_prueba.bat`: vacía TODAS las tablas (TRUNCATE
+  ... CASCADE + reinicio de ids), pidiendo confirmación escrita del nombre
+  de la base antes de tocar nada. Se agregó para poder probar el ciclo
+  completo respaldo → vaciar → restaurar mientras la BD solo tiene datos
+  de prueba (jul 2026, ningún dato real todavía). **No es el script de
+  limpieza final de 8.4** — ese deberá decidir qué catálogos conservar o
+  recrear desde el Excel; este vacía sin distinción, por eso solo es seguro
+  usarlo ahora, antes de que exista un dato real mezclado con los de
+  prueba.
+
+Por qué no es incremental como Git: `pg_dump` no versiona diffs, cada corrida
+es una foto completa e independiente. Para tener "puntos de restauración"
+hay que correrlo varias veces y quedarse con varios archivos fechados — cada
+uno se restaura de forma independiente, no se combinan entre sí.
+
+Decisiones tomadas (jul 2026): destino D:\ (disco separado, ~1TB libres);
+por ahora se conservan **todos** los respaldos sin borrado automático — un
+respaldo de prueba pesó 0.11 MB, así que el espacio no es un problema
+mientras el proyecto sea chico; revisar la política de retención (ej.
+quedarse con los últimos N) cuando el tamaño real lo justifique. Ejecución
+**manual** por ahora (no se configuró Windows Task Scheduler): se decidirá
+si conviene automatizarlo y con qué frecuencia (diario/semanal) una vez que
+se sepa cuánto pesan los respaldos con datos reales de uso.
+
 ### 8.4 Migración de datos reales del Excel (incluye limpieza previa)
 Antes de migrar: **borrar todos los datos de prueba** acumulados durante el
 desarrollo y dejar la BD limpia (script de reset: TRUNCATE de las tablas de
@@ -1016,6 +1056,45 @@ datos históricos reales, con pruebas de paridad contra el Excel.
 ### 8.5 Subir el repositorio a GitHub
 Actualmente el versionado es local. Subir a GitHub cuando haya una beta, con el
 README y la documentación, para que el repositorio sea visible (útil para CV).
+
+### 8.6 Empaquetar con Docker para que otra persona lo pruebe
+Idea surgida al trabajar en 8.3 (jul 2026): hoy el proyecto solo corre en esta
+PC (Python + Node + PostgreSQL instalados a mano). Un `docker-compose.yml`
+que arma 3 contenedores (PostgreSQL + backend FastAPI + frontend ya
+compilado) permite que otra persona lo pruebe con un solo comando
+(`docker compose up`), sin instalar Python/Node/PostgreSQL por separado.
+
+Decisión (jul 2026): de las dos opciones evaluadas (Docker vs. hosting
+temporal tipo Render/Railway con datos ficticios), se elige **Docker** —
+sirve además para aprender la tecnología y suma al CV, y no depende de que
+la otra persona tenga que entrar a un link (evita el costo/límites del free
+tier de hosting). El camino de hosting temporal para demo queda descartado
+por ahora, no como pendiente.
+
+Para el final (etapa E), después de que el sistema esté probado en el uso
+diario real.
+
+### 8.7 Self-hosting real (mediano plazo, con túnel)
+Distinto de 8.6: esto es para uso productivo real, no solo demo. Unas 3
+personas necesitarán conectarse, casi siempre en el horario de trabajo (la
+PC ya estaría encendida por otras razones en ese horario), así que no hace
+falta un hosting pago — la propia PC alcanza como servidor:
+
+- El stack es liviano (FastAPI + PostgreSQL + React compilado); con el
+  volumen de datos actual (~0.1 MB la base completa) y 3 usuarios
+  concurrentes, no hace falta hardware potente, solo que la PC esté
+  encendida y estable durante el horario de uso.
+- Para que las 3 personas se conecten desde afuera sin abrir puertos en el
+  router (evita exponer la PC directamente a internet, que es el riesgo
+  real): usar un túnel tipo **Cloudflare Tunnel** (gratis, da HTTPS,
+  la PC se conecta hacia afuera en vez de aceptar conexiones entrantes).
+  Nunca exponer el puerto de PostgreSQL directamente, solo el del backend.
+- Evaluado y descartado por ahora: hosting pago en la nube (Render/Railway,
+  ~7-15 USD/mes) — no se justifica con solo 3 usuarios y la PC ya disponible
+  en el horario necesario.
+
+Pendiente de definir cuando se implemente: manejo de usuarios/roles (quién
+ve qué), que hasta ahora se dejó fuera de esta conversación a propósito.
 
 ---
 

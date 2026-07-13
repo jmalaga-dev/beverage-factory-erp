@@ -570,6 +570,13 @@ fuente de verdad del error.
 - El diseño de la BD se hizo primero (en dbdiagram.io) antes de codear —
   "diseñar antes de construir" fue clave para avanzar rápido.
 - Los datos reales del Excel se migrarán al final, con pruebas de paridad.
+- Respaldos de la BD (jul 2026, mejora 8.3): tampoco viven en Git — `pg_dump`
+  guarda una foto completa (no incremental, a diferencia de un commit) en
+  `D:\Backups_BD_Fabrica`, un disco físico distinto al del repo. Se conservan
+  todos los respaldos por ahora (pesan ~0.1 MB cada uno con los datos
+  actuales) y se corren manualmente (`backend/scripts/backup_db.ps1`);
+  automatizar con Task Scheduler y definir una política de retención quedan
+  pendientes para cuando el tamaño real lo justifique.
 
 ---
 
@@ -583,6 +590,7 @@ Git/                          (raíz del repositorio)
 ├── backend/
 │   ├── .env                  (credenciales, NO versionado)
 │   ├── migraciones/          (cambios incrementales a la BD, numerados)
+│   ├── scripts/              (backup_db.ps1, restore_db.ps1)
 │   └── app/
 │       ├── database.py, models.py, dependencias.py
 │       ├── config.py         (constantes de negocio ajustables)
