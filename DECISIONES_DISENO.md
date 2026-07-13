@@ -300,6 +300,28 @@ estimadas y restantes). Dos decisiones:
   encadene N líneas en una transacción atómica (todo o nada): si una materia
   prima no tiene el proveedor elegido, ninguna línea del pliego se registra.
 
+### 3.14 Reparto de gasto por prioridad de cuentas (mejora 2, parte A+B)
+- **Rol de cuenta, no nombre.** Se agregó `Rol_Cuenta` (FABRICA/CASA/OTRA); las
+  reglas de prioridad y el reparto se apoyan en el rol explícito, no en el texto
+  del nombre (que se puede cambiar). El orden por tipo de gasto vive en
+  `PRIORIDAD_CUENTAS` (`app/config.py`): familiar → Casa, Fábrica, Otra; de
+  fábrica → Fábrica, Casa, Otra.
+- **El reparto PROPONE, el usuario dispone** (mismo patrón que FIFO). El sistema
+  drena las cuentas por prioridad de rol (y a igual rol, la de más saldo
+  primero) hasta cubrir el monto, respetando saldos; el usuario ajusta cuánto
+  sale de cada una antes de confirmar. La regla es que la suma de fuentes iguale
+  el gasto.
+- **Un gasto = varios movimientos SALIDA, atómicos.** Como un gasto es un
+  `Movimiento` puro (sin tabla propia), partirlo entre cuentas es natural: una
+  SALIDA por fuente, todas en una transacción (o todas o ninguna). El núcleo del
+  algoritmo (`asignar_por_prioridad`) es una función pura sin BD, para poder
+  probarlo aislado de las cuentas reales.
+- **Alcance acotado a gastos.** Compras y pagos NO entran al reparto por ahora:
+  sus registros (`Compra`/`Pago_Trabajador`) enlazan un solo movimiento, y
+  partir el pago entre cuentas rompería ese enlace y el cálculo del balance —
+  requiere un cambio de modelo (varios movimientos de pago por registro) que se
+  pospuso. Los aportes externos siguen cargándose con `INGRESO_EXTERNO` (7.5).
+
 ### 3.13 Horas-hombre acumuladas/heredadas y prorrateo mensual (mejora 1.1)
 - **Una columna de horas, no un pool que se vacía.** Cada producción guarda
   `Horas_Acumuladas` (horas-hombre del lote completo). La herencia al consumir
@@ -402,6 +424,8 @@ Operaciones construidas (con backend, API y pantalla):
 - Horas-hombre acumuladas/heredadas (mejora 1.1): cada producción arrastra sus
   horas directas + heredadas de los intermedios; el cierre de mes reparte los
   gastos extra (pagados) entre los terminados según esas horas.
+- Reparto de gasto por prioridad (mejora 2.B): un gasto se cubre con varias
+  cuentas por orden de prioridad de rol; una SALIDA por fuente, atómico.
 - Absorción de costos indirectos por botella (mejora 1.4): registrar
   utensilios/feriados (sale dinero + ítem a absorber) y absorber en cada
   producción.

@@ -109,10 +109,14 @@ function PaginaCatalogos() {
         endpoint="cuentas"
         idKey="id_cuenta"
         permitirCrear={false}
-        campos={[{ nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true }]}
+        campos={[
+          { nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true },
+          { nombre: 'rol', label: 'Rol', tipo: 'select', opciones: ['FABRICA', 'CASA', 'OTRA'], obligatorio: true },
+        ]}
         camposTabla={[
           { key: 'nombre', label: 'Nombre' },
           { key: 'saldo', label: 'Saldo' },
+          { key: 'rol', label: 'Rol' },
         ]}
       />
     </div>

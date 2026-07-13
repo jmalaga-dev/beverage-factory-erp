@@ -137,6 +137,7 @@ class Cuenta(Base):
     Nombre_Cuenta = Column(String, unique=True, nullable=False)
     Saldo_Actual_Cuenta = Column(Numeric, nullable=False, default=0)
     Habilitado_Cuenta = Column(Boolean, nullable=False, server_default="true")
+    Rol_Cuenta = Column(String, nullable=False, server_default="OTRA")  # FABRICA/CASA/OTRA (mejora 2)
 
 
 class Grupo_Movimiento(Base):

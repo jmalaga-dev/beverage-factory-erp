@@ -20,6 +20,19 @@ UMBRAL_STOCK_MINIMO = Decimal("0.0001")
 # usado al crear automaticamente el item de una merma. Ajustable en un lugar.
 TASA_ABSORCION_DEFECTO = 10
 
+# Roles de cuenta (mejora 2): distinguen las billeteras para el reparto por
+# prioridad. FABRICA y CASA son las dos billeteras del reparto; OTRA es
+# cualquier otra cuenta (ej. un banco) que no entra en las reglas de prioridad.
+ROLES_CUENTA = ["FABRICA", "CASA", "OTRA"]
+
+# Orden de prioridad de las cuentas para cubrir una salida, segun el tipo de
+# gasto (mejora 2.B). El reparto propone drenar las cuentas en este orden de
+# rol (respetando saldos) hasta cubrir el total.
+PRIORIDAD_CUENTAS = {
+    "FAMILIAR": ["CASA", "FABRICA", "OTRA"],   # gasto de la casa: primero Casa
+    "FABRICA": ["FABRICA", "CASA", "OTRA"],    # compra/pago de la fabrica: primero Fabrica
+}
+
 # Categorias fijas para clasificar Tipo_Bien en el balance (mejora 4.2).
 # Elegidas explicitamente al crear/editar un tipo de bien, en vez de
 # adivinar por texto en el nombre. Ligadas a las columnas de Balance

@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
+from app.config import ROLES_CUENTA
 from app.dependencias import get_sesion
 from app.models import (
     Compra,
@@ -119,6 +120,7 @@ def listar_cuentas(sesion: Session = Depends(get_sesion)):
             "id_cuenta": c.Id_Cuenta,
             "nombre": c.Nombre_Cuenta,
             "saldo": float(c.Saldo_Actual_Cuenta),
+            "rol": c.Rol_Cuenta,
             "habilitado": c.Habilitado_Cuenta,
             # No se puede borrar si tiene movimientos o si le queda saldo.
             "en_uso": (c.Id_Cuenta in usados) or (c.Saldo_Actual_Cuenta != 0),
@@ -129,12 +131,13 @@ def listar_cuentas(sesion: Session = Depends(get_sesion)):
 
 class CuentaEdicion(BaseModel):
     nombre: str
+    rol: str | None = None
 
 
 @router.patch("/cuentas/{id_cuenta}")
 def actualizar_cuenta(id_cuenta: int, datos: CuentaEdicion, sesion: Session = Depends(get_sesion)):
-    """Corrige el nombre de una cuenta. El saldo NO se edita a mano: se deriva
-    de los movimientos (principio del libro de movimientos unico)."""
+    """Corrige el nombre y/o el rol de una cuenta. El saldo NO se edita a mano:
+    se deriva de los movimientos (principio del libro de movimientos unico)."""
     c = sesion.get(Cuenta, id_cuenta)
     if c is None:
         raise HTTPException(status_code=404, detail=f"No existe cuenta con Id {id_cuenta}")
@@ -145,6 +148,10 @@ def actualizar_cuenta(id_cuenta: int, datos: CuentaEdicion, sesion: Session = De
     ).first()
     if existente:
         raise HTTPException(status_code=400, detail="Ya existe otra cuenta con ese nombre")
+    if datos.rol is not None:
+        if datos.rol not in ROLES_CUENTA:
+            raise HTTPException(status_code=400, detail=f"Rol inválido: {datos.rol}")
+        c.Rol_Cuenta = datos.rol
     c.Nombre_Cuenta = datos.nombre.strip()
     sesion.commit()
     return {"mensaje": "Cuenta actualizada", "id": c.Id_Cuenta}

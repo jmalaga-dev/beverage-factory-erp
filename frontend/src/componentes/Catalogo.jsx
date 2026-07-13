@@ -104,13 +104,24 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
           {permitirCrear && (
             <div>
               {campos.map((campo) => (
-                <input
-                  key={campo.nombre}
-                  type={campo.tipo === 'number' ? 'number' : 'text'}
-                  placeholder={campo.label}
-                  value={valores[campo.nombre] || ''}
-                  onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
-                />
+                campo.tipo === 'select' ? (
+                  <select
+                    key={campo.nombre}
+                    value={valores[campo.nombre] || ''}
+                    onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
+                  >
+                    <option value="">-- {campo.label} --</option>
+                    {campo.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    key={campo.nombre}
+                    type={campo.tipo === 'number' ? 'number' : 'text'}
+                    placeholder={campo.label}
+                    value={valores[campo.nombre] || ''}
+                    onChange={(e) => setValores({ ...valores, [campo.nombre]: e.target.value })}
+                  />
+                )
               ))}
               <button onClick={crear}>Agregar</button>
             </div>
@@ -144,12 +155,21 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
                       return (
                         <td key={c.key}>
                           {enEdicion && campoEditable ? (
-                            <input
-                              type={campoEditable.tipo === 'number' ? 'number' : 'text'}
-                              style={{ width: campoEditable.tipo === 'number' ? '90px' : 'auto' }}
-                              value={editValores[c.key] ?? ''}
-                              onChange={(e) => setEditValores({ ...editValores, [c.key]: e.target.value })}
-                            />
+                            campoEditable.tipo === 'select' ? (
+                              <select
+                                value={editValores[c.key] ?? ''}
+                                onChange={(e) => setEditValores({ ...editValores, [c.key]: e.target.value })}
+                              >
+                                {campoEditable.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type={campoEditable.tipo === 'number' ? 'number' : 'text'}
+                                style={{ width: campoEditable.tipo === 'number' ? '90px' : 'auto' }}
+                                value={editValores[c.key] ?? ''}
+                                onChange={(e) => setEditValores({ ...editValores, [c.key]: e.target.value })}
+                              />
+                            )
                           ) : (
                             campoEditable && campoEditable.tipo === 'number'
                               ? fmtNumero(item[c.key])

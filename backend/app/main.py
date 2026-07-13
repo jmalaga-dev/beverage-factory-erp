@@ -29,6 +29,7 @@ from app.rutas import (
     prorrateo,
     proveedores,
     recetas,
+    reparto,
     transferencias,
     ventas,
 )
@@ -81,3 +82,4 @@ app.include_router(fifo.router)
 app.include_router(recetas.router)
 app.include_router(devoluciones.router)
 app.include_router(cierre.router)
+app.include_router(reparto.router)

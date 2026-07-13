@@ -13,6 +13,7 @@ import PaginaRecetas from './paginas/PaginaRecetas'
 import PaginaVentas from './paginas/PaginaVentas'
 import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
+import PaginaRepartoGasto from './paginas/PaginaRepartoGasto'
 import PaginaTransferencias from './paginas/PaginaTransferencias'
 import PaginaDeudas from './paginas/PaginaDeudas'
 import PaginaAbsorcion from './paginas/PaginaAbsorcion'
@@ -49,6 +50,7 @@ const categorias = [
   { titulo: 'Finanzas', links: [
     { to: '/pagos', label: 'Pagos' },
     { to: '/gastos', label: 'Gastos' },
+    { to: '/reparto-gasto', label: 'Gasto por prioridad' },
     { to: '/transferencias', label: 'Transferencias' },
     { to: '/deudas', label: 'Deudas' },
   ] },
@@ -107,6 +109,7 @@ function AppInterno() {
           <Route path="/ventas" element={<PaginaVentas />} />
           <Route path="/pagos" element={<PaginaPagos />} />
           <Route path="/gastos" element={<PaginaGastos />} />
+          <Route path="/reparto-gasto" element={<PaginaRepartoGasto />} />
           <Route path="/transferencias" element={<PaginaTransferencias />} />
           <Route path="/deudas" element={<PaginaDeudas />} />
           <Route path="/absorcion" element={<PaginaAbsorcion />} />

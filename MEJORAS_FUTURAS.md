@@ -208,6 +208,27 @@ configurable — en el Excel era una celda global; candidato a
 producto ya rentó la fábrica?"; hoy es de todos los tiempos — evaluar
 verlo también por mes (Power BI, 8.1).
 
+**Estado (jul 2026): 2A + 2B implementados; 2C pendiente.**
+- **2A — Rol de cuenta** (migración 019): columna `Rol_Cuenta`
+  (FABRICA/CASA/OTRA), editable en el catálogo de Cuentas (el `Catalogo`
+  genérico ahora soporta campos tipo *select*). Las reglas de prioridad se
+  apoyan en el rol, no en el nombre.
+- **2B — Reparto de gasto por prioridad** (`app/servicios/reparto.py`):
+  pantalla **Gasto por prioridad** (grupo *Finanzas*). Das el total + tipo
+  (familiar → Casa→Fábrica; de fábrica → Fábrica→Casa) y el sistema **propone**
+  de qué cuentas sacar (drena por prioridad de rol, respetando saldos y
+  partiendo entre cuentas), el usuario ajusta, y se registra como **varios
+  movimientos SALIDA coordinados** (atómico). Orden de prioridad en
+  `PRIORIDAD_CUENTAS` (`app/config.py`). Verificado con prueba de integración
+  (orden por prioridad, split, atomicidad, cobertura).
+- **Deferido de 2B:** compras y pagos por prioridad — sus registros enlazan un
+  solo movimiento; partir el pago entre cuentas rompería ese enlace y el
+  cálculo del balance, requiere cambio de modelo. Y los aportes externos
+  integrados al reparto (hoy se cargan con `INGRESO_EXTERNO` y el gasto sale de
+  esa cuenta).
+- **2C — Reparto 70/30 de ventas:** pendiente (necesita el acumulador de
+  inversión por producto; es un mini-proyecto analítico aparte).
+
 ---
 
 ## 3. INVENTARIO Y PRODUCCIÓN
