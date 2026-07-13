@@ -322,6 +322,31 @@ estimadas y restantes). Dos decisiones:
   requiere un cambio de modelo (varios movimientos de pago por registro) que se
   pospuso. Los aportes externos siguen cargándose con `INGRESO_EXTERNO` (7.5).
 
+### 3.15 Reparto 70/30 de la venta con recuperación de inversión (mejora 2.C)
+- **El saldo por producto se calcula al vuelo, no en una columna.** `saldo =
+  ingresos acumulados de sus ventas − inversión acumulada en producirlo`, sobre
+  `Produccion` + `Detalle_Venta` que ya existen (por PRODUCTO, no por lote). Es
+  el mismo criterio de "no duplicar" del resto del proyecto: evita un total
+  corriente que se desincronice, y el volumen es chico. La inversión **resta el
+  costo arrastrado por reprocesos** (al reprocesar, las botellas salen de un
+  lote a otro pero la `Cantidad_Producida` del origen no baja, así que su costo
+  se contaría dos veces).
+- **El ingreso de la venta se reparte, no va a una cuenta elegida.** Mientras el
+  producto no recuperó su inversión (saldo < 0), el 100% va a Fábrica hasta
+  llegar a 0; el excedente (y todo si ya recuperó) se reparte
+  `REPARTO_VENTA_FABRICA` (0.70) a Fábrica y el resto a Casa. El % vive en
+  `app/config.py` (en el Excel era una celda global). Por eso la pantalla de
+  Ventas dejó de pedir cuenta por línea: el destino lo decide la regla.
+- **El saldo se acumula línea por línea dentro de la venta.** Se arranca del
+  saldo real en la BD y se suma cada línea, así dos líneas del mismo producto en
+  la misma venta respetan bien el cruce del cero (la primera puede terminar de
+  recuperar y la segunda ya repartir 70/30).
+- **Cada línea = una `ENTRADA` por destino con monto > 0** (Fábrica y/o Casa).
+  A diferencia de las compras, la venta sí puede partirse en varios movimientos
+  sin romper nada: el balance suma las `ENTRADA` directo (no depende de que la
+  línea enlace un único movimiento). `reparto=False` conserva el modo clásico
+  (una cuenta explícita por línea) por si hiciera falta.
+
 ### 3.13 Horas-hombre acumuladas/heredadas y prorrateo mensual (mejora 1.1)
 - **Una columna de horas, no un pool que se vacía.** Cada producción guarda
   `Horas_Acumuladas` (horas-hombre del lote completo). La herencia al consumir

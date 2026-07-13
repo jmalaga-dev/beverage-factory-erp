@@ -239,13 +239,20 @@ verlo también por mes (Power BI, 8.1).
     Power BI, 8.1) — esto es solo un indicador de recuperación de capital,
     no de rentabilidad del período. Verificado con curl contra la BD real y
     cruzado a mano contra las tablas crudas (coincide exacto).
-  - ⬜ **Tajada 2 — Integrar el 70/30 en la venta**: pendiente. Al confirmar
-    una venta, cada línea consulta el saldo de su producto: si sigue ≤ 0
-    después de sumar el ingreso, 100% va a Fábrica; si cruza cero, el
-    remanente se reparte `REPARTO_VENTA_FABRICA` (0.70, `app/config.py`) /
-    resto a Casa. Requiere decidir a qué cuentas concretas va cada parte
-    (¿las cuentas de rol FABRICA/CASA, o la cuenta que eligió la línea?) y
-    tocar el servicio + pantalla de Ventas.
+  - ✅ **Tajada 2 — Integrar el 70/30 en la venta.** Al registrar una venta
+    (`reparto=True` por defecto), el ingreso de cada línea se reparte entre la
+    cuenta **FABRICA** y la **CASA** (únicas de su rol) según la recuperación de
+    inversión del producto: mientras el saldo sea < 0, 100% a Fábrica hasta
+    llegar a 0; el excedente (y todo si ya recuperó) se reparte
+    `REPARTO_VENTA_FABRICA` (0.70, `app/config.py`) / resto a Casa. El saldo se
+    acumula línea por línea (dos líneas del mismo producto respetan el cruce del
+    cero). Cada línea genera una `ENTRADA` por destino con monto > 0.
+    `reparto=False` vuelve al modo clásico (cuenta explícita por línea).
+    Frontend: la pantalla de Ventas **ya no pide cuenta por línea** y muestra la
+    vista previa del reparto (Fábrica/Casa) vía `POST /ventas/preview-reparto`.
+    Verificado con la función de división (recuperado, sin cruzar, cruzando y
+    justo en cero) e integración con snapshot/restauración de las cuentas
+    reales. **2C completo.**
 
 ---
 

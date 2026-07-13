@@ -9,37 +9,30 @@ function PaginaVentas() {
   const { fechaParaEnviar } = useFechaGlobal()
   const [clientes, setClientes] = useState([])
   const [lotes, setLotes] = useState([])       // lotes de producto terminado con stock
-  const [cuentas, setCuentas] = useState([])
   const [ventas, setVentas] = useState([])     // ventas registradas
 
   const [idCliente, setIdCliente] = useState('')
 
-  // La lista de líneas de la venta
-  const [lineas, setLineas] = useState([])   // [{id_produccion, cantidad, precio_real, id_cuenta}]
+  // La lista de líneas de la venta. El dinero NO se asigna a una cuenta a mano:
+  // se reparte 70/30 entre Fábrica y Casa según recuperación de inversión (2.C).
+  const [lineas, setLineas] = useState([])   // [{id_produccion, cantidad, precio_real}]
 
   // Campos temporales para agregar una línea
   const [linProd, setLinProd] = useState('')
   const [linCantidad, setLinCantidad] = useState('')
   const [linPrecio, setLinPrecio] = useState('')
-  const [linCuenta, setLinCuenta] = useState('')
 
-  // Margen mínimo de ganancia (% sobre el precio de venta), editable acá en la
-  // pantalla porque puede cambiar seguido (6.12). Manda sobre el precio
-  // sugerido: al autocompletar una línea o resolver por FIFO se usa el margen
-  // actual. Default 35%.
+  // Margen mínimo de ganancia (% sobre el precio de venta), editable acá (6.12).
   const [margen, setMargen] = useState('35')
 
-  // Taxi/delivery: SOLO cálculo en pantalla (6.12). Prorratea su costo entre
-  // todas las botellas de la venta para ver el neto real por línea. NO mueve
-  // caja ni se envía al backend; si el taxi se pagó de verdad, va aparte como
-  // un Gasto normal.
+  // Taxi/delivery: SOLO cálculo en pantalla (6.12). No mueve caja.
   const [taxi, setTaxi] = useState('')
+
+  // Vista previa del reparto 70/30 Fábrica/Casa (2.C), recalculada por el backend.
+  const [reparto, setReparto] = useState(null)
 
   const [mensaje, setMensaje] = useState('')
 
-  // Precio sugerido de un lote: el mayor entre el recomendado del catálogo y
-  // costo/(1−margen), redondeado a 2 decimales. El margen (sobre el precio de
-  // venta) sale de la caja editable de arriba.
   function precioSugerido(lote) {
     const m = (parseFloat(margen) || 0) / 100
     const porMargen = m < 1 ? Math.round((lote.costo_unitario / (1 - m)) * 100) / 100 : lote.costo_unitario
@@ -49,14 +42,20 @@ function PaginaVentas() {
   function cargar() {
     apiGet('/clientes').then(setClientes).catch(console.error)
     apiGet('/lotes-producto-terminado').then(setLotes).catch(console.error)
-    apiGet('/cuentas').then(setCuentas).catch(console.error)
     apiGet('/ventas').then(setVentas).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
 
-  // Productos distintos (para el resolver FIFO, que pide producto + cantidad
-  // total y devuelve los lotes del más antiguo al más nuevo).
+  // Recalcular el reparto 70/30 cada vez que cambian las líneas (lo resuelve el
+  // backend, misma lógica que al registrar: acumula el saldo línea por línea).
+  useEffect(() => {
+    if (lineas.length === 0) { setReparto(null); return }
+    apiPost('/ventas/preview-reparto', lineas.map((l) => ({
+      id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: l.precio_real,
+    }))).then(setReparto).catch(() => setReparto(null))
+  }, [lineas])
+
   const productos = []
   const vistos = new Set()
   for (const l of lotes) {
@@ -66,14 +65,13 @@ function PaginaVentas() {
     }
   }
 
-  // Cuánto de un lote ya está comprometido en las líneas actuales
   function yaUsadoDeLote(idLote) {
     return lineas.filter((l) => l.id_produccion === idLote).reduce((s, l) => s + l.cantidad, 0)
   }
 
   function agregarLinea() {
-    if (linProd === '' || linCantidad === '' || linPrecio === '' || linCuenta === '') {
-      setMensaje('Completa todos los campos de la línea')
+    if (linProd === '' || linCantidad === '' || linPrecio === '') {
+      setMensaje('Completa lote, cantidad y precio')
       return
     }
     const lote = lotes.find((l) => l.id_produccion === parseInt(linProd))
@@ -86,19 +84,14 @@ function PaginaVentas() {
       id_produccion: parseInt(linProd),
       cantidad: parseFloat(linCantidad),
       precio_real: parseFloat(linPrecio),
-      id_cuenta: parseInt(linCuenta),
     }])
-    setLinProd(''); setLinCantidad(''); setLinPrecio(''); setLinCuenta('')
+    setLinProd(''); setLinCantidad(''); setLinPrecio('')
     setMensaje('')
   }
 
   // Resolver por FIFO: agrega una línea por cada lote sugerido, con su precio
-  // sugerido y la cuenta destino elegida arriba (la comparten todas).
-  // Descuenta lo que YA está comprometido en las líneas actuales, así resolver
-  // el mismo producto dos veces no vuelve a meter lotes agotados ni pasa del
-  // stock (el backend igual lo validaría al registrar, pero mejor evitarlo acá).
+  // sugerido. Descuenta lo ya comprometido en las líneas actuales.
   function agregarPorFifo(idProducto, asignaciones) {
-    if (linCuenta === '') { setMensaje('Elige primero la cuenta destino (la usan las líneas del FIFO)'); return }
     let pendiente = asignaciones.reduce((s, a) => s + a.cantidad, 0)
     const nuevas = []
     for (const a of asignaciones) {
@@ -108,12 +101,7 @@ function PaginaVentas() {
       const disponible = lote.stock - yaUsadoDeLote(a.id_lote)
       const usar = Math.round(Math.min(pendiente, disponible) * 1e6) / 1e6
       if (usar <= 0) continue
-      nuevas.push({
-        id_produccion: a.id_lote,
-        cantidad: usar,
-        precio_real: precioSugerido(lote),
-        id_cuenta: parseInt(linCuenta),
-      })
+      nuevas.push({ id_produccion: a.id_lote, cantidad: usar, precio_real: precioSugerido(lote) })
       pendiente -= usar
     }
     if (nuevas.length === 0) {
@@ -128,12 +116,10 @@ function PaginaVentas() {
 
   function quitarLinea(i) { setLineas(lineas.filter((_, idx) => idx !== i)) }
 
-  // Editar el precio de una línea ya cargada, sin quitar y re-agregar.
   function cambiarPrecioLinea(i, valor) {
     setLineas(lineas.map((l, idx) => (idx === i ? { ...l, precio_real: parseFloat(valor) || 0 } : l)))
   }
 
-  // Al elegir un lote, autocompletar el precio con el SUGERIDO
   function elegirProducto(id) {
     setLinProd(id)
     const lote = lotes.find((x) => x.id_produccion === parseInt(id))
@@ -146,7 +132,7 @@ function PaginaVentas() {
 
     apiPost('/ventas', {
       id_cliente: parseInt(idCliente),
-      lineas: lineas,   // el taxi NO se envía: es solo cálculo en pantalla
+      lineas: lineas,   // el taxi NO se envía; reparto 70/30 = default en el backend
       fecha: fechaParaEnviar,
     })
       .then(() => {
@@ -159,31 +145,24 @@ function PaginaVentas() {
       .catch((e) => setMensaje(e.message))
   }
 
-  // Helpers para mostrar nombres en las líneas
   function nombreLote(id) {
     const l = lotes.find((x) => x.id_produccion === id)
     return l ? `${l.nombre_producto} - Lote ${id}` : `Lote ${id}`
-  }
-  function nombreCuenta(id) {
-    const c = cuentas.find((x) => x.id_cuenta === id)
-    return c ? c.nombre : `Cuenta ${id}`
   }
   function costoDeLote(id) {
     const l = lotes.find((x) => x.id_produccion === id)
     return l ? l.costo_unitario : null
   }
 
-  // Precio bajo costo del lote que se está armando (solo aviso, no bloquea)
   const loteEnCurso = linProd !== '' ? lotes.find((x) => x.id_produccion === parseInt(linProd)) : null
   const precioBajoCosto = loteEnCurso && linPrecio !== '' && parseFloat(linPrecio) < loteEnCurso.costo_unitario
 
-  // ----- Cálculos de la venta (con prorrateo de taxi) -----
+  // ----- Cálculos de la venta (ganancia + prorrateo de taxi) -----
   const taxiNum = parseFloat(taxi) || 0
   const totalBotellas = lineas.reduce((s, l) => s + l.cantidad, 0)
   const taxiPorBotella = totalBotellas > 0 ? taxiNum / totalBotellas : 0
   const hayTaxi = taxiNum > 0
 
-  // Métricas por línea
   const filas = lineas.map((l) => {
     const costo = costoDeLote(l.id_produccion) ?? 0
     const ingreso = l.cantidad * l.precio_real
@@ -194,7 +173,6 @@ function PaginaVentas() {
     return { ...l, costo, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct, bajoCosto: l.precio_real < costo }
   })
 
-  // Totales de la venta
   const totIngreso = filas.reduce((s, f) => s + f.ingreso, 0)
   const totCosto = filas.reduce((s, f) => s + f.costo * f.cantidad, 0)
   const totBruta = filas.reduce((s, f) => s + f.gananciaBruta, 0)
@@ -217,7 +195,6 @@ function PaginaVentas() {
         />
       </div>
 
-      {/* Margen sugerido, editable acá (no en el backend) */}
       <div style={{ margin: '0.5rem 0' }}>
         <label>
           Margen sugerido:{' '}
@@ -244,14 +221,6 @@ function PaginaVentas() {
           value={linCantidad} onChange={(e) => setLinCantidad(e.target.value)} />
         <input type="number" placeholder="Precio de venta"
           value={linPrecio} onChange={(e) => setLinPrecio(e.target.value)} />
-        <SelectorBuscable
-          opciones={cuentas.filter((c) => c.habilitado)}
-          valor={linCuenta}
-          onCambiar={setLinCuenta}
-          obtenerId={(c) => c.id_cuenta}
-          obtenerTexto={(c) => c.nombre}
-          placeholder="-- Cuenta destino --"
-        />
         <button onClick={agregarLinea}>Agregar línea</button>
       </div>
 
@@ -261,7 +230,7 @@ function PaginaVentas() {
         </p>
       )}
 
-      {/* Resolver por FIFO: llena varias líneas de golpe (usa la cuenta destino de arriba) */}
+      {/* Resolver por FIFO: llena varias líneas de golpe */}
       <SelectorFifo
         origen="TERMINADO"
         opciones={productos}
@@ -284,7 +253,6 @@ function PaginaVentas() {
               <th>%</th>
               {hayTaxi && <th>Taxi</th>}
               {hayTaxi && <th>Neto</th>}
-              <th>Cuenta</th>
               <th></th>
             </tr>
           </thead>
@@ -303,7 +271,6 @@ function PaginaVentas() {
                 <td style={{ textAlign: 'right' }}>{fmtNumero(f.pct, 1)}%</td>
                 {hayTaxi && <td style={{ textAlign: 'right' }}>{fmtMoneda(f.taxiLinea)}</td>}
                 {hayTaxi && <td style={{ textAlign: 'right', color: f.gananciaNeta < 0 ? 'red' : undefined }}>{fmtMoneda(f.gananciaNeta)}</td>}
-                <td>{nombreCuenta(f.id_cuenta)}</td>
                 <td><button onClick={() => quitarLinea(i)}>quitar</button></td>
               </tr>
             ))}
@@ -338,6 +305,15 @@ function PaginaVentas() {
             <strong>Ganancia {hayTaxi ? 'neta' : ''}: {fmtMoneda(gananciaFinal)} Bs</strong>
             {'  ·  '}% ganancia ponderado: <strong>{fmtNumero(pctPonderado, 1)}%</strong>
           </div>
+        </div>
+      )}
+
+      {/* Reparto 70/30 del ingreso entre Fábrica y Casa (2.C) */}
+      {reparto && (
+        <div style={{ margin: '0.5rem 0', padding: '0.4rem', background: '#eef7ee' }}>
+          <strong>Reparto del ingreso</strong> (100% a Fábrica hasta recuperar la inversión de cada producto; después 70/30):{' '}
+          Fábrica <strong>{fmtMoneda(reparto.total_fabrica)} Bs</strong>{'  ·  '}
+          Casa <strong>{fmtMoneda(reparto.total_casa)} Bs</strong>
         </div>
       )}
 
