@@ -1184,9 +1184,22 @@ columna **"Precio sugerido"** entre Costo u. y Precio (muestra lo que calculaba
 como al resolver por FIFO. Se carga el mapa al elegir el cliente. Verificado:
 cliente 1 → {1: 25, 2: 60}; cliente sin ventas → {} (cae al sugerido).
 
-### 10.5 Pendientes del lote (aún sin implementar)
+### 10.5 Menú — "Cierre producción" movido a Producción, con separador — Sonnet
+"Cierre producción" vivía en el menú Cierre, junto al cierre de MES (prorrateo,
+balance), aunque conceptualmente cierra la producción de la semana, no el mes.
+
+**Estado: implementado.** Movido al menú **Producción**, como último item de un
+segundo subgrupo (Absorción, Mermas, Cierre producción) separado visualmente
+del flujo de producir (Compras…Prod. Terminada) con un `<hr>` entre ambos.
+`MenuCategoria` soporta un flag `separador: true` en cualquier link del array
+para dibujar la línea antes de él ([App.jsx](frontend/src/App.jsx),
+[MenuCategoria.jsx](frontend/src/componentes/MenuCategoria.jsx)). El menú
+Cierre quedó con solo Cierre de mes, Balance y Comparar cierres. Verificado en
+el navegador: los 8 links de Producción en orden, `<hr>` antes de Absorción, y
+Cierre producción ya no aparece en el menú Cierre.
+
+### 10.6 Pendientes del lote (aún sin implementar)
 - **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
-- **Menú — mover "Cierre producción" a Producción** y separar visualmente los subgrupos. Sonnet.
 - **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
 - **Compra dividida (pliego) — mostrar el proveedor** de la compra. Sonnet.
 - **Venta — buscar cliente por celular y/o licorería** (campos ya existen). Sonnet.

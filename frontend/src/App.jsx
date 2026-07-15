@@ -33,13 +33,16 @@ const categorias = [
     { to: '/activos', label: 'Activos' },   // registro de bienes, no un cierre
   ] },
   { titulo: 'Producción', links: [
+    // Subgrupo 1: el flujo de producir (de la compra al lote terminado).
     { to: '/compras', label: 'Compras' },
     { to: '/jornadas', label: 'Jornadas' },
     { to: '/recetas', label: 'Recetas' },
     { to: '/produccion-intermedia', label: 'Prod. Intermedia' },
     { to: '/produccion-terminada', label: 'Prod. Terminada' },
-    { to: '/absorcion', label: 'Absorción' },
+    // Subgrupo 2: ajustes y cierre sobre lo ya producido (separador visual).
+    { to: '/absorcion', label: 'Absorción', separador: true },
     { to: '/mermas', label: 'Mermas' },     // ajuste de inventario
+    { to: '/cierre-semanal', label: 'Cierre producción' },
   ] },
   { titulo: 'Ventas', links: [
     { to: '/clientes', label: 'Clientes' },
@@ -52,10 +55,10 @@ const categorias = [
     { to: '/transferencias', label: 'Transferencias' },
     { to: '/deudas', label: 'Deudas' },
   ] },
-  // Cierre = el cierre de periodo de verdad: cerrar produccion (asignar
-  // trabajo), tomar la foto de balance y compararla con las anteriores.
+  // Cierre = el cierre de MES: prorratear gastos, tomar la foto de balance y
+  // compararla con las anteriores. El cierre de PRODUCCION (asignar trabajo a
+  // lo producido en la semana) vive en Producción, junto a lo que cierra.
   { titulo: 'Cierre', links: [
-    { to: '/cierre-semanal', label: 'Cierre producción' },
     { to: '/prorrateo', label: 'Cierre de mes' },
     { to: '/balance', label: 'Balance' },
     { to: '/comparar-balances', label: 'Comparar cierres' },

@@ -47,6 +47,11 @@ function MenuCategoria({ titulo, links }) {
         }}>
           {links.map((l) => (
             <li key={l.to}>
+              {/* Separador visual entre subgrupos de un mismo menu (ej. el
+                  flujo de producir vs. los ajustes/cierre sobre lo producido) */}
+              {l.separador && (
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+              )}
               <NavLink
                 to={l.to}
                 onClick={() => setAbierto(false)}
