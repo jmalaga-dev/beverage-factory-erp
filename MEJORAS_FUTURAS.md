@@ -1127,3 +1127,44 @@ Ventas (sumando lo ya agregado del mismo lote en la lista actual, no solo la
 bloquean la acción local — a diferencia del aviso no bloqueante de 6.6, aquí
 el backend igual las rechazaría. El backend sigue siendo la única fuente de
 verdad; esto es puramente comodidad.
+
+## 10. PULIDO POST-PRUEBAS (ajustes durante el uso real)
+
+Lote de ajustes menores detectados probando la app con datos reales (jul 2026).
+Triaje por modelo: Sonnet para las mecánicas de frontend con precedente claro,
+Opus para las que tocan lógica de precios/costeo en varias capas.
+
+### 10.1 Pago por sueldo semanal (bug: tarifa como Bs/hora) — Opus
+El pago se cargaba como Bs/hora y se multiplicaba directo por las horas, así que
+un sueldo semanal de 280 Bs por 48 h daba 280×8 = 2240 Bs por 8 h en vez de
+46.66. Se pensaba el pago en términos semanales.
+
+**Estado: implementado.** Sin migración (los campos `Pago_Trabajador` y
+`Horas_Base_Trabajador` ya existían). Nueva semántica: `Pago_Trabajador` = sueldo
+semanal, `Horas_Base_Trabajador` = horas por semana, y la tarifa/hora se deriva
+en un único helper `servicios/trabajadores.tarifa_hora()` (= sueldo / horas
+base). Se reemplazaron los 7 sitios que usaban `Pago_Trabajador` como Bs/hora
+(pago sugerido, cierre semanal, producción intermedia/terminada, reproceso y las
+dos valorizaciones de horas standby en balance). Catálogo: relabel a "Sueldo
+semanal" + "Horas por semana" (obligatorio) y columna calculada "Bs/hora"; el
+API `/trabajadores` devuelve la `tarifa`. Verificado: Deisy 280/48 → pago
+sugerido 46.66. Ver DECISIONES_DISENO 3.2. (Los trabajadores viejos cargados en
+Bs/hora quedan con tarifa baja hasta reingresar su sueldo semanal; eran datos de
+prueba.)
+
+### 10.2 Prorrateo de Junio 2026 marcaba "ya prorrateado" sin haberlo hecho
+Al abrir el cierre de mes, Junio 2026 salía como ya prorrateado.
+
+**Estado: resuelto (limpieza de datos, no era bug de código).** Había 2 filas
+huérfanas en `Prorrateo_Mensual` (Id 1 y 2: 490+250) de un prorrateo de prueba
+temprano, con montos que ya no coincidían con los gastos actuales del mes
+(490+180). Se borraron esas 2 filas; Junio quedó libre (`puede: true`).
+
+### 10.3 Pendientes del lote (aún sin implementar)
+- **Compras — predeterminar última cantidad+precio** por (producto, proveedor). Opus.
+- **Venta — columna "Precio sugerido" + Precio = último precio a ese cliente/producto** (fallback = sugerido). Opus.
+- **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
+- **Menú — mover "Cierre producción" a Producción** y separar visualmente los subgrupos. Sonnet.
+- **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
+- **Compra dividida (pliego) — mostrar el proveedor** de la compra. Sonnet.
+- **Venta — buscar cliente por celular y/o licorería** (campos ya existen). Sonnet.

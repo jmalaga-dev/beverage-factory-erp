@@ -35,13 +35,14 @@ function PaginaCatalogos() {
         idKey="id_trabajador"
         campos={[
           { nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true },
-          { nombre: 'pago', label: 'Pago por hora', tipo: 'number', obligatorio: true },
-          { nombre: 'horas_base', label: 'Horas base', tipo: 'number' },
+          { nombre: 'pago', label: 'Sueldo semanal (Bs)', tipo: 'number', obligatorio: true },
+          { nombre: 'horas_base', label: 'Horas por semana', tipo: 'number', obligatorio: true },
         ]}
         camposTabla={[
           { key: 'nombre', label: 'Nombre' },
-          { key: 'pago', label: 'Pago/hora' },
-          { key: 'horas_base', label: 'Horas base' },
+          { key: 'pago', label: 'Sueldo/sem' },
+          { key: 'horas_base', label: 'Horas/sem' },
+          { key: 'tarifa', label: 'Bs/hora' },
         ]}
       />
 

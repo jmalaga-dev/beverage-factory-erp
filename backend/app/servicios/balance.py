@@ -20,6 +20,7 @@ from app.models import (
     Movimiento, Produccion_Intermedio,
     Registro_Trabajador, Trabajador,
 )
+from app.servicios.trabajadores import tarifa_hora
 
 
 def serializar_balance(balance):
@@ -85,7 +86,7 @@ def calcular_estado_actual(sesion):
     valor_horas = 0
     for j in jornadas:
         trab = sesion.get(Trabajador, j.Id_Trabajador)
-        valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(trab.Pago_Trabajador or 0) if trab else 0
+        valor_horas += float(j.Horas_Restante_Registro_Trabajador) * float(tarifa_hora(trab)) if trab else 0
 
     # Stock producto terminado valorizado a precio recomendado (para los
     # escenarios de liquidez) y, aparte, a "costo o mercado, el menor"
@@ -313,7 +314,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         for j in jornadas_pend:
             trab = sesion.get(Trabajador, j.Id_Trabajador)
             if trab:
-                valor_horas_standby += j.Horas_Restante_Registro_Trabajador * (trab.Pago_Trabajador or 0)
+                valor_horas_standby += j.Horas_Restante_Registro_Trabajador * tarifa_hora(trab)
 
         # Stock de producto terminado: a precio recomendado de venta (para
         # los escenarios de liquidez) y, aparte, a costo o mercado -el menor-

@@ -31,6 +31,7 @@ from app.models import (
     Produccion, Producto_Terminado, Registro_Trabajador, Trabajador,
     Detalle_Prod_Trabajador,
 )
+from app.servicios.trabajadores import tarifa_hora
 
 
 def _redondear(valor, decimales=4):
@@ -84,7 +85,7 @@ def calcular_cierre(sesion, fecha_desde, fecha_hasta):
     total_valor = Decimal(0)
     for j in jornadas:
         trab = sesion.get(Trabajador, j.Id_Trabajador)
-        tarifa = (trab.Pago_Trabajador or Decimal(0)) if trab else Decimal(0)
+        tarifa = tarifa_hora(trab)
         horas = j.Horas_Restante_Registro_Trabajador
         jornadas_info.append({
             "id_jornada": j.Id_Registro_Trabajador,

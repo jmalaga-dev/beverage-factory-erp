@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.servicios.agrupar import agrupar_pares
 from app.servicios.horas import horas_heredadas_de
+from app.servicios.trabajadores import tarifa_hora
 
 
 def producir_intermedio(
@@ -83,7 +84,7 @@ def producir_intermedio(
                 f"Restante: {registro.Horas_Restante_Registro_Trabajador}, se pide: {horas}"
             )
         trabajador = sesion.get(Trabajador, registro.Id_Trabajador)
-        costo_total += horas * trabajador.Pago_Trabajador
+        costo_total += horas * tarifa_hora(trabajador)
 
     # Intermedios previos: validar lote y sumar su costo (costo unitario x cantidad)
     for id_prod_origen, cantidad in insumos_intermedio:

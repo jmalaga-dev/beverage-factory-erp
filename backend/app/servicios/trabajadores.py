@@ -5,7 +5,31 @@ Registrar una jornada solo guarda las horas trabajadas; NO mueve dinero
 (el pago a los trabajadores es semanal y se hace en una operacion aparte).
 """
 
+from decimal import Decimal
+
 from app.models import Registro_Trabajador, Trabajador
+
+
+def tarifa_hora(trabajador):
+    """
+    Tarifa por hora de un trabajador, derivada de su sueldo.
+
+    El sueldo se pacta por periodo (Pago_Trabajador = sueldo semanal) sobre una
+    cantidad de horas de ese periodo (Horas_Base_Trabajador = horas por semana).
+    La tarifa/hora es sueldo / horas_base: ej. 280 Bs por 48 h => 5.8333 Bs/h,
+    y 8 h trabajadas valen 46.66 Bs (no 280 x 8).
+
+    Si no hay horas base cargadas (o son <= 0) no se puede derivar la tarifa, y
+    se devuelve 0 para no inventar un costo. El catalogo obliga a cargar las
+    horas por semana justamente para que esto no pase con datos nuevos.
+    """
+    if trabajador is None:
+        return Decimal(0)
+    sueldo = trabajador.Pago_Trabajador or Decimal(0)
+    horas_base = trabajador.Horas_Base_Trabajador or Decimal(0)
+    if horas_base <= 0:
+        return Decimal(0)
+    return Decimal(sueldo) / Decimal(horas_base)
 
 
 def registrar_jornada(sesion, id_trabajador, horas, fecha=None):

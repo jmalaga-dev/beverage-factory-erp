@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import ROLES_CUENTA
 from app.dependencias import get_sesion
+from app.servicios.trabajadores import tarifa_hora
 from app.models import (
     Compra,
     Cuenta,
@@ -255,6 +256,7 @@ def listar_trabajadores(sesion: Session = Depends(get_sesion)):
             "nombre": t.Nombre_Trabajador,
             "pago": float(t.Pago_Trabajador or 0),
             "horas_base": float(t.Horas_Base_Trabajador or 0),
+            "tarifa": round(float(tarifa_hora(t)), 4),
             "habilitado": t.Habilitado_Trabajador,
             "en_uso": t.Id_Trabajador in usados,
         }

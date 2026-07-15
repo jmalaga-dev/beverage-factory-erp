@@ -106,7 +106,20 @@ el dato es directo y conocido al producir.
 
 ### 3.2 Trabajo — tarifa pactada al producir (Camino 1)
 El costo del trabajo en una producción se calcula con la **tarifa pactada** del
-trabajador (`Pago_Trabajador`), no con el pago real semanal.
+trabajador, no con el pago real semanal.
+
+**Tarifa/hora derivada del sueldo (mejora: pago semanal).** El sueldo NO se
+carga como Bs/hora sino como **sueldo del periodo** (`Pago_Trabajador` = sueldo
+semanal) sobre las **horas de ese periodo** (`Horas_Base_Trabajador` = horas por
+semana). La tarifa/hora es `Pago_Trabajador / Horas_Base_Trabajador`: ej. 280 Bs
+por 48 h → 5.8333 Bs/h, y 8 h valen 46.66 Bs (no 280×8). El motivo: el usuario
+piensa el pago en términos semanales, no por hora, y calcular la tarifa a mano
+era fuente de errores. Toda la app deriva la tarifa por un único helper,
+`servicios/trabajadores.tarifa_hora(trabajador)`, para que ningún cálculo
+(pago sugerido, costo de producción, valorización de horas standby en balance)
+use el sueldo semanal como si fuera Bs/hora. Si no hay horas base cargadas, el
+helper devuelve 0 (no inventa costo); por eso el catálogo obliga a cargar las
+horas por semana.
 
 Razones:
 - La tarifa pactada existe y es conocida al momento de producir.

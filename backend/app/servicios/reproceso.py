@@ -23,6 +23,7 @@ from app.models import (
 from app.servicios.agrupar import agrupar_pares
 from app.servicios.horas import horas_por_unidad
 from app.servicios.inventario import _aplicar_movimiento_inventario
+from app.servicios.trabajadores import tarifa_hora
 
 
 def reprocesar(
@@ -95,7 +96,7 @@ def reprocesar(
                 f"Restante: {registro.Horas_Restante_Registro_Trabajador}, se pide: {horas}"
             )
         trabajador = sesion.get(Trabajador, registro.Id_Trabajador)
-        costo_total += horas * trabajador.Pago_Trabajador
+        costo_total += horas * tarifa_hora(trabajador)
 
     # ----- 2. EJECUTAR -----
     try:

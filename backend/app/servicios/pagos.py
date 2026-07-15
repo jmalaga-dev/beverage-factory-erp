@@ -9,6 +9,7 @@ cubiertas como pagadas. Todo atomico.
 from app.models import (
     Trabajador, Registro_Trabajador, Pago_Trabajador, Cuenta, Movimiento
 )
+from app.servicios.trabajadores import tarifa_hora
 
 
 def calcular_pago_sugerido(sesion, id_trabajador):
@@ -29,7 +30,7 @@ def calcular_pago_sugerido(sesion, id_trabajador):
     )
 
     total_horas = sum(j.Horas_Registro_Trabajador for j in pendientes)
-    sugerido = total_horas * trabajador.Pago_Trabajador
+    sugerido = total_horas * tarifa_hora(trabajador)
 
     return sugerido, pendientes
 

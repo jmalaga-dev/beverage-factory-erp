@@ -91,7 +91,7 @@ function PaginaJornadas() {
           valor={idTrabajador}
           onCambiar={setIdTrabajador}
           obtenerId={(t) => t.id_trabajador}
-          obtenerTexto={(t) => `${t.nombre} (${t.pago} Bs/hora)`}
+          obtenerTexto={(t) => `${t.nombre} (${t.tarifa} Bs/hora)`}
           placeholder="-- Trabajador --"
         />
         <input type="number" placeholder="Horas trabajadas"

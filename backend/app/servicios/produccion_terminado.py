@@ -14,6 +14,7 @@ from app.models import (
 from app.servicios.absorcion import absorber_en_produccion
 from app.servicios.agrupar import agrupar_pares
 from app.servicios.horas import horas_heredadas_de
+from app.servicios.trabajadores import tarifa_hora
 
 
 def producir_terminado(
@@ -104,7 +105,7 @@ def producir_terminado(
                 f"Restante: {registro.Horas_Restante_Registro_Trabajador}, se pide: {horas}"
             )
         trabajador = sesion.get(Trabajador, registro.Id_Trabajador)
-        costo_total += horas * trabajador.Pago_Trabajador
+        costo_total += horas * tarifa_hora(trabajador)
 
     # ----- 2. EJECUTAR (todo o nada) -----
     # El costo unitario se fija DESPUES de la absorcion (2f), porque esta
