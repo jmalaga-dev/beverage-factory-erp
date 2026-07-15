@@ -12,7 +12,10 @@ function PaginaJornadas() {
   const [idTrabajador, setIdTrabajador] = useState('')
   const [horas, setHoras] = useState('')
   const [mensaje, setMensaje] = useState('')
-  const [soloNoPagadas, setSoloNoPagadas] = useState(true)
+  // Filtro de la tabla: 'no_pagadas' (default, como antes), 'standby' (horas
+  // registradas que aun no se consumieron en una produccion — las que el
+  // cierre de produccion va a repartir) o 'todas'. Mutuamente excluyentes.
+  const [filtro, setFiltro] = useState('no_pagadas')
 
   // Fila sobre la que esta el mouse (para mostrar sus botones) y fila en edicion
   const [filaHover, setFilaHover] = useState(null)
@@ -101,18 +104,36 @@ function PaginaJornadas() {
       {mensaje && <p>{mensaje}</p>}
 
       <h2>Jornadas registradas</h2>
-      <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-        <input type="checkbox" checked={soloNoPagadas}
-          onChange={(e) => setSoloNoPagadas(e.target.checked)} />
-        {' '}Mostrar solo no pagadas
-      </label>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          <input type="radio" name="filtroJornadas" checked={filtro === 'no_pagadas'}
+            onChange={() => setFiltro('no_pagadas')} />
+          {' '}Solo no pagadas
+        </label>
+        {' '}
+        <label style={{ marginLeft: '1rem' }}>
+          <input type="radio" name="filtroJornadas" checked={filtro === 'standby'}
+            onChange={() => setFiltro('standby')} />
+          {' '}Solo standby (horas sin consumir)
+        </label>
+        {' '}
+        <label style={{ marginLeft: '1rem' }}>
+          <input type="radio" name="filtroJornadas" checked={filtro === 'todas'}
+            onChange={() => setFiltro('todas')} />
+          {' '}Todas
+        </label>
+      </div>
       <table border="1">
         <thead>
           <tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Horas restantes</th><th>Pagada</th><th>Acciones</th></tr>
         </thead>
         <tbody>
           {jornadas
-            .filter((j) => !soloNoPagadas || !j.pagada)
+            .filter((j) => {
+              if (filtro === 'no_pagadas') return !j.pagada
+              if (filtro === 'standby') return j.horas_restantes > 0
+              return true
+            })
             .map((j) => (
               <tr key={j.id_jornada}
                 onMouseEnter={() => setFilaHover(j.id_jornada)}

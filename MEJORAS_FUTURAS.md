@@ -1212,7 +1212,18 @@ note. Verificado en el navegador: buscar "79797979" encuentra a Juan Perez por
 celular; buscar "esquina" encuentra 2 clientes por su licorería (con el celular
 al lado para distinguirlos); clientes deshabilitados siguen sin aparecer.
 
-### 10.7 Pendientes del lote (aún sin implementar)
-- **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
+### 10.7 Jornadas — filtro de horas en standby — Sonnet
+El checkbox "solo no pagadas" no dejaba ver las jornadas en standby (horas
+registradas que aún no se consumieron en una producción — las que el cierre de
+producción va a repartir), que es un concepto distinto de "pagada".
+
+**Estado: implementado.** Sin cambios de backend (`horas_restantes` ya venía en
+`/jornadas`). El checkbox se reemplazó por 3 radios mutuamente excluyentes:
+**Solo no pagadas** (default, igual que antes), **Solo standby** (filtra
+`horas_restantes > 0`) y **Todas**. Verificado en el navegador con datos
+reales: standby mostró exactamente las 4 jornadas con horas restantes
+(coincide con la consulta directa al backend); Todas mostró las 11.
+
+### 10.8 Pendientes del lote (aún sin implementar)
 - **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
 - **Compra dividida (pliego) — mostrar el proveedor** de la compra. Sonnet.
