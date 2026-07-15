@@ -102,14 +102,15 @@ function PaginaCatalogos() {
         ]}
       />
 
-      {/* Cuenta: solo se edita el nombre; el saldo se deriva de los movimientos,
-          no se crea desde aquí. Por eso permitirCrear=false. */}
+      {/* Cuenta: se crea con saldo 0 siempre (mejora 10.10) -- el saldo real
+          se carga aparte con Transferencias > Ingreso externo, para que
+          siempre se derive de movimientos, sin excepciones. FABRICA y CASA
+          son roles unicos (el backend lo exige al crear). */}
       <Catalogo
         titulo="Cuenta"
         abiertoInicial={false}
         endpoint="cuentas"
         idKey="id_cuenta"
-        permitirCrear={false}
         campos={[
           { nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true },
           { nombre: 'rol', label: 'Rol', tipo: 'select', opciones: ['FABRICA', 'CASA', 'OTRA'], obligatorio: true },

@@ -33,7 +33,12 @@ futuras están en un documento aparte: `MEJORAS_FUTURAS.md`.
     referencia. Editar la tarifa de un trabajador solo afecta producciones
     futuras (el costo de las hechas quedó congelado, Camino 1). Excepción: el
     `Saldo_Actual_Cuenta` no se edita a mano — se deriva de los movimientos
-    (libro de movimientos único); de Cuenta solo se edita el nombre.
+    (libro de movimientos único); de Cuenta solo se edita el nombre y el rol.
+    Por el mismo principio, crear una Cuenta (mejora 10.10) siempre la deja en
+    saldo 0 — el saldo real se carga aparte con *Transferencias > Ingreso
+    externo*, nunca como valor inicial del alta. FABRICA y CASA son roles
+    únicos: crear una segunda cuenta habilitada con ese rol se bloquea (mismo
+    requisito que ya exigía `cuenta_unica_de_rol` para el reparto).
   - **Deshabilitar en vez de borrar.** Se extendió el `Habilitado_*` de
     Trabajador (6.5) a los otros 8 catálogos (migración 008). Un item
     deshabilitado desaparece de los desplegables de operaciones nuevas pero

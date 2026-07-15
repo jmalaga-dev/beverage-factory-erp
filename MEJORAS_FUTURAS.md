@@ -1265,3 +1265,37 @@ registrada); mensaje de error claro si ninguna fila tiene horas. Verificado en
 el navegador de punta a punta: se cargó 4h para un trabajador dejando el resto
 vacío, se registró solo esa jornada ("1 jornada(s) registrada(s)") y apareció
 en la tabla de abajo. Los registros de prueba se borraron después de verificar.
+
+### 10.10 No había forma de crear una Cuenta desde la app — Sonnet
+Detectado al revisar qué pasa si se vacía la base con `vaciar_prueba.bat`
+(`TRUNCATE ... CASCADE` sobre TODAS las tablas): el catálogo de Cuenta tenía
+`permitirCrear={false}` a propósito y el backend no exponía `POST /cuentas` —
+ningún catálogo más tenía esta restricción. Si la base quedaba sin cuentas
+(vaciado real, o simplemente arrancando todo de cero), no había manera de
+volver a cargarlas desde la interfaz; la única salida era restaurar un backup
+o insertar por SQL directo.
+
+**Estado: implementado.** Nuevo `POST /cuentas` (`catalogos.py`): crea la
+cuenta siempre con **saldo 0** — el saldo real se carga aparte con
+*Transferencias > Ingreso externo* (movimiento `INGRESO_EXTERNO` ya existente),
+para que el saldo siga derivándose *siempre* de movimientos, sin una excepción
+nueva para el alta. Los roles **FABRICA** y **CASA** siguen siendo únicos: el
+backend bloquea crear una segunda cuenta habilitada con ese rol si ya existe
+una (mismo requisito que ya exigía `cuenta_unica_de_rol` en `reparto.py` para
+el reparto 70/30 y el reparto por prioridad), con el rol o nombre de la
+existente en el mensaje de error. Frontend: se sacó `permitirCrear={false}` del
+catálogo de Cuenta (`PaginaCatalogos.jsx`) — ya usa el formulario genérico de
+`Catalogo.jsx`, sin cambios ahí. Nota aparte, no relacionada con esto: los
+**roles** (`FABRICA`/`CASA`/`OTRA`, en `ROLES_CUENTA`) y las **categorías de
+Tipo de Bien** (`INMUEBLE`/`EQUIPO`/`OTRO`, en `CATEGORIAS_TIPO_BIEN`) son
+constantes de código en `config.py`, no filas de tabla — un truncate nunca los
+toca, a diferencia de los `Tipo_Bien` concretos que sí son filas y sí se
+pierden (pero esos ya se podían recrear por UI, `POST /tipos-bien` siempre
+existió).
+
+Verificado por API: alta válida con rol OTRA (saldo queda en 0); bloqueo
+correcto al intentar una segunda cuenta FABRICA (mensaje cita la existente,
+"Billetera Fabrica"); nombre duplicado y rol inválido también rechazados.
+Verificado en el navegador: el formulario "Agregar" ya aparece en el catálogo
+Cuenta con Nombre + Rol, y la cuenta creada apareció en la tabla con saldo 0 y
+botón Eliminar habilitado. La cuenta de prueba se borró después de verificar.

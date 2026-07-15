@@ -130,6 +130,43 @@ def listar_cuentas(sesion: Session = Depends(get_sesion)):
     ]
 
 
+class CuentaEntrada(BaseModel):
+    nombre: str
+    rol: str
+
+
+@router.post("/cuentas")
+def crear_cuenta(datos: CuentaEntrada, sesion: Session = Depends(get_sesion)):
+    """Crea una cuenta nueva, con saldo en 0 (mejora 10.10: antes no habia
+    forma de crear una cuenta desde la app -- si se vaciaba la base, quedaba
+    sin cuentas y sin poder recuperarlas). Para cargarle saldo inicial, se usa
+    Transferencias > Ingreso externo (asi el saldo sigue derivandose SIEMPRE
+    de movimientos, ninguna excepcion)."""
+    if not datos.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    if datos.rol not in ROLES_CUENTA:
+        raise HTTPException(status_code=400, detail=f"Rol inválido: {datos.rol}")
+    existente = sesion.query(Cuenta).filter(Cuenta.Nombre_Cuenta.ilike(datos.nombre.strip())).first()
+    if existente:
+        raise HTTPException(status_code=400, detail="Ya existe una cuenta con ese nombre")
+    # FABRICA y CASA son roles unicos: el reparto 70/30 y el reparto por
+    # prioridad exigen exactamente una cuenta habilitada de cada uno.
+    if datos.rol in ("FABRICA", "CASA"):
+        ya_hay = sesion.query(Cuenta).filter(
+            Cuenta.Rol_Cuenta == datos.rol, Cuenta.Habilitado_Cuenta.is_(True)
+        ).first()
+        if ya_hay:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ya hay una cuenta habilitada con rol {datos.rol} ({ya_hay.Nombre_Cuenta}). "
+                       f"Debe haber exactamente una: deshabilítala o cámbiale el rol antes de crear otra.",
+            )
+    c = Cuenta(Nombre_Cuenta=datos.nombre.strip(), Rol_Cuenta=datos.rol, Saldo_Actual_Cuenta=0)
+    sesion.add(c)
+    sesion.commit()
+    return {"mensaje": "Cuenta creada", "id": c.Id_Cuenta}
+
+
 class CuentaEdicion(BaseModel):
     nombre: str
     rol: str | None = None
