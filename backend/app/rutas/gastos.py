@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
 from app.servicios.gastos import registrar_gasto
+from app.servicios.gastos_lote import previsualizar_gastos_lote, registrar_gastos_lote
 
 router = APIRouter(tags=["gastos"])
 
@@ -38,6 +39,59 @@ def crear_gasto(datos: GastoEntrada, sesion: Session = Depends(get_sesion)):
         return {
             "mensaje": "Gasto registrado",
             "id_movimiento": mov.Id_Movimiento,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class LineaGastoLote(BaseModel):
+    monto: Decimal
+    descripcion: str
+    id_grupo: int | None = None
+
+
+class GastosLoteEntrada(BaseModel):
+    lineas: list[LineaGastoLote]
+    tipo: str = "FAMILIAR"   # FAMILIAR = Casa->Fabrica, FABRICA = Fabrica->Casa
+    fecha: date | None = None
+
+
+def _lineas_lote_dict(datos: GastosLoteEntrada):
+    return [
+        {"monto": l.monto, "descripcion": l.descripcion, "id_grupo": l.id_grupo}
+        for l in datos.lineas
+    ]
+
+
+@router.post("/gastos-lote/preview")
+def previsualizar_gastos_lote_ruta(datos: GastosLoteEntrada, sesion: Session = Depends(get_sesion)):
+    """Calcula, sin registrar nada, de qué cuenta saldría cada línea (tabla
+    de gastos con reparto por prioridad, Casa primero por defecto)."""
+    try:
+        return previsualizar_gastos_lote(sesion, _lineas_lote_dict(datos), tipo=datos.tipo.upper())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/gastos-lote")
+def crear_gastos_lote(datos: GastosLoteEntrada, sesion: Session = Depends(get_sesion)):
+    """Registra varios gastos a la vez (uno por línea), pagando primero
+    desde la cuenta de mayor prioridad del tipo elegido. Todo o nada."""
+    try:
+        resultado = registrar_gastos_lote(
+            sesion,
+            lineas=_lineas_lote_dict(datos),
+            tipo=datos.tipo.upper(),
+            fecha=datos.fecha or date.today(),
+        )
+        return {
+            "mensaje": f"{len(resultado['lineas'])} gastos registrados",
+            "total_fabrica": float(resultado["total_fabrica"]),
+            "total_casa": float(resultado["total_casa"]),
+            "lineas": [
+                {"id_movimiento": r["id_movimiento"], "cuenta": r["cuenta"]}
+                for r in resultado["lineas"]
+            ],
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

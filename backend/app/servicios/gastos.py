@@ -2,20 +2,18 @@
 gastos.py
 Logica de negocio para registrar un gasto diario.
 Un gasto sale de UNA cuenta, pertenece a un grupo (etiqueta validada para
-analisis), y descuenta el saldo. No toca inventario. Atomico.
-
-Nota: la logica de reparto entre varias cuentas por prioridad se construye
-aparte (ver DECISIONES_DISENO.md). Esta es la operacion base que esa capa
-invocara una vez por cada cuenta.
+analisis), y descuenta el saldo. No toca inventario.
 """
 
 from app.models import Gasto_Extra, Cuenta, Movimiento, Grupo_Movimiento
 
 
-def registrar_gasto(sesion, id_cuenta, monto, descripcion,
-                    id_grupo=None, fecha=None):
+def _aplicar_gasto(sesion, id_cuenta, monto, descripcion, id_grupo=None, fecha=None):
     """
-    Registra un gasto que sale de una cuenta.
+    Aplica un gasto SIN hacer commit: valida y descuenta la cuenta. Se deja
+    sin commit para poder COMPONER varios gastos en una sola transaccion
+    (la tabla de gastos = N gastos que se registran todos o ninguno; ver
+    gastos_lote.py).
 
     Parametros:
         sesion: la sesion de SQLAlchemy
@@ -25,7 +23,7 @@ def registrar_gasto(sesion, id_cuenta, monto, descripcion,
         id_grupo: etiqueta de grupo (comida, mantenimiento, limpieza...), opcional
         fecha: fecha del gasto
 
-    Devuelve: el objeto Movimiento creado.
+    Devuelve: el objeto Movimiento creado (sin commit).
     Lanza ValueError si algo no es valido.
     """
 
@@ -51,27 +49,34 @@ def registrar_gasto(sesion, id_cuenta, monto, descripcion,
             f"{cuenta.Saldo_Actual_Cuenta} Bs y el gasto es de {monto} Bs"
         )
 
-    # ----- 2. EJECUTAR (todo o nada) -----
+    # ----- 2. EJECUTAR (sin commit) -----
 
+    # Movimiento de SALIDA (sale de la cuenta, sin destino: gasto real)
+    movimiento = Movimiento(
+        Fecha_Movimiento=fecha,
+        Tipo_Movimiento="SALIDA",
+        Id_Cuenta_Origen=id_cuenta,
+        Id_Cuenta_Destino=None,
+        Monto_Movimiento=monto,
+        Descripcion_Movimiento=descripcion,
+        Id_Grupo_Movimiento=id_grupo,
+    )
+    sesion.add(movimiento)
+
+    # Descontar el saldo de la cuenta
+    cuenta.Saldo_Actual_Cuenta = cuenta.Saldo_Actual_Cuenta - monto
+
+    return movimiento
+
+
+def registrar_gasto(sesion, id_cuenta, monto, descripcion, id_grupo=None, fecha=None):
+    """Registra un gasto suelto y hace commit. Envuelve a _aplicar_gasto."""
     try:
-        # Movimiento de SALIDA (sale de la cuenta, sin destino: gasto real)
-        movimiento = Movimiento(
-            Fecha_Movimiento=fecha,
-            Tipo_Movimiento="SALIDA",
-            Id_Cuenta_Origen=id_cuenta,
-            Id_Cuenta_Destino=None,
-            Monto_Movimiento=monto,
-            Descripcion_Movimiento=descripcion,
-            Id_Grupo_Movimiento=id_grupo,
+        movimiento = _aplicar_gasto(
+            sesion, id_cuenta, monto, descripcion, id_grupo=id_grupo, fecha=fecha,
         )
-        sesion.add(movimiento)
-
-        # Descontar el saldo de la cuenta
-        cuenta.Saldo_Actual_Cuenta = cuenta.Saldo_Actual_Cuenta - monto
-
         sesion.commit()
         return movimiento
-
     except Exception as e:
         sesion.rollback()
         raise e

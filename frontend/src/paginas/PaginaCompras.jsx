@@ -30,6 +30,21 @@ function PaginaCompras() {
 
   const [mensaje, setMensaje] = useState('')
 
+  // ----- Registrar VARIAS compras a la vez, como tabla: cada línea es una
+  // compra independiente (su propia materia, cantidad, precio y proveedor).
+  // La cuenta de cada línea NO se elige a mano: se gasta primero la cuenta
+  // Fábrica, línea por línea, hasta que ya no alcanza, y de ahí en adelante
+  // sale de Casa (ver preview en vivo desde /compras-lote/preview). -----
+  const [loteLineas, setLoteLineas] = useState([])   // [{id_materia_prima, nombreMateria, cantidad, precioTotal, id_proveedor, nombreProveedor}]
+  const [loteMateria, setLoteMateria] = useState('')
+  const [loteCantidad, setLoteCantidad] = useState('')
+  const [lotePrecioTotal, setLotePrecioTotal] = useState('')
+  const [loteProveedores, setLoteProveedores] = useState([])
+  const [loteIdProveedor, setLoteIdProveedor] = useState('')
+  const [lotePreview, setLotePreview] = useState(null)   // { asignaciones, total_fabrica, total_casa, saldo_fabrica, saldo_casa }
+  const [lotePreviewError, setLotePreviewError] = useState('')
+  const [loteMensaje, setLoteMensaje] = useState('')
+
   // ----- Compra dividida por proporción (mejora 3.8): un pliego se reparte
   // entre varias materias primas segun factor x cantidad (ej. area). -----
   const [divIdCuenta, setDivIdCuenta] = useState('')
@@ -78,6 +93,89 @@ function PaginaCompras() {
   const pagoAhora = aCredito ? parseFloat(montoPagado || '0') : parseFloat(precioTotal || '0')
   const faltante = (parseFloat(precioTotal || '0') - pagoAhora)
   const nombreProveedorSel = proveedores.find((p) => p.id_proveedor === parseInt(idProveedor))?.nombre
+
+  // Cuando cambia la materia elegida para agregar una línea a la tabla,
+  // traer sus proveedores activos (mismo patron que el formulario simple)
+  useEffect(() => {
+    if (loteMateria === '') {
+      setLoteProveedores([])
+      setLoteIdProveedor('')
+      return
+    }
+    apiGet(`/proveedores-por-materia/${loteMateria}`)
+      .then((provs) => {
+        setLoteProveedores(provs)
+        setLoteIdProveedor(provs.length === 1 ? String(provs[0].id_proveedor) : '')
+      })
+      .catch(console.error)
+  }, [loteMateria])
+
+  function agregarLineaLote() {
+    if (loteMateria === '' || loteCantidad === '' || lotePrecioTotal === '') {
+      setLoteMensaje('Completa materia, cantidad y precio total de la línea'); return
+    }
+    if (loteProveedores.length === 0) {
+      setLoteMensaje('Esta materia prima no tiene proveedores. Regístrale uno en Proveedores antes de comprar.'); return
+    }
+    if (loteIdProveedor === '') {
+      setLoteMensaje('Elige de qué proveedor se compró esta línea'); return
+    }
+    const materia = materias.find((m) => m.id_materia_prima === parseInt(loteMateria))
+    const proveedor = loteProveedores.find((p) => p.id_proveedor === parseInt(loteIdProveedor))
+    setLoteLineas([...loteLineas, {
+      id_materia_prima: parseInt(loteMateria),
+      nombreMateria: materia ? materia.descripcion : loteMateria,
+      cantidad: parseFloat(loteCantidad),
+      precioTotal: parseFloat(lotePrecioTotal),
+      id_proveedor: parseInt(loteIdProveedor),
+      nombreProveedor: proveedor ? proveedor.nombre : '',
+    }])
+    setLoteMateria(''); setLoteCantidad(''); setLotePrecioTotal('')
+    setLoteProveedores([]); setLoteIdProveedor(''); setLoteMensaje('')
+  }
+  function quitarLineaLote(i) { setLoteLineas(loteLineas.filter((_, idx) => idx !== i)) }
+
+  // Suma total en vivo (para ver cuanto se esta gastando en total)
+  const loteTotalGeneral = loteLineas.reduce((s, l) => s + l.precioTotal, 0)
+
+  // Preview en vivo: de que cuenta sale cada linea (Fabrica primero, Casa
+  // despues), calculado por el backend para no duplicar la logica de saldos.
+  useEffect(() => {
+    if (loteLineas.length === 0) {
+      setLotePreview(null); setLotePreviewError(''); return
+    }
+    apiPost('/compras-lote/preview', {
+      lineas: loteLineas.map((l) => ({
+        id_materia_prima: l.id_materia_prima,
+        cantidad: l.cantidad,
+        precio_total: l.precioTotal,
+        id_proveedor: l.id_proveedor,
+      })),
+    })
+      .then((r) => { setLotePreview(r); setLotePreviewError('') })
+      .catch((e) => { setLotePreview(null); setLotePreviewError(e.message) })
+  }, [loteLineas])
+
+  function registrarComprasLote() {
+    if (loteLineas.length === 0) { setLoteMensaje('Agrega al menos una línea'); return }
+    if (lotePreviewError) { setLoteMensaje(lotePreviewError); return }
+    apiPost('/compras-lote', {
+      lineas: loteLineas.map((l) => ({
+        id_materia_prima: l.id_materia_prima,
+        cantidad: l.cantidad,
+        precio_total: l.precioTotal,
+        id_proveedor: l.id_proveedor,
+      })),
+      fecha: fechaParaEnviar,
+    })
+      .then((r) => {
+        setLoteMensaje(r.mensaje || 'Compras registradas correctamente')
+        setLoteLineas([])
+        setLotePreview(null)
+        cargarDatos()
+      })
+      .catch((e) => setLoteMensaje(e.message))
+  }
 
   // ----- Compra dividida (mejora 3.8): el proveedor debe vender TODAS las
   // materias primas de las líneas cargadas, así que se calcula la
@@ -323,6 +421,95 @@ function PaginaCompras() {
       </div>
 
       {mensaje && <p>{mensaje}</p>}
+
+      {/* Registrar varias compras a la vez, como tabla: cada linea es una
+          compra independiente. La cuenta se asigna sola: Fabrica primero,
+          Casa despues. */}
+      <h2>Registrar varias compras a la vez (tabla)</h2>
+      <p style={{ fontSize: '0.85em', color: '#666', marginTop: 0 }}>
+        Agrega una línea por cada materia prima que compraste. La cuenta de
+        pago se asigna sola: primero se gasta <strong>Fábrica</strong> línea
+        por línea hasta que ya no alcanza, y de ahí en adelante se paga con
+        <strong> Casa</strong>. Todas las líneas se registran de contado y
+        recibidas (para crédito o pedido pendiente, usa el formulario de arriba).
+      </p>
+      <div style={{ border: '1px solid #ccc', padding: '0.6rem', margin: '0.5rem 0' }}>
+        {/* Agregar línea */}
+        <div>
+          <SelectorBuscable
+            opciones={materias.filter((m) => m.habilitado)}
+            valor={loteMateria}
+            onCambiar={setLoteMateria}
+            obtenerId={(m) => m.id_materia_prima}
+            obtenerTexto={(m) => m.descripcion}
+            placeholder="-- Materia prima --"
+          />
+          <input type="text" placeholder="Cantidad"
+            value={loteCantidad} onChange={(e) => setLoteCantidad(e.target.value)} />
+          <input type="text" placeholder="Precio total"
+            value={lotePrecioTotal} onChange={(e) => setLotePrecioTotal(e.target.value)} />
+
+          {loteMateria !== '' && loteProveedores.length === 0 && (
+            <span style={{ color: '#a00' }}>
+              {' '}Sin proveedores para esta materia — regístrale uno en Proveedores.
+            </span>
+          )}
+          {loteProveedores.length === 1 && (
+            <span> Proveedor: {loteProveedores[0].nombre}</span>
+          )}
+          {loteProveedores.length > 1 && (
+            <SelectorBuscable
+              opciones={loteProveedores}
+              valor={loteIdProveedor}
+              onCambiar={setLoteIdProveedor}
+              obtenerId={(p) => p.id_proveedor}
+              obtenerTexto={(p) => p.nombre}
+              placeholder="-- Proveedor --"
+            />
+          )}
+          <button onClick={agregarLineaLote}>Agregar línea</button>
+        </div>
+
+        {/* Tabla de líneas cargadas, con la cuenta asignada en vivo */}
+        {loteLineas.length > 0 && (
+          <table border="1" style={{ marginTop: '0.5rem', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr><th>Materia prima</th><th>Cant.</th><th>Precio total</th><th>Proveedor</th><th>Cuenta</th><th></th></tr>
+            </thead>
+            <tbody>
+              {loteLineas.map((l, i) => (
+                <tr key={i}>
+                  <td>{l.nombreMateria}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtNumero(l.cantidad)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtMoneda(l.precioTotal)}</td>
+                  <td>{l.nombreProveedor}</td>
+                  <td>{lotePreview?.asignaciones?.[i] === 'CASA' ? 'Casa' : lotePreview?.asignaciones?.[i] === 'FABRICA' ? 'Fábrica' : '—'}</td>
+                  <td><button onClick={() => quitarLineaLote(i)}>quitar</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {/* Suma en vivo: total general y cuanto va a cada billetera */}
+        {loteLineas.length > 0 && (
+          <p style={{ marginTop: '0.5rem' }}>
+            <strong>Total: {fmtMoneda(loteTotalGeneral)}</strong>
+            {lotePreview && (
+              <>
+                {' '}— Fábrica: {fmtMoneda(lotePreview.total_fabrica)} (saldo {fmtMoneda(lotePreview.saldo_fabrica)})
+                {' '}— Casa: {fmtMoneda(lotePreview.total_casa)} (saldo {fmtMoneda(lotePreview.saldo_casa)})
+              </>
+            )}
+          </p>
+        )}
+        {lotePreviewError && <p style={{ color: '#a00' }}>{lotePreviewError}</p>}
+
+        <button onClick={registrarComprasLote} style={{ marginTop: '0.5rem' }}>
+          Registrar {loteLineas.length > 0 ? `las ${loteLineas.length} compras` : 'compras'}
+        </button>
+        {loteMensaje && <p>{loteMensaje}</p>}
+      </div>
 
       {/* Compra dividida por proporción (mejora 3.8): un pliego que se
           reparte entre varias materias primas según su factor. */}

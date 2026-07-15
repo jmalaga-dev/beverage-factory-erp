@@ -14,6 +14,7 @@ from app.dependencias import get_sesion
 from app.models import Compra, Materia_Prima, Proveedor
 from app.servicios.compras import registrar_compra, recibir_compra
 from app.servicios.compra_dividida import registrar_compra_dividida
+from app.servicios.compras_lote import previsualizar_compras_lote, registrar_compras_lote
 
 router = APIRouter(tags=["compras"])
 
@@ -105,6 +106,63 @@ def crear_compra_dividida(datos: CompraDivididaEntrada, sesion: Session = Depend
                     "precio_asignado": float(r["precio_asignado"]),
                 }
                 for r in resultado
+            ],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class LineaCompraLote(BaseModel):
+    id_materia_prima: int
+    cantidad: Decimal
+    precio_total: Decimal
+    id_proveedor: int | None = None
+
+
+class ComprasLoteEntrada(BaseModel):
+    lineas: list[LineaCompraLote]
+    fecha: date | None = None
+
+
+def _lineas_lote_dict(datos: ComprasLoteEntrada):
+    return [
+        {
+            "id_materia_prima": l.id_materia_prima,
+            "cantidad": l.cantidad,
+            "precio_total": l.precio_total,
+            "id_proveedor": l.id_proveedor,
+        }
+        for l in datos.lineas
+    ]
+
+
+@router.post("/compras-lote/preview")
+def previsualizar_compras_lote_ruta(datos: ComprasLoteEntrada, sesion: Session = Depends(get_sesion)):
+    """Calcula, sin registrar nada, de qué cuenta saldría cada línea (mejora:
+    tabla de compras con reparto de gasto Fábrica primero, Casa después)."""
+    try:
+        return previsualizar_compras_lote(sesion, _lineas_lote_dict(datos))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/compras-lote")
+def crear_compras_lote(datos: ComprasLoteEntrada, sesion: Session = Depends(get_sesion)):
+    """Registra varias compras a la vez (una por línea), pagando primero
+    desde la cuenta Fábrica y luego desde Casa. Todo o nada."""
+    try:
+        resultado = registrar_compras_lote(
+            sesion,
+            lineas=_lineas_lote_dict(datos),
+            fecha=datos.fecha or date.today(),
+        )
+        return {
+            "mensaje": f"{len(resultado['lineas'])} compras registradas",
+            "total_fabrica": float(resultado["total_fabrica"]),
+            "total_casa": float(resultado["total_casa"]),
+            "lineas": [
+                {"id_compra": r["id_compra"], "cuenta": r["cuenta"]}
+                for r in resultado["lineas"]
             ],
         }
     except ValueError as e:
