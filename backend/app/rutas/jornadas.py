@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
 from app.models import Registro_Trabajador, Trabajador
+from app.servicios.jornadas_lote import registrar_jornadas_lote
 from app.servicios.trabajadores import editar_jornada, eliminar_jornada, registrar_jornada
 
 router = APIRouter(tags=["jornadas"])
@@ -33,6 +34,34 @@ def crear_jornada(datos: JornadaEntrada, sesion: Session = Depends(get_sesion)):
             fecha=datos.fecha or date.today(),
         )
         return {"mensaje": "Jornada registrada", "id_jornada": jornada.Id_Registro_Trabajador}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class LineaJornadaLote(BaseModel):
+    id_trabajador: int
+    horas: Decimal | None = None   # None o 0 = esa persona no vino ese dia (se omite)
+
+
+class JornadasLoteEntrada(BaseModel):
+    lineas: list[LineaJornadaLote]
+    fecha: date | None = None
+
+
+@router.post("/jornadas-lote")
+def crear_jornadas_lote(datos: JornadasLoteEntrada, sesion: Session = Depends(get_sesion)):
+    """Registra una jornada por cada trabajador con horas > 0 (pase de lista
+    diario, mejora 10.9). Las lineas en 0/vacio se omiten sin error."""
+    try:
+        lineas = [{"id_trabajador": l.id_trabajador, "horas": l.horas} for l in datos.lineas]
+        resultado = registrar_jornadas_lote(sesion, lineas=lineas, fecha=datos.fecha or date.today())
+        return {
+            "mensaje": f"{len(resultado)} jornada(s) registrada(s)",
+            "lineas": [
+                {"id_trabajador": r["id_trabajador"], "id_jornada": r["id_jornada"]}
+                for r in resultado
+            ],
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

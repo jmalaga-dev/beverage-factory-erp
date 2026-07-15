@@ -1242,5 +1242,26 @@ sea imposible no verlo, en los 3 casos (1 proveedor, varios, o ninguno — este
 último en rojo `#fdeaea`). Verificado en el navegador reproduciendo el caso
 exacto del usuario: caja verde con "Proveedor del pliego: Etiquetas".
 
-### 10.9 Pendientes del lote (aún sin implementar)
-- **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
+### 10.9 Jornadas — pase de lista en tabla (registro múltiple) — Sonnet
+Registrar la jornada de cada trabajador uno por uno con el formulario simple
+era repetitivo. Se pidió una tabla con todos los trabajadores habilitados,
+donde una fila en 0 o vacía significa que esa persona no vino ese día (se
+omite, no es un error).
+
+**Estado: implementado.** Nuevo endpoint `POST /jornadas-lote` (mismo patrón
+que `compras-lote`/`gastos-lote`: se compone todo en una sola transacción y se
+hace un único commit — todo o nada). Se refactorizó `registrar_jornada` en
+`trabajadores.py` separando la validación/armado sin commit (`_aplicar_jornada`)
+del wrapper que sí comitea, igual que `_aplicar_gasto` en `gastos.py`, para que
+el servicio de lote (`jornadas_lote.py`) pueda componer varias jornadas
+atómicamente. Frontend: tabla nueva "Registrar jornadas del día" con una fila
+por trabajador habilitado (nombre, tarifa, horas del día); el botón arma las
+líneas y envía solo las que tienen horas > 0.
+
+Verificado por API: línea con horas=0 y con horas=null se omiten sin error
+(solo se creó la jornada con horas>0); atomicidad confirmada (una línea con
+horas>24 hizo fallar TODO el lote, sin dejar la línea válida a medias
+registrada); mensaje de error claro si ninguna fila tiene horas. Verificado en
+el navegador de punta a punta: se cargó 4h para un trabajador dejando el resto
+vacío, se registró solo esa jornada ("1 jornada(s) registrada(s)") y apareció
+en la tabla de abajo. Los registros de prueba se borraron después de verificar.

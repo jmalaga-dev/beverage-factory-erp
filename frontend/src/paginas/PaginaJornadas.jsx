@@ -23,6 +23,12 @@ function PaginaJornadas() {
   const [editTrabajador, setEditTrabajador] = useState('')
   const [editHoras, setEditHoras] = useState('')
 
+  // Pase de lista (mejora 10.9): una fila por trabajador habilitado, con sus
+  // horas del dia. Mapa id_trabajador -> texto de horas (string, para poder
+  // dejarlo vacio). 0 o vacio = esa persona no vino ese dia y se omite.
+  const [horasLote, setHorasLote] = useState({})
+  const [loteMensaje, setLoteMensaje] = useState('')
+
   function cargar() {
     apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
     apiGet('/jornadas').then(setJornadas).catch(console.error)
@@ -85,6 +91,29 @@ function PaginaJornadas() {
       .catch((e) => setMensaje(e.message))
   }
 
+  function cambiarHorasLote(idTrabajador, valor) {
+    setHorasLote({ ...horasLote, [idTrabajador]: valor })
+  }
+
+  function registrarLote() {
+    const trabajadoresHabilitados = trabajadores.filter((t) => t.habilitado)
+    const lineas = trabajadoresHabilitados.map((t) => ({
+      id_trabajador: t.id_trabajador,
+      horas: horasLote[t.id_trabajador] ? parseFloat(horasLote[t.id_trabajador]) : null,
+    }))
+    if (!lineas.some((l) => l.horas > 0)) {
+      setLoteMensaje('Ingresa horas para al menos un trabajador')
+      return
+    }
+    apiPost('/jornadas-lote', { lineas, fecha: fechaParaEnviar })
+      .then((r) => {
+        setLoteMensaje(r.mensaje || 'Jornadas registradas')
+        setHorasLote({})
+        cargar()
+      })
+      .catch((e) => setLoteMensaje(e.message))
+  }
+
   return (
     <div>
       <h2>Registrar jornada</h2>
@@ -102,6 +131,38 @@ function PaginaJornadas() {
         <button onClick={registrar}>Registrar jornada</button>
       </div>
       {mensaje && <p>{mensaje}</p>}
+
+      {/* Pase de lista del dia (mejora 10.9): una fila por trabajador
+          habilitado, para no tener que repetir el formulario de arriba una
+          vez por persona. Una fila en 0 o vacia se omite: esa persona no
+          vino ese dia. */}
+      <h2>Registrar jornadas del día (tabla)</h2>
+      <p style={{ fontSize: '0.85em', color: '#666', marginTop: 0 }}>
+        Pon las horas de hoy para cada trabajador habilitado. Deja en blanco
+        (o 0) a quien no vino ese día — no se le registra jornada.
+      </p>
+      <div style={{ border: '1px solid #ccc', padding: '0.6rem', margin: '0.5rem 0' }}>
+        <table border="1" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr><th>Trabajador</th><th>Bs/hora</th><th>Horas de hoy</th></tr>
+          </thead>
+          <tbody>
+            {trabajadores.filter((t) => t.habilitado).map((t) => (
+              <tr key={t.id_trabajador}>
+                <td>{t.nombre}</td>
+                <td style={{ textAlign: 'right' }}>{fmtNumero(t.tarifa)}</td>
+                <td>
+                  <input type="number" placeholder="0" style={{ width: '70px' }}
+                    value={horasLote[t.id_trabajador] ?? ''}
+                    onChange={(e) => cambiarHorasLote(t.id_trabajador, e.target.value)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button onClick={registrarLote} style={{ marginTop: '0.5rem' }}>Registrar jornadas</button>
+        {loteMensaje && <p>{loteMensaje}</p>}
+      </div>
 
       <h2>Jornadas registradas</h2>
       <div style={{ marginBottom: '0.5rem' }}>
