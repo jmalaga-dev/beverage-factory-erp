@@ -89,6 +89,21 @@ function PaginaCompras() {
       .catch(console.error)
   }, [idMateria])
 
+  // Predeterminar cantidad y precio con los de la ÚLTIMA compra de esa materia
+  // a ese proveedor (mejora 10.3). Solo con ambos elegidos; si no hay historial
+  // de ese par, no toca nada. Son valores por defecto: se pueden editar.
+  useEffect(() => {
+    if (idMateria === '' || idProveedor === '') return
+    apiGet(`/ultima-compra/${idMateria}/${idProveedor}`)
+      .then((r) => {
+        if (r.hay) {
+          setCantidad(String(r.cantidad))
+          setPrecioTotal(String(r.precio_total))
+        }
+      })
+      .catch(console.error)
+  }, [idMateria, idProveedor])
+
   // Cuánto se paga ahora: si es a crédito, el monto pagado; si no, el total.
   const pagoAhora = aCredito ? parseFloat(montoPagado || '0') : parseFloat(precioTotal || '0')
   const faltante = (parseFloat(precioTotal || '0') - pagoAhora)
@@ -109,6 +124,19 @@ function PaginaCompras() {
       })
       .catch(console.error)
   }, [loteMateria])
+
+  // Mismo prefill de última compra (mejora 10.3) para la línea de la tabla.
+  useEffect(() => {
+    if (loteMateria === '' || loteIdProveedor === '') return
+    apiGet(`/ultima-compra/${loteMateria}/${loteIdProveedor}`)
+      .then((r) => {
+        if (r.hay) {
+          setLoteCantidad(String(r.cantidad))
+          setLotePrecioTotal(String(r.precio_total))
+        }
+      })
+      .catch(console.error)
+  }, [loteMateria, loteIdProveedor])
 
   function agregarLineaLote() {
     if (loteMateria === '' || loteCantidad === '' || lotePrecioTotal === '') {

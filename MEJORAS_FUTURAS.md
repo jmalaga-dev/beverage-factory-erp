@@ -1160,8 +1160,17 @@ huérfanas en `Prorrateo_Mensual` (Id 1 y 2: 490+250) de un prorrateo de prueba
 temprano, con montos que ya no coincidían con los gastos actuales del mes
 (490+180). Se borraron esas 2 filas; Junio quedó libre (`puede: true`).
 
-### 10.3 Pendientes del lote (aún sin implementar)
-- **Compras — predeterminar última cantidad+precio** por (producto, proveedor). Opus.
+### 10.3 Compras — predeterminar última cantidad+precio por proveedor — Opus
+Al elegir materia prima + proveedor en Compras, autocompletar la cantidad y el
+precio total con los de la última compra de ese par (si existe).
+
+**Estado: implementado.** Endpoint `GET /ultima-compra/{id_materia}/{id_prov}`
+(última compra por fecha+id, o `hay=false` si no hay historial). El frontend
+predetermina `cantidad` y `precio_total` al quedar elegidos ambos, tanto en el
+formulario simple como en la línea de la tabla de compras múltiples. Son valores
+por defecto editables. Verificado: par 21/6 → 50 u / 223.88 Bs.
+
+### 10.4 Pendientes del lote (aún sin implementar)
 - **Venta — columna "Precio sugerido" + Precio = último precio a ese cliente/producto** (fallback = sugerido). Opus.
 - **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
 - **Menú — mover "Cierre producción" a Producción** y separar visualmente los subgrupos. Sonnet.

@@ -222,6 +222,30 @@ def listar_lotes_compra(sesion: Session = Depends(get_sesion)):
     return resultado
 
 
+@router.get("/ultima-compra/{id_materia_prima}/{id_proveedor}")
+def ultima_compra(id_materia_prima: int, id_proveedor: int, sesion: Session = Depends(get_sesion)):
+    """Cantidad y precio total de la ULTIMA compra de esa materia prima a ese
+    proveedor, para predeterminar el formulario de compra (mejora 10.3). Si no
+    hay ninguna compra previa de ese par, devuelve hay=False."""
+    c = (
+        sesion.query(Compra)
+        .filter(
+            Compra.Id_Materia_Prima == id_materia_prima,
+            Compra.Id_Proveedor == id_proveedor,
+        )
+        .order_by(Compra.Fecha_Compra.desc(), Compra.Id_Compra.desc())
+        .first()
+    )
+    if c is None:
+        return {"hay": False}
+    return {
+        "hay": True,
+        "cantidad": float(c.Cantidad_Compra),
+        "precio_total": float(c.Precio_Compra),
+        "fecha": c.Fecha_Compra.isoformat() if c.Fecha_Compra else None,
+    }
+
+
 @router.get("/comparacion-precios-proveedor")
 def comparacion_precios_proveedor(sesion: Session = Depends(get_sesion)):
     """Precio unitario (precio/cantidad) de cada materia prima por proveedor,
