@@ -602,24 +602,31 @@ function PaginaCompras() {
           </table>
         )}
 
-        {/* Proveedor: debe vender TODAS las materias de las líneas cargadas */}
+        {/* Proveedor: debe vender TODAS las materias de las líneas cargadas.
+            Caja con fondo de color (mejora 10.8, ronda 2): el rótulo de texto
+            plano se perdía entre la tabla y los checkboxes; con un fondo
+            propio, igual que el aviso de "Reparto del ingreso" en Ventas, no
+            se puede pasar por alto. */}
         {divLineas.length > 0 && divProveedores.length === 0 && (
-          <p style={{ color: '#a00' }}>
+          <p style={{ color: '#a00', marginTop: '0.5rem', padding: '0.4rem', background: '#fdeaea' }}>
             Ningún proveedor vende todas estas materias primas a la vez — regístralo en Proveedores.
           </p>
         )}
         {divProveedores.length === 1 && (
-          <p>Proveedor: {divProveedores[0].nombre}</p>
+          <div style={{ margin: '0.5rem 0', padding: '0.4rem', background: '#eef7ee' }}>
+            <strong>Proveedor del pliego:</strong> {divProveedores[0].nombre}
+          </div>
         )}
         {divProveedores.length > 1 && (
-          <div style={{ marginTop: '0.4rem' }}>
+          <div style={{ margin: '0.5rem 0', padding: '0.4rem', background: '#eef7ee' }}>
+            <strong>Proveedor del pliego</strong> (vende todas las materias primas de la lista):{' '}
             <SelectorBuscable
               opciones={divProveedores}
               valor={divIdProveedor}
               onCambiar={setDivIdProveedor}
               obtenerId={(p) => p.id_proveedor}
               obtenerTexto={(p) => p.nombre}
-              placeholder="-- Proveedor --"
+              placeholder="-- Elige el proveedor --"
             />
           </div>
         )}

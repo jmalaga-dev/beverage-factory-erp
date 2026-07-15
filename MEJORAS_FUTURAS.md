@@ -1224,6 +1224,23 @@ producción va a repartir), que es un concepto distinto de "pagada".
 reales: standby mostró exactamente las 4 jornadas con horas restantes
 (coincide con la consulta directa al backend); Todas mostró las 11.
 
-### 10.8 Pendientes del lote (aún sin implementar)
+### 10.8 Compra dividida (pliego) — el proveedor no se veía — Sonnet
+Con una materia prima vendida por más de un proveedor (ej. Etiqueta E, con 2:
+"adgf" y "Etiquetas"), el desplegable de proveedor aparecía sin ninguna
+etiqueta que dijera para qué era — se confundía con cualquier otro campo del
+formulario y parecía que la app "no decía" de qué proveedor se compraba.
+
+**Estado: implementado (2 rondas).** No era un bug de datos
+(`/proveedores-por-materia` ya devolvía los proveedores correctos) sino de
+presentación. Ronda 1: el bloque no tenía rótulo — se agregó **"Proveedor del
+pliego:"**. Ronda 2: el usuario probó con Etiqueta A + Etiqueta E y, aunque el
+rótulo ya aparecía correctamente (verificado: el único proveedor que vende
+AMBAS es "Etiquetas"), el texto plano se perdía entre la tabla y los
+checkboxes y seguía pasando desapercibido. Se le puso una caja con fondo de
+color (`#eef7ee`, mismo patrón que "Reparto del ingreso" en Ventas) para que
+sea imposible no verlo, en los 3 casos (1 proveedor, varios, o ninguno — este
+último en rojo `#fdeaea`). Verificado en el navegador reproduciendo el caso
+exacto del usuario: caja verde con "Proveedor del pliego: Etiquetas".
+
+### 10.9 Pendientes del lote (aún sin implementar)
 - **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
-- **Compra dividida (pliego) — mostrar el proveedor** de la compra. Sonnet.
