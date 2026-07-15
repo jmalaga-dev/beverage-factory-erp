@@ -1170,8 +1170,21 @@ predetermina `cantidad` y `precio_total` al quedar elegidos ambos, tanto en el
 formulario simple como en la línea de la tabla de compras múltiples. Son valores
 por defecto editables. Verificado: par 21/6 → 50 u / 223.88 Bs.
 
-### 10.4 Pendientes del lote (aún sin implementar)
-- **Venta — columna "Precio sugerido" + Precio = último precio a ese cliente/producto** (fallback = sugerido). Opus.
+### 10.4 Venta — precio sugerido aparte y precio = último a ese cliente — Opus
+Separar en la tabla de venta el "precio sugerido" (columna nueva, informativa)
+del precio real editable; y que el precio real venga por defecto con el último
+precio que se le vendió ese producto a ese cliente (fallback = sugerido).
+
+**Estado: implementado.** Endpoint `GET /ultimo-precio-cliente/{id_cliente}`
+devuelve el mapa `{id_producto: precio}` del último precio por producto (por
+producto, no por lote; el anterior pudo salir de otro lote). Frontend: nueva
+columna **"Precio sugerido"** entre Costo u. y Precio (muestra lo que calculaba
+`precioSugerido`); el precio real de cada línea se predetermina con
+`precioDefault(lote)` = último del cliente ?? sugerido, tanto al elegir un lote
+como al resolver por FIFO. Se carga el mapa al elegir el cliente. Verificado:
+cliente 1 → {1: 25, 2: 60}; cliente sin ventas → {} (cae al sugerido).
+
+### 10.5 Pendientes del lote (aún sin implementar)
 - **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
 - **Menú — mover "Cierre producción" a Producción** y separar visualmente los subgrupos. Sonnet.
 - **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.

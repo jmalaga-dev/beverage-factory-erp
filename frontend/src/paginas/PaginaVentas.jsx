@@ -31,12 +31,25 @@ function PaginaVentas() {
   // Vista previa del reparto 70/30 Fábrica/Casa (2.C), recalculada por el backend.
   const [reparto, setReparto] = useState(null)
 
+  // Último precio al que ESTE cliente compró cada producto (mejora 10.4). Mapa
+  // { id_producto: precio }. Es el precio por defecto de la línea; si el
+  // producto no está en el mapa (nunca se lo vendimos a este cliente), se cae
+  // al precio sugerido.
+  const [ultimosPrecios, setUltimosPrecios] = useState({})
+
   const [mensaje, setMensaje] = useState('')
 
   function precioSugerido(lote) {
     const m = (parseFloat(margen) || 0) / 100
     const porMargen = m < 1 ? Math.round((lote.costo_unitario / (1 - m)) * 100) / 100 : lote.costo_unitario
     return Math.round(Math.max(lote.precio_recomendado, porMargen) * 100) / 100
+  }
+
+  // Precio por defecto de una línea: el último que le vendimos a este cliente
+  // de ese producto; si no hay, el sugerido (mejora 10.4).
+  function precioDefault(lote) {
+    const ultimo = ultimosPrecios[lote.id_producto]
+    return ultimo != null ? ultimo : precioSugerido(lote)
   }
 
   function cargar() {
@@ -46,6 +59,12 @@ function PaginaVentas() {
   }
 
   useEffect(() => { cargar() }, [])
+
+  // Cargar los últimos precios de este cliente al elegirlo (mejora 10.4).
+  useEffect(() => {
+    if (idCliente === '') { setUltimosPrecios({}); return }
+    apiGet(`/ultimo-precio-cliente/${idCliente}`).then(setUltimosPrecios).catch(() => setUltimosPrecios({}))
+  }, [idCliente])
 
   // Recalcular el reparto 70/30 cada vez que cambian las líneas (lo resuelve el
   // backend, misma lógica que al registrar: acumula el saldo línea por línea).
@@ -101,7 +120,7 @@ function PaginaVentas() {
       const disponible = lote.stock - yaUsadoDeLote(a.id_lote)
       const usar = Math.round(Math.min(pendiente, disponible) * 1e6) / 1e6
       if (usar <= 0) continue
-      nuevas.push({ id_produccion: a.id_lote, cantidad: usar, precio_real: precioSugerido(lote) })
+      nuevas.push({ id_produccion: a.id_lote, cantidad: usar, precio_real: precioDefault(lote) })
       pendiente -= usar
     }
     if (nuevas.length === 0) {
@@ -123,7 +142,7 @@ function PaginaVentas() {
   function elegirProducto(id) {
     setLinProd(id)
     const lote = lotes.find((x) => x.id_produccion === parseInt(id))
-    if (lote) setLinPrecio(precioSugerido(lote))
+    if (lote) setLinPrecio(precioDefault(lote))
   }
 
   function registrarVenta() {
@@ -164,13 +183,15 @@ function PaginaVentas() {
   const hayTaxi = taxiNum > 0
 
   const filas = lineas.map((l) => {
+    const lote = lotes.find((x) => x.id_produccion === l.id_produccion)
     const costo = costoDeLote(l.id_produccion) ?? 0
+    const sugerido = lote ? precioSugerido(lote) : costo
     const ingreso = l.cantidad * l.precio_real
     const gananciaBruta = (l.precio_real - costo) * l.cantidad
     const taxiLinea = l.cantidad * taxiPorBotella
     const gananciaNeta = gananciaBruta - taxiLinea
     const pct = ingreso > 0 ? (gananciaBruta / ingreso) * 100 : 0
-    return { ...l, costo, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct, bajoCosto: l.precio_real < costo }
+    return { ...l, costo, sugerido, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct, bajoCosto: l.precio_real < costo }
   })
 
   const totIngreso = filas.reduce((s, f) => s + f.ingreso, 0)
@@ -248,6 +269,7 @@ function PaginaVentas() {
               <th>Producto - Lote</th>
               <th>Cant.</th>
               <th>Costo u.</th>
+              <th>Precio sugerido</th>
               <th>Precio</th>
               <th>Ganancia línea</th>
               <th>%</th>
@@ -262,6 +284,7 @@ function PaginaVentas() {
                 <td>{nombreLote(f.id_produccion)}{f.bajoCosto && ' ⚠'}</td>
                 <td style={{ textAlign: 'right' }}>{fmtNumero(f.cantidad, 2)}</td>
                 <td style={{ textAlign: 'right' }}>{fmtMoneda(f.costo)}</td>
+                <td style={{ textAlign: 'right', color: '#557' }}>{fmtMoneda(f.sugerido)}</td>
                 <td style={{ textAlign: 'right' }}>
                   <input type="number" value={f.precio_real}
                     onChange={(e) => cambiarPrecioLinea(i, e.target.value)}

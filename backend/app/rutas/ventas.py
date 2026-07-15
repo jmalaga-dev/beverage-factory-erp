@@ -98,6 +98,32 @@ def preview_reparto_venta(lineas: list[LineaPreviewReparto], sesion: Session = D
     }
 
 
+@router.get("/ultimo-precio-cliente/{id_cliente}")
+def ultimo_precio_cliente(id_cliente: int, sesion: Session = Depends(get_sesion)):
+    """Último precio al que ese cliente compró cada producto terminado (mejora
+    10.4). Devuelve un mapa {id_producto_terminado: precio}. El precio es por
+    PRODUCTO (no por lote): la venta anterior pudo salir de otro lote. Sirve
+    para predeterminar el precio de venta a ese cliente; si el producto no
+    aparece, no hay historial y el frontend cae al precio sugerido."""
+    filas = (
+        sesion.query(
+            Produccion.Id_Producto_Terminado,
+            Detalle_Venta.Precio_Venta_Real,
+        )
+        .join(Venta, Detalle_Venta.Id_Venta == Venta.Id_Venta)
+        .join(Produccion, Detalle_Venta.Id_Produccion == Produccion.Id_Produccion)
+        .filter(Venta.Id_Cliente == id_cliente)
+        .order_by(Venta.Fecha_Venta.asc(), Venta.Id_Venta.asc())
+        .all()
+    )
+    # Recorriendo en orden ascendente, el último que pisa cada producto es el
+    # más reciente.
+    ultimo = {}
+    for id_producto, precio in filas:
+        ultimo[id_producto] = float(precio)
+    return ultimo
+
+
 @router.get("/ventas")
 def listar_ventas(sesion: Session = Depends(get_sesion)):
     ventas = sesion.query(Venta).all()
