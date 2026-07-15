@@ -52,6 +52,17 @@ function PaginaVentas() {
     return ultimo != null ? ultimo : precioSugerido(lote)
   }
 
+  // Texto de un cliente en el selector: nombre + apellido, y licorería/celular
+  // entre paréntesis si los tiene, para poder buscarlo y distinguirlo de otro
+  // cliente con el mismo nombre (mejora 10.9). SelectorBuscable filtra sobre
+  // este mismo texto, así que basta con incluir los campos para que también
+  // se pueda buscar por celular o licorería.
+  function textoCliente(c) {
+    const nombreCompleto = `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`
+    const extra = [c.licoreria, c.celular].filter(Boolean).join(' · ')
+    return extra ? `${nombreCompleto} (${extra})` : nombreCompleto
+  }
+
   function cargar() {
     apiGet('/clientes').then(setClientes).catch(console.error)
     apiGet('/lotes-producto-terminado').then(setLotes).catch(console.error)
@@ -211,8 +222,8 @@ function PaginaVentas() {
           valor={idCliente}
           onCambiar={setIdCliente}
           obtenerId={(c) => c.id_cliente}
-          obtenerTexto={(c) => c.nombre}
-          placeholder="-- Cliente --"
+          obtenerTexto={textoCliente}
+          placeholder="-- Cliente (nombre, celular o licorería) --"
         />
       </div>
 

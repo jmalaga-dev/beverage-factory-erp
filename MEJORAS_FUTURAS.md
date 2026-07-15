@@ -1198,8 +1198,21 @@ Cierre quedó con solo Cierre de mes, Balance y Comparar cierres. Verificado en
 el navegador: los 8 links de Producción en orden, `<hr>` antes de Absorción, y
 Cierre producción ya no aparece en el menú Cierre.
 
-### 10.6 Pendientes del lote (aún sin implementar)
+### 10.6 Venta — buscar cliente por celular y/o licorería — Sonnet
+Con el nombre solo no alcanza para elegir cliente en una venta: puede haber
+varios "Pedro" y no saber cuál es, pero sí reconocer su licorería o celular.
+
+**Estado: implementado.** Sin cambios de backend (`Celular_Cliente` y
+`Licoreria_Cliente` ya se exponían en `/clientes`). El selector de cliente en
+Ventas ahora usa `textoCliente(c)` = `nombre apellido (licorería · celular)`
+tanto para mostrar como para filtrar — `SelectorBuscable` ya filtraba sobre el
+texto mostrado (`obtenerTexto`), así que incluir esos campos ahí alcanzó para
+poder buscar por cualquiera de los tres. Placeholder actualizado para que se
+note. Verificado en el navegador: buscar "79797979" encuentra a Juan Perez por
+celular; buscar "esquina" encuentra 2 clientes por su licorería (con el celular
+al lado para distinguirlos); clientes deshabilitados siguen sin aparecer.
+
+### 10.7 Pendientes del lote (aún sin implementar)
 - **Jornadas — tabla/filtro de horas en standby** (`horas_restantes > 0`). Sonnet.
 - **Jornadas — tabla de registro múltiple** de habilitados (0/vacío = no registra). Sonnet.
 - **Compra dividida (pliego) — mostrar el proveedor** de la compra. Sonnet.
-- **Venta — buscar cliente por celular y/o licorería** (campos ya existen). Sonnet.
