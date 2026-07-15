@@ -15,7 +15,7 @@ function PaginaCatalogos() {
 
       <Catalogo
         titulo="Materia Prima"
-        abiertoInicial={true}
+        abiertoInicial={false}
         endpoint="materias-primas"
         idKey="id_materia_prima"
         campos={[
