@@ -1,36 +1,8 @@
 import { useState, useEffect } from 'react'
 import { apiGet } from '../api'
+import FilaBalance from '../componentes/FilaBalance'
+import { filasBalance, filasMovimientos } from '../filasBalance'
 import { fmtMoneda } from '../formato'
-
-// Conceptos del patrimonio (mismas filas que la pantalla de Balance, para
-// que ambos reportes se lean igual). Las que empiezan con '*' son desgloses
-// de la fila de arriba.
-const filas = [
-  ['Efectivo', 'efectivo'],
-  ['Stock materia prima', 'stock_materia_prima'],
-  ['Stock producto intermedio', 'stock_producto_intermedio'],
-  ['Horas en stand-by', 'valor_horas_standby'],
-  ['Stock producto terminado (a precio de venta)', 'stock_producto_terminado'],
-  ['*Stock producto terminado (costo o mercado, el menor)', 'stock_producto_terminado_conservador'],
-  ['Activos fijos', 'activos_fijos'],
-  ['*Inmuebles', 'total_inmuebles'],
-  ['*Equipos', 'total_equipos'],
-  ['*Otros activos', 'total_otros'],
-  ['Deudas', 'deudas'],
-  ['Escenario C (solo efectivo)', 'escenario_c'],
-  ['Escenario B (+ stock)', 'escenario_b'],
-  ['Escenario A (+ activos fijos, liquidez: todo a precio de venta)', 'escenario_a'],
-  ['PATRIMONIO (contable: stock terminado sin ganancia no realizada)', 'patrimonio'],
-]
-
-// Movimientos que cada foto capturó de SU semana previa. Comparar estos
-// entre dos cierres muestra cómo cambió el ritmo del negocio semana a semana.
-const filasMovimientos = [
-  ['Ventas de la semana', 'ventas'],
-  ['Compras de la semana', 'compras'],
-  ['Gastos de la semana', 'gastos'],
-  ['Pagos a trabajadores', 'pagos'],
-]
 
 // Etiqueta de una foto en el selector. Como varias fotos pueden compartir
 // fecha, se antepone el id para poder distinguirlas.
@@ -76,10 +48,12 @@ function PaginaComparativaBalances() {
     return <span style={{ color }}>{signo}{fmtMoneda(d)}</span>
   }
 
-  function celda(foto, campo) {
-    if (!foto) return '—'
-    const v = foto[campo]
-    return v == null ? '—' : fmtMoneda(v)
+  // Un importe de una foto: a la derecha y en rojo si es negativo. Una foto
+  // vieja puede no tener un campo agregado después: se muestra '—', no 0.
+  function celdaImporte(foto, campo) {
+    const v = foto ? foto[campo] : null
+    if (v == null) return <td className="num">—</td>
+    return <td className={`num${v < 0 ? ' negativo' : ''}`}>{fmtMoneda(v)}</td>
   }
 
   return (
@@ -110,34 +84,34 @@ function PaginaComparativaBalances() {
         <p>Se necesitan al menos dos fotos guardadas para comparar. Tomá fotos desde la pantalla de Balance.</p>
       )}
 
-      <table border="1">
+      <table className="tabla-balance">
         <thead>
           <tr>
             <th>Concepto</th>
-            <th>Foto A {fotoA ? `(${etiquetaFoto(fotoA)})` : ''}</th>
-            <th>Foto B {fotoB ? `(${etiquetaFoto(fotoB)})` : ''}</th>
-            <th>Diferencia (B − A)</th>
+            <th className="num">Foto A {fotoA ? `(${etiquetaFoto(fotoA)})` : ''}</th>
+            <th className="num">Foto B {fotoB ? `(${etiquetaFoto(fotoB)})` : ''}</th>
+            <th className="num">Diferencia (B − A)</th>
           </tr>
         </thead>
         <tbody>
-          {filas.map(([label, campo]) => (
-            <tr key={campo}>
-              <td>{label}</td>
-              <td>{celda(fotoA, campo)}</td>
-              <td>{celda(fotoB, campo)}</td>
-              <td>{diff(campo)}</td>
-            </tr>
+          {filasBalance.map((fila, i) => (
+            <FilaBalance key={fila.campo || `sep${i}`} fila={fila}>
+              {celdaImporte(fotoA, fila.campo)}
+              {celdaImporte(fotoB, fila.campo)}
+              <td className="num">{diff(fila.campo)}</td>
+            </FilaBalance>
           ))}
-          <tr>
-            <td colSpan={4} style={{ background: '#eee', fontWeight: 'bold' }}>Movimientos de la semana previa a cada foto</td>
+
+          <FilaBalance fila={{ tipo: 'separador' }} />
+          <tr className="bal-subtotal">
+            <td colSpan="4">Movimientos de la semana previa a cada foto</td>
           </tr>
-          {filasMovimientos.map(([label, campo]) => (
-            <tr key={campo}>
-              <td>{label}</td>
-              <td>{celda(fotoA, campo)}</td>
-              <td>{celda(fotoB, campo)}</td>
-              <td>{diff(campo)}</td>
-            </tr>
+          {filasMovimientos.map((fila) => (
+            <FilaBalance key={fila.campo} fila={{ ...fila, tipo: 'componente' }}>
+              {celdaImporte(fotoA, fila.campo)}
+              {celdaImporte(fotoB, fila.campo)}
+              <td className="num">{diff(fila.campo)}</td>
+            </FilaBalance>
           ))}
         </tbody>
       </table>

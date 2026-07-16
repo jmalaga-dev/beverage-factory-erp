@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
+import FilaBalance from '../componentes/FilaBalance'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import { filasBalance, filasMovimientos } from '../filasBalance'
 import { fmtMoneda, fmtNumero } from '../formato'
 
 // Columnas comunes a los tres detalles: descripcion, cantidad y costo
@@ -66,69 +68,58 @@ function PaginaBalance() {
   function diff(campo, fuente) {
     const columnaActual = fuente === 'resumen' ? resumen : actual
     if (!columnaActual || !ultimo) return null
-    const d = columnaActual[campo] - ultimo[campo]
+    const a = ultimo[campo]
+    const b = columnaActual[campo]
+    // Una foto vieja no tiene los campos agregados después (pagos, utensilios
+    // sin absorber): vienen en null. Restar contra null da el valor entero,
+    // porque en JS null se convierte en 0 — y se mostraría un alza inventada
+    // de algo que en realidad nunca se midió. No se compara.
+    if (a == null || b == null) return <span style={{ color: 'gray' }}>—</span>
+    const d = b - a
     const color = d > 0 ? 'lightgreen' : d < 0 ? 'salmon' : 'gray'
     const signo = d > 0 ? '+' : ''
     return <span style={{ color }}>{signo}{fmtMoneda(d)}</span>
   }
 
-  const filas = [
-    ['Efectivo', 'efectivo'],
-    ['Stock materia prima', 'stock_materia_prima'],
-    ['Stock producto intermedio', 'stock_producto_intermedio'],
-    ['Horas en stand-by', 'valor_horas_standby'],
-    ['Stock producto terminado (a precio de venta)', 'stock_producto_terminado'],
-    ['*Stock producto terminado (costo o mercado, el menor)', 'stock_producto_terminado_conservador'],
-    ['Activos fijos', 'activos_fijos'],
-    ['*Inmuebles', 'total_inmuebles'],
-    ['*Equipos', 'total_equipos'],
-    ['*Otros activos', 'total_otros'],
-    ['Deudas', 'deudas'],
-    ['Escenario C (solo efectivo)', 'escenario_c'],
-    ['Escenario B (+ stock)', 'escenario_b'],
-    ['Escenario A (+ activos fijos, liquidez: todo a precio de venta)', 'escenario_a'],
-    ['PATRIMONIO (contable: stock terminado sin ganancia no realizada)', 'patrimonio'],
-  ]
-
-  // Movimientos desde la ultima foto: "Ultima foto" = lo que esa foto
-  // capturo de SU semana anterior; "Estado actual" = lo que paso desde
-  // esa foto hasta hoy (resumen en vivo, sin necesidad de tomar otra foto).
-  const filasMovimientos = [
-    ['Ventas de la semana', 'ventas'],
-    ['Compras de la semana', 'compras'],
-    ['Gastos de la semana', 'gastos'],
-    ['Pagos a trabajadores', 'pagos'],
-  ]
+  // Un importe: alineado a la derecha y en rojo si es negativo.
+  function celdaImporte(valor) {
+    if (valor === null || valor === undefined) return <td className="num">—</td>
+    return <td className={`num${valor < 0 ? ' negativo' : ''}`}>{fmtMoneda(valor)}</td>
+  }
 
   return (
     <div>
       <h2>Balance — comparación</h2>
 
-      <table border="1">
+      <table className="tabla-balance">
         <thead>
           <tr>
             <th>Concepto</th>
-            <th>Última foto{ultimo ? ` (${ultimo.fecha})` : ''}</th>
-            <th>Estado actual</th>
-            <th>Diferencia</th>
+            <th className="num">Última foto{ultimo ? ` (${ultimo.fecha})` : ''}</th>
+            <th className="num">Estado actual</th>
+            <th className="num">Diferencia</th>
           </tr>
         </thead>
         <tbody>
-          {filas.map(([label, campo]) => (
-            <tr key={campo}>
-              <td>{label}</td>
-              <td>{ultimo ? fmtMoneda(ultimo[campo]) : '—'}</td>
-              <td>{actual ? fmtMoneda(actual[campo]) : '—'}</td>
-              <td>{diff(campo, 'actual')}</td>
-            </tr>
+          {filasBalance.map((fila, i) => (
+            <FilaBalance key={fila.campo || `sep${i}`} fila={fila}>
+              {celdaImporte(ultimo ? ultimo[fila.campo] : null)}
+              {celdaImporte(actual ? actual[fila.campo] : null)}
+              <td className="num">{diff(fila.campo, 'actual')}</td>
+            </FilaBalance>
           ))}
-          {filasMovimientos.map(([label, campo]) => (
-            <tr key={campo}>
-              <td>{label}</td>
-              <td>{ultimo ? fmtMoneda(ultimo[campo]) : '—'}</td>
-              <td>{resumen ? fmtMoneda(resumen[campo]) : '—'}</td>
-              <td>{diff(campo, 'resumen')}</td>
-            </tr>
+
+          <FilaBalance fila={{ tipo: 'separador' }} />
+
+          {/* Movimientos desde la ultima foto: "Ultima foto" = lo que esa foto
+              capturo de SU semana anterior; "Estado actual" = lo que paso desde
+              esa foto hasta hoy (resumen en vivo, sin tomar otra foto). */}
+          {filasMovimientos.map((fila) => (
+            <FilaBalance key={fila.campo} fila={{ ...fila, tipo: 'componente' }}>
+              {celdaImporte(ultimo ? ultimo[fila.campo] : null)}
+              {celdaImporte(resumen ? resumen[fila.campo] : null)}
+              <td className="num">{diff(fila.campo, 'resumen')}</td>
+            </FilaBalance>
           ))}
         </tbody>
       </table>

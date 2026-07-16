@@ -616,6 +616,65 @@ Ventas, Mermas, Jornadas, Proveedores, Deudas, Absorción y el componente
 genérico `Catalogo` (columnas numéricas). Verificado con curl y build de
 frontend.
 
+### 4.8 Utensilios sin absorber + orden y lectura de la tabla de balance
+
+**Estado: implementado (jul 2026).** Dos cosas que salieron de usar el
+balance con los datos reales ya migrados.
+
+**a) Los utensilios sin absorber no estaban en ninguna línea.** Un ítem de
+absorción (utensilio, feriado) se compra por un costo y se reparte entre N
+botellas estimadas. Mientras queden botellas por absorber, esa fracción ya
+se pagó pero todavía no está en el costo de ninguna botella: no aparecía ni
+en efectivo, ni en stock, ni en activos fijos. Se perdía. Con los datos
+reales eran **3.732,68 Bs** (2 utensilios recientes + 2 feriados).
+Migración 021 (columna `Valor_Utensilios_Sin_Absorber` en `Balance`), helper
+`valor_utensilios_sin_absorber` en `servicios/balance.py`
+(`costo * botellas_restantes / botellas_estimadas`), suma al Escenario B y
+por arrastre al A y al patrimonio. Devuelve `Decimal`, no `float`:
+`tomar_balance` suma con montos que vienen de la BD como `Numeric` y
+`Decimal + float` es un TypeError (ver sección 6 de DECISIONES_DISENO.md).
+Las fotos anteriores quedan en NULL, no en 0 — no valían cero, es que no se
+medían.
+
+**b) La tabla no se entendía por el orden.** Los componentes estaban
+mezclados con los subtotales, así que no se veía de dónde salía cada
+escenario. Ahora sigue la convención contable —componentes, línea,
+subtotal— y se lee sola:
+
+```
+  + Efectivo · − Deudas ............................ = Escenario C
+  + los cuatro stocks .............................. = Escenario B
+  + Activos fijos (total de los * de arriba) ....... = Escenario A
+```
+
+Las filas se movieron a `frontend/src/filasBalance.js`, compartido por
+Balance y Comparativa: antes estaba duplicado en las dos páginas con un
+comentario pidiendo mantenerlas iguales a mano. Cada fila declara su `tipo`
+(componente / subtotal / subcomponente / grupo / nota / separador) y el
+`signo` con el que entra al subtotal; el CSS (`.tabla-balance` en App.css)
+le da indentación, línea de cierre y fondo. Importes a la derecha con
+`tabular-nums` (si no, los miles no alinean entre filas y no se pueden
+comparar de un vistazo) y subtotales negativos en rojo. Se agregó una regla
+`@media print` propia: la regla general pone borde a toda celda, lo que
+convertía el balance en una grilla y borraba la jerarquía.
+
+Verificado contra el frontend en vivo: orden de filas, CSS computado en
+claro y oscuro, y cero errores de consola.
+
+### 4.9 Depreciación de activos fijos (pendiente)
+Un `Activo` queda a valor pleno para siempre: la vagoneta de 77.000 vale
+77.000 en el balance el día que se compró y cinco años después. Con la
+decisión de jul 2026 de cargar el equipo durable como Activo (ver
+DECISIONES_DISENO.md 8.2), el parque de equipos va a crecer y el Escenario A
+se va a ir separando de la realidad.
+
+Hoy no molesta: los activos son pocos y grandes (casa, vagoneta, un lote de
+bienes), y su valor está puesto a mano, así que se puede corregir editándolo
+cuando haga falta. Revisar cuando haya varios equipos cargados uno por uno.
+Si se hace, decidir primero el método (lineal es lo más simple: valor / años
+de vida útil) y si la depreciación debe tocar el costo de la botella o solo
+el balance — que es la misma tensión de 8.2.
+
 ---
 
 ## 5. PROVEEDORES
@@ -1052,6 +1111,73 @@ conservan o también se recrean desde el Excel). Con respaldo previo (8.3)
 por si acaso.
 Al final, cuando el sistema esté probado, migrar los 3 archivos de Excel con los
 datos históricos reales, con pruebas de paridad contra el Excel.
+
+**Estado: implementado (jul 2026).** Script: `backend/scripts/migrar_excel_v2.py`.
+El excel consolidado (los 3 archivos unidos en una sola hoja con ~22 bloques
+de tablas lado a lado) vive en `datos_reales/` (carpeta gitignoreada — el
+script se versiona, los datos no). Secuencia ejecutada:
+
+1. Tag git `pre-migracion-excel` + respaldo pg_dump + TRUNCATE total
+   (mismo SQL de `reset_db.ps1`).
+2. `migrar_excel_v2.py --dry-run`: corre TODO y hace ROLLBACK — sirvió para
+   ver conteos y anomalías sin riesgo antes de la corrida real.
+3. Corrida real: **una sola transacción** (si algo falla a mitad no queda
+   nada a medias). Carga: catálogos (249 MP, 5 trabajadores, 60 PI, 99 PT,
+   49 sectores, 306 clientes, 7 gastos extra, 52 deudas, 5 cuentas,
+   189 ítems de absorción), 2.454 compras, 4.374 jornadas, 2.534
+   producciones intermedias y 1.497 terminadas **con su detalle completo de
+   insumos** (~26.000 filas de detalle: qué compra/jornada/PI alimentó cada
+   lote), 3.236 ventas (10.267 líneas agrupadas por cliente+fecha),
+   prorrateo mensual completo (56 períodos), y ~12.800 movimientos de
+   dinero (gastos familiares con grupo, pagos de deuda, transferencias,
+   ingresos externos).
+4. Verificación de paridad: totales producido/vendido/Bs por producto
+   sumados desde la BD == sumas crudas del excel (la "TABLA PRODUCTOS
+   HISTORICO" del excel estaba desactualizada — el control se hizo contra
+   las tablas crudas); PU de lotes al azar idéntico dígito a dígito; cero
+   detalles huérfanos. La app corriendo sirvió los datos sin tocar código.
+5. Respaldo post-migración (0.64 MB vs 0.11 vacío) + tag
+   `post-migracion-excel`.
+
+Anomalías del excel manejadas por el script (quedan logueadas al correrlo):
+7 fechas imposibles tipo `F31062022` (clampeadas al último día del mes),
+2 códigos MP con hueco en el catálogo (la MP se crea desde la propia
+compra), 1 deuda duplicada fusionada, 1 cliente que solo existía en ventas,
+2 sectores que solo existían en clientes. Las decisiones de mapeo están en
+DECISIONES_DISENO.md (sección 8).
+
+**Correcciones posteriores (jul 2026), al revisar los datos ya cargados:**
+
+1. **Bug del script: activos duplicados.** La tabla del excel se llama
+   "TABLA ANTERIOR ESTE SE DIVIDE AHORA" y era el balance viejo todo junto;
+   en V2 se reparte en tres lugares y solo uno es `Activo`. El filtro solo
+   excluía `BILLETERA`, así que entraron como activos las dos filas
+   `CAJA DE AHORROS` (los bancos, ya cargados como `Cuenta` → efectivo
+   contado dos veces) y la fila `INVENTARIOS` (el stock, que el balance ya
+   calcula desde compras/producciones → contado dos veces). Se corrigieron a
+   mano en la BD y se arregló el filtro del script (`TIPOS_QUE_NO_SON_ACTIVO`)
+   para que un re-run sea correcto.
+
+2. **Lote de producto terminado en stock negativo** (migración 020 +
+   bloque 5b del script). El excel no validaba stock: su macro descontaba
+   ventas de un lote agotado. SOBAQUERA VODKA STERN quedó con un lote en −62
+   y el siguiente inflado en 112 cuando físicamente había 50. Los 62 son los
+   mismos. Se reasignan las ventas de exceso, cronológicamente, al siguiente
+   lote del mismo producto con stock. **Importa**: el balance ignora los
+   restantes negativos (filtra `> UMBRAL_STOCK_MINIMO`) pero **sí valorizaba
+   las 112 botellas** que no existen — el fix bajó el stock terminado de
+   124.373,20 a 123.959,87 (413,33 = las 62 botellas fantasma). El total
+   vendido no cambia: la venta es un hecho, lo que estaba mal era el lote al
+   que se le atribuía.
+
+3. **Negativos que se dejan como están** (5: 1 compra, 3 intermedios, 1
+   jornada). El balance los ignora y, a diferencia del caso de producto
+   terminado, no inflan ninguna otra fila. Se dejan porque son la evidencia
+   de que la macro del excel sobre-consumió esos lotes; limpiarlos borraría
+   el rastro sin cambiar ningún número.
+
+4. **El "desface" de 6.782 Bs contra el escenario B del excel no es un
+   dato faltante: era doble conteo del excel.** Ver DECISIONES_DISENO.md 8.2.
 
 ### 8.5 Subir el repositorio a GitHub
 Actualmente el versionado es local. Subir a GitHub cuando haya una beta, con el

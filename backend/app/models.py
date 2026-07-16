@@ -590,6 +590,7 @@ class Balance(Base):
     Valor_Stock_Intermedio = Column(Numeric)       # NUEVO
     Valor_Horas_Standby = Column(Numeric)           # NUEVO
     Valor_Stock_Producto_Terminado_Conservador = Column(Numeric)  # NUEVO
+    Valor_Utensilios_Sin_Absorber = Column(Numeric)  # NUEVO
 
     detalles = relationship("Balance_Detalle_Producto", back_populates="balance")
 

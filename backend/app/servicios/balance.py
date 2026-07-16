@@ -10,17 +10,53 @@ dependen de definiciones de negocio que pueden ajustarse. Se marcan con TODO.
 """
 
 from datetime import date, timedelta
+from decimal import Decimal
 from sqlalchemy import func
 from app.config import UMBRAL_STOCK_MINIMO
 from app.models import (
     Balance, Balance_Detalle_Producto,
     Cliente, Cuenta, Deuda, Activo, Tipo_Bien,
-    Compra, Detalle_Venta, Materia_Prima, Pago_Trabajador, Produccion,
-    Producto_Intermedio, Producto_Terminado, Venta,
+    Compra, Detalle_Venta, Item_Absorcion, Materia_Prima, Pago_Trabajador,
+    Produccion, Producto_Intermedio, Producto_Terminado, Venta,
     Movimiento, Produccion_Intermedio,
     Registro_Trabajador, Trabajador,
 )
 from app.servicios.trabajadores import tarifa_hora
+
+
+def valor_utensilios_sin_absorber(sesion):
+    """
+    Valor de los items de absorcion (utensilios, feriados) ya comprados pero
+    todavia NO trasladados al costo de ninguna botella (mejora 4.8).
+
+    Un item se compra por un costo y se reparte entre N botellas estimadas.
+    Mientras queden botellas por absorber, esa fraccion del costo ya se pago
+    pero no esta en el costo de ningun producto: es valor que la fabrica
+    tiene y que no aparece ni en efectivo, ni en stock, ni en activos fijos.
+
+    La parte sin absorber es proporcional a las botellas que faltan:
+        costo * botellas_restantes / botellas_estimadas
+
+    Los items ya agotados (restantes = 0) aportan 0: su costo entero ya vive
+    dentro del costo de las botellas que produjeron.
+
+    Devuelve Decimal (no float) porque tomar_balance suma este valor con
+    montos que vienen de la BD como Numeric, y Decimal + float es un error
+    de tipos en Python. calcular_estado_actual, que trabaja en float, lo
+    convierte al recibirlo.
+    """
+    items = sesion.query(Item_Absorcion).filter(
+        Item_Absorcion.Botellas_Restantes_Item_Absorcion > 0,
+        Item_Absorcion.Botellas_Estimadas_Item_Absorcion > 0,
+    ).all()
+    total = Decimal("0")
+    for i in items:
+        total += (
+            i.Costo_Item_Absorcion
+            * i.Botellas_Restantes_Item_Absorcion
+            / i.Botellas_Estimadas_Item_Absorcion
+        )
+    return total
 
 
 def serializar_balance(balance):
@@ -41,6 +77,13 @@ def serializar_balance(balance):
         "stock_materia_prima": float(balance.Valor_Stock_Materia_Prima or 0),
         "stock_producto_intermedio": float(balance.Valor_Stock_Intermedio or 0),
         "valor_horas_standby": float(balance.Valor_Horas_Standby or 0),
+        # None (no 0), igual que Pagos_Semana: las fotos anteriores a esta
+        # columna (021) no tienen el dato. Con 0 la comparativa mostraria un
+        # alza inventada (de 0 a lo que valga hoy); con None muestra "—".
+        "utensilios_sin_absorber": (
+            float(balance.Valor_Utensilios_Sin_Absorber)
+            if balance.Valor_Utensilios_Sin_Absorber is not None else None
+        ),
         "stock_producto_terminado": float(balance.Valor_Stock_Producto_Terminado or 0),
         "stock_producto_terminado_conservador": float(balance.Valor_Stock_Producto_Terminado_Conservador or 0),
         "deudas": float(balance.Total_Deudas or 0),
@@ -67,7 +110,7 @@ def calcular_estado_actual(sesion):
 
     Los escenarios se distinguen por lo que suman al efectivo (menos deudas):
       C = solo efectivo
-      B = C + inventarios valorizados + horas en stand-by
+      B = C + inventarios valorizados + horas en stand-by + utensilios sin absorber
       A = B + activos fijos  (el "todo")
     """
     # Efectivo: suma de saldos de cuentas
@@ -103,6 +146,9 @@ def calcular_estado_actual(sesion):
         stock_pt += cantidad * precio_venta
         stock_pt_conservador += cantidad * min(costo, precio_venta)
 
+    # Utensilios/feriados comprados pero todavia no absorbidos (4.8)
+    utensilios = float(valor_utensilios_sin_absorber(sesion))
+
     # Deudas
     deudas = sesion.query(func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)).scalar()
 
@@ -124,11 +170,14 @@ def calcular_estado_actual(sesion):
     efectivo = float(efectivo)
     deudas = float(deudas)
     escenario_c = efectivo - deudas
-    escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas - deudas
+    escenario_b = efectivo + stock_mp + stock_int + stock_pt + valor_horas + utensilios - deudas
     escenario_a = escenario_b + activos_fijos
     # Patrimonio contable puro (4.3): igual que Escenario A pero con el stock
     # de producto terminado a costo o mercado (el menor), no a precio de venta.
-    patrimonio = efectivo + stock_mp + stock_int + stock_pt_conservador + valor_horas + activos_fijos - deudas
+    patrimonio = (
+        efectivo + stock_mp + stock_int + stock_pt_conservador + valor_horas
+        + utensilios + activos_fijos - deudas
+    )
 
     return {
         "efectivo": round(efectivo, 2),
@@ -146,6 +195,7 @@ def calcular_estado_actual(sesion):
         "patrimonio": round(patrimonio, 2),
         "stock_producto_intermedio": round(stock_int, 2),
         "valor_horas_standby": round(valor_horas, 2),
+        "utensilios_sin_absorber": round(utensilios, 2),
     }
 
 
@@ -338,6 +388,9 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             detalle_por_producto[p.Id_Producto_Terminado][0] += p.Cantidad_Restante_Produccion
             detalle_por_producto[p.Id_Producto_Terminado][1] += valor
 
+        # Utensilios/feriados comprados pero todavia no absorbidos (4.8)
+        valor_utensilios = valor_utensilios_sin_absorber(sesion)
+
         # ===== PASIVOS: suma de saldos de deudas =====
         total_deudas = sesion.query(
             func.coalesce(func.sum(Deuda.Saldo_Actual_Deuda), 0)
@@ -396,8 +449,8 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         # ===== ESCENARIOS y PATRIMONIO =====
         total_activos_fijos = total_inmuebles + total_equipos + total_otros
         escenario_c = total_efectivo - total_deudas
-        escenario_b = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby - total_deudas
-        escenario_a = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby + total_activos_fijos - total_deudas
+        escenario_b = total_efectivo + valor_stock_mp + valor_stock_intermedio + valor_stock_pt + valor_horas_standby + valor_utensilios - total_deudas
+        escenario_a = escenario_b + total_activos_fijos
         # Patrimonio contable puro (4.3): igual que Escenario A pero con el
         # stock de producto terminado a costo o mercado (el menor), no a
         # precio de venta -no reconoce ganancia de lo que no se vendio-.
@@ -406,7 +459,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         patrimonio = (
             total_efectivo + valor_stock_mp + valor_stock_intermedio
             + valor_stock_pt_conservador + valor_horas_standby
-            + total_activos_fijos - total_deudas
+            + valor_utensilios + total_activos_fijos - total_deudas
         )
 
         # ===== CREAR LA FOTO =====
@@ -430,6 +483,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             Valor_Stock_Intermedio=valor_stock_intermedio,
             Valor_Horas_Standby=valor_horas_standby,
             Valor_Stock_Producto_Terminado_Conservador=valor_stock_pt_conservador,
+            Valor_Utensilios_Sin_Absorber=valor_utensilios,
         )
         sesion.add(balance)
         sesion.flush()  # para obtener el Id_Balance

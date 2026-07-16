@@ -596,6 +596,100 @@ fuente de verdad del error.
   automatizar con Task Scheduler y definir una política de retención quedan
   pendientes para cuando el tamaño real lo justifique.
 
+### 8.1 Migración del Excel a la BD (mejora 8.4, jul 2026)
+
+Script único `backend/scripts/migrar_excel_v2.py` (openpyxl + psycopg2, una
+sola transacción, con `--dry-run` que hace ROLLBACK). ¿Por qué un script
+Python y no un SQL en `migraciones/`? Porque no es un cambio de esquema:
+son ~70.000 filas que necesitan transformación (códigos de lote tipo
+`PT0002CADF12072021S4`, dos formatos de fecha, bloques de 6 filas en
+paralelo, referencias cruzadas entre 22 tablas de una misma hoja). El excel
+vive en `datos_reales/` (gitignoreado): el **cómo** se versiona, los
+**datos** no.
+
+Decisiones de mapeo que valen para entender la BD resultante:
+
+- **Los códigos del excel no existen en V2.** `MP0001AZB`, `T0002CAAR`,
+  etc. eran la "clave primaria" del excel; en la BD son ids seriales. El
+  script mantiene diccionarios código→id solo durante la corrida. Lo mismo
+  con los códigos de lote (`COD+FEC`): cada uno se volvió una fila de
+  `Compra`, `Registro_Trabajador`, `Produccion_Intermedio` o `Produccion`.
+- **La tabla mixta del excel se separó por prefijo.** "TABLA MATERIA PRIMA,
+  TRABAJADORES, PRODUCTO TERMINADO" tenía compras, jornadas y lotes PI
+  mezclados, distinguidos por el prefijo del código (MP/T/PI) — se
+  repartió en sus tres tablas.
+- **El detalle de insumos se migró completo** (las "UNIONES"): qué compra,
+  jornada o PI alimentó cada lote. Podría haberse migrado solo el costo
+  final (ya viene calculado), pero se prefirió la trazabilidad total.
+- **Absorción histórica de utensilios**: el excel decía cuánto absorbió
+  cada lote pero no *de qué utensilio*, así que todas las
+  `Absorcion_Produccion` históricas apuntan a un único `Item_Absorcion`
+  genérico "ABSORCION HISTORICA (MIGRACION EXCEL)". Los 189 utensilios
+  reales sí entraron al catálogo con sus botellas restantes, para que la
+  absorción futura siga funcionando por ítem.
+- **Ventas agrupadas por (cliente, fecha)**: el excel tenía una línea por
+  producto vendido; V2 tiene cabecera `Venta` + `Detalle_Venta`. Cada
+  detalle apunta al lote de producción real (se conserva la trazabilidad
+  costo→venta).
+- **Cuentas**: se crearon 5 (`BILLETERA FABRICA` rol FABRICA, `BILLETERA
+  CASA` rol CASA, dos BANCO UNION y `INGRESOS LIQUIDOS CONYUGUE` como
+  OTRA). "DINERO DEL NEGOCIO/DE LA CASA" del excel son alias de las dos
+  primeras. Saldos iniciales = último snapshot del excel (decisión: los
+  movimientos migrados NO reconstruyen el saldo, porque el excel nunca
+  registró la caja de compras/ventas del negocio — por eso las compras y
+  ventas históricas quedaron sin `Id_Movimiento`).
+- **Gastos familiares multi-cuenta**: cuando un día se pagó con varias
+  cuentas, el excel no decía qué gasto salió de qué cuenta. Se asignó
+  greedy (en orden hasta agotar lo utilizado de cada cuenta): los totales
+  por cuenta son exactos, el detalle línea-a-línea es aproximado.
+- **Deudas**: se migraron las 52 (incluidas las saldadas en 0, para que el
+  historial de amortización tenga contra qué matchear); "BOTELLAS JULIETA"
+  estaba duplicada y se fusionó.
+- **No se migró** lo derivado o abandonado: TABLA PRODUCTOS HISTORICO
+  (agregado que V2 calcula — y que estaba desactualizado: la paridad se
+  verificó contra las tablas crudas), NORMALIZAR POR HORAS (ya no se usa),
+  stock de utensilios para balance (ver 8.2), balances viejos (el
+  primero se genera en el próximo cierre), recetas y proveedores (no
+  existían en el excel — se cargan desde la app).
+
+### 8.2 Equipo durable: Activo o Ítem de absorción (jul 2026)
+
+Al comparar el balance de V2 contra el del excel apareció un desface de
+**6.782 Bs**: la suma de `CANTIDAD RESTANTE × PU PROMEDIO` de los 8 ítems
+durables de la tabla "HISTORICO UTENSILIO O EQUIPO PARA EL BALANCE" del
+excel (ollas, filtro UV, toneles de roble, jarra y cuchara inox), que no se
+migró.
+
+**No es un dato que falte: era doble conteo del excel.** Los mismos 8 ítems
+ya estaban en la tabla de absorción (las 189 filas que sí se migraron a
+`Item_Absorcion`), **absorbidos al 100%** — toneles 4.200 Bs con 0 botellas
+restantes, filtro UV 307 con 0, etc. Su costo ya se fue íntegro al costo de
+las botellas que produjeron. Y encima el activo "BIENES DEL NEGOCIO" de
+105.000 Bs se describe literalmente como *"FILTRO UV, DESTILADOR, TONELES,
+OTROS"*. El excel contaba el mismo tonel dos veces: su costo prorrateado en
+cada botella **y** como stock de utensilios en el escenario B.
+
+La regla, que es lo importante: **los mismos Bs no pueden ir a los dos
+lados.** O el costo va a la botella, o el bien queda en el balance.
+
+- **Se consume o se desgasta hasta desaparecer** (esponja, bombril,
+  guantes, ace) → `Item_Absorcion`: su costo se prorratea en cada botella y
+  el ítem desaparece del balance al agotarse las botellas estimadas.
+- **Dura años y conserva valor de reventa** (tonel de roble, olla inox,
+  filtro UV) → `Activo` con tipo de bien de categoría `EQUIPO`: queda en el
+  balance (Escenario A, línea *Equipos) y su costo **no** toca el costo de
+  la botella.
+
+**Decisión (jul 2026): el equipo durable va como Activo directo.** Es lo que
+hace la contabilidad estándar (capitalizar en vez de gastar) y evita que el
+costo de la botella suba por una compra que en realidad es una inversión.
+Contra conocido: **V2 no tiene depreciación**, así que un activo queda a
+valor pleno para siempre — si el parque de equipos crece, habrá que
+revisarlo (pendiente en MEJORAS_FUTURAS).
+
+Los 6.782 históricos **no se cargan**: ya están absorbidos y además el
+activo de 105.000 los nombra. Cargarlos sería contarlos por tercera vez.
+
 ---
 
 ## 9. ESTRUCTURA DEL PROYECTO
