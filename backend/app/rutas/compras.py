@@ -291,27 +291,25 @@ def comparacion_precios_proveedor(sesion: Session = Depends(get_sesion)):
 def stock_materia_prima(sesion: Session = Depends(get_sesion)):
     """Stock general de materia prima: suma el restante de todos los lotes por
     cada materia, con su costo unitario promedio ponderado (mismo patron que
-    stock-intermedio-general y stock-terminado-general)."""
-    materias = sesion.query(Materia_Prima).all()
+    stock-intermedio-general y stock-terminado-general: solo aparecen las
+    materias con stock > 0, no todo el catalogo)."""
     lotes = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
 
-    resumen = {
-        m.Id_Materia_Prima: {
-            "descripcion": m.Descripcion_Materia_Prima,
-            "unidad": m.Unidad_Materia_Prima,
-            "stock_total": 0.0,
-            "valor_total": 0.0,
-        }
-        for m in materias
-    }
+    resumen = {}
     for c in lotes:
-        datos = resumen.get(c.Id_Materia_Prima)
-        if datos is None:
-            continue
+        mid = c.Id_Materia_Prima
+        if mid not in resumen:
+            materia = sesion.get(Materia_Prima, mid)
+            resumen[mid] = {
+                "descripcion": materia.Descripcion_Materia_Prima if materia else "?",
+                "unidad": materia.Unidad_Materia_Prima if materia else "",
+                "stock_total": 0.0,
+                "valor_total": 0.0,
+            }
         cant = float(c.Cantidad_Restante_Compra)
         costo_unit = float(c.Precio_Compra) / float(c.Cantidad_Compra) if c.Cantidad_Compra else 0
-        datos["stock_total"] += cant
-        datos["valor_total"] += cant * costo_unit
+        resumen[mid]["stock_total"] += cant
+        resumen[mid]["valor_total"] += cant * costo_unit
 
     resultado = []
     for mid, datos in resumen.items():
