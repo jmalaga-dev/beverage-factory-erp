@@ -394,49 +394,40 @@ también respete el selector bruto/neto del Dashboard 1).
    el más rentable (ver la tabla de comparación bruto/neto del Dashboard 1).
 4. Opcional: una tarjeta con `[Cantidad Vendida]` y otra con `[Margen bruto]`
    totales del período filtrado, para ver el tamaño del mes de un vistazo.
-5. **Evolución en el tiempo (no es un ranking, es una tendencia):** dos
-   gráficos de **líneas**, uno con eje `Calendario[Año-Mes]` y otro con eje
-   `Calendario[Año]`, ambos con `[Cantidad Vendida]` y `[Margen bruto]` como
-   líneas. Responde "¿cómo viene la fábrica en el tiempo?", en vez de "¿qué
-   producto ganó ese mes?". Va en esta misma página: usa las mismas dos
-   medidas y la misma tabla Calendario, sin nada nuevo que configurar.
+5. **Evolución año contra año (estacionalidad):** dos gráficos de **líneas**,
+   uno de `[Cantidad Vendida]` y otro de `[Margen bruto]` (separados a
+   propósito, ver el ⚠️ de abajo). En cada uno, cada **año** es su propia
+   línea, todas sobre el mismo eje de 12 meses (enero→diciembre). Responde
+   "¿cómo se compara cada año, mes a mes?" — deja ver estacionalidad (ej. si
+   febrero es un pico de margen todos los años) y qué años fueron mejores.
+   Es una pregunta distinta al ranking de productos de los puntos 2-3.
 
-   ⚠️ **Poné `[Margen bruto]` en el eje Y secundario.** Cantidad vendida y
-   margen bruto tienen escalas muy distintas (decenas contra cientos/miles);
-   compartiendo un solo eje, la línea de cantidad queda aplastada cerca del
-   cero y se pierde el detalle de su propio movimiento. En el panel de
-   formato del visual: `Margen bruto` → *Eje Y* → activar **Eje secundario**.
-   Cada línea se lee con su propia escala a la derecha/izquierda y el gráfico
-   se entiende mucho mejor.
+   El truco es un solo cambio respecto de un gráfico de tiempo normal: en vez
+   de poner una fecha continua en el eje, se separa mes y año en dos roles:
+   - **Eje X** → `Calendario[Nombre Mes]` (los 12 meses)
+   - **Leyenda** → `Calendario[Año]` (esto convierte cada año en una línea)
+   - **Valores** → `[Cantidad Vendida]` en un gráfico, `[Margen bruto]` en el
+     otro. Copiás el primero, lo pegás y cambiás solo la medida.
 
-   **Tip opcional — drill down/up, explicado paso a paso** (no obligatorio;
-   tus dos gráficos separados, uno por mes y otro por año, funcionan
-   perfectamente y son más simples de leer sin aprender ningún gesto nuevo.
-   Esto es solo si en algún momento te cansás de mantener dos gráficos y
-   preferís uno solo que se "abre" al año o al mes según quieras):
+   ⚠️ **Una métrica por gráfico, no las dos juntas.** Cada gráfico ya tiene
+   una línea por año (con datos de varios años son ~6 líneas). Meter cantidad
+   Y margen en el mismo sería el doble de líneas, ilegible — y además tienen
+   escalas muy distintas. Separándolos, cada uno se lee limpio y no hace falta
+   eje secundario.
 
-   Power BI permite apilar más de un campo en el mismo eje, uno "adentro" del
-   otro — eso se llama jerarquía. Si en el eje del gráfico de líneas ponés
-   primero `Calendario[Año]` y **debajo, en el mismo casillero del eje**,
-   arrastrás también `Calendario[Nombre Mes]`, Power BI arma automáticamente
-   la jerarquía Año → Mes.
+   ⚠️ **Depende del orden de `Nombre Mes`.** Si no configuraste "Ordenar
+   `Nombre Mes` por `Mes`" (ver la sección de la tabla Calendario), el eje
+   sale alfabético (abril, agosto, diciembre…) en vez de cronológico y el
+   gráfico parece roto. Es el mismo fix de "Ordenar por columna" de antes.
 
-   El gráfico arranca mostrando solo los años (4-5 puntos, uno por año, como
-   tu segundo gráfico de antes). Al pasar el mouse por arriba del visual
-   aparecen unas flechitas chiquitas arriba a la izquierda: una flecha para
-   abajo ("Ir al siguiente nivel") y una para arriba ("Subir un nivel"). Si
-   hacés **doble clic sobre un año puntual** (ej. 2022), el mismo gráfico
-   deja de mostrar los años y muestra los 12 meses de *ese* 2022 — es la
-   versión "zoom" de tu primer gráfico, pero solo para el año que elegiste.
-   Doble clic de nuevo (o la flecha para arriba) te devuelve a ver todos los
-   años.
+   **El primer y el último año se ven cortados, y está bien.** Los datos
+   arrancan a mitad del primer año y llegan hasta mitad del último, así que
+   esas dos líneas solo cubren parte de los meses (no es un error, esos años
+   están incompletos en la realidad). Los años del medio, completos, son los
+   que mejor se comparan entre sí.
 
-   En criollo: en vez de dos gráficos fijos (uno siempre por mes, otro
-   siempre por año), tenés UN gráfico que arranca por año y que podés
-   "abrir" haciendo doble clic en el año que te interese, para ver el detalle
-   mes a mes de ese año en particular, sin tener los dos visuales ocupando
-   lugar en la página. De nuevo: es una comodidad de espacio, no cambia
-   ningún dato ni ninguna medida.
+   Opcional estético: para líneas curvas en vez de quebradas, seleccionar el
+   gráfico → formato → *Líneas* → **Suavizado**. No cambia los datos.
 
 ## Verificación
 
