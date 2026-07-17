@@ -625,8 +625,8 @@ balance con los datos reales ya migrados.
 absorción (utensilio, feriado) se compra por un costo y se reparte entre N
 botellas estimadas. Mientras queden botellas por absorber, esa fracción ya
 se pagó pero todavía no está en el costo de ninguna botella: no aparecía ni
-en efectivo, ni en stock, ni en activos fijos. Se perdía. Con los datos
-reales eran **3.732,68 Bs** (2 utensilios recientes + 2 feriados).
+en efectivo, ni en stock, ni en activos fijos. Se perdía (un par de
+utensilios recientes y unos feriados que aún no terminaban de absorber).
 Migración 021 (columna `Valor_Utensilios_Sin_Absorber` en `Balance`), helper
 `valor_utensilios_sin_absorber` en `servicios/balance.py`
 (`costo * botellas_restantes / botellas_estimadas`), suma al Escenario B y
@@ -662,8 +662,8 @@ Verificado contra el frontend en vivo: orden de filas, CSS computado en
 claro y oscuro, y cero errores de consola.
 
 ### 4.9 Depreciación de activos fijos (pendiente)
-Un `Activo` queda a valor pleno para siempre: la vagoneta de 77.000 vale
-77.000 en el balance el día que se compró y cinco años después. Con la
+Un `Activo` queda a valor pleno para siempre: un vehículo vale lo mismo en
+el balance el día que se compró y cinco años después. Con la
 decisión de jul 2026 de cargar el equipo durable como Activo (ver
 DECISIONES_DISENO.md 8.2), el parque de equipos va a crecer y el Escenario A
 se va a ir separando de la realidad.
@@ -1048,6 +1048,47 @@ día (registrar, validar, balance, resumen diario); el análisis exploratorio
 e histórico va a Power BI (Desktop es gratis; conexión con usuario de solo
 lectura a PostgreSQL).
 
+**Estado: en progreso (jul 2026) — conexión lista + primer dashboard
+documentado.** Todo en `reportes-powerbi/README.md`.
+
+- **Rol `powerbi_lectura`**: usuario de PostgreSQL con `SELECT` y nada más
+  (mínimo privilegio: si el reporte falla, no puede tocar un dato).
+  `ALTER DEFAULT PRIVILEGES` para que las tablas de migraciones futuras
+  también le queden visibles sin repetir el `GRANT`. Verificado conectándose
+  con ese usuario: lee bien, y el `UPDATE` de prueba falla con "permiso
+  denegado". La contraseña **no** se versiona (mismo criterio que `.env`,
+  porque el repo va a GitHub — 8.5).
+- **`*.pbix` en `.gitignore`**: en modo Importar el archivo lleva una copia
+  completa de los datos adentro; versionarlo sería meter ventas/clientes/
+  deudas reales en un blob binario, para siempre en el historial. Se versiona
+  el README (conexión + DAX + cómo armar cada visual): con eso se reconstruye.
+  Alternativa futura si se quiere versionar el diseño: formato `.pbip`
+  (carpeta de JSON, sin datos embebidos).
+- **Dashboard 1 — Pareto 80/20**: medidas DAX + armado del visual.
+
+**Definición de "ganancia" (importante, se decidió acá):** el Pareto NO usa el
+`saldo` de la mejora 2.C. Son métricas distintas y está bien que no coincidan:
+el saldo resta el costo de **todo lo producido** (incluido el stock sin vender)
+y responde "¿ya recuperó la inversión?"; el Pareto resta el costo de **solo lo
+vendido** y responde "¿cuánto gané con lo que vendí?". Este documento ya las
+listaba como dos dashboards separados. El costo de lo vendido es exacto (no un
+promedio) porque cada línea de venta apunta a su lote de producción — la
+trazabilidad que conservó la migración (8.4).
+
+Se implementaron las dos variantes con un selector: **margen bruto** (ingresos −
+costo de lo vendido) y **margen neto** (− gastos extra prorrateados). Los gastos
+extra NO están dentro del costo del lote (`ejecutar_prorrateo` solo escribe en
+`Prorrateo_Mensual`, nunca toca `Precio_Unitario_Producto_Terminado`), así que
+restarlos no es doble conteo; la absorción de utensilios (1.4) **sí** está
+dentro, y por eso no se resta aparte. Con los datos actuales el reparto sale
+cercano a un 80/20 clásico. Cambiar de métrica mueve el ranking (un producto de
+mucho volumen consume muchas horas de fábrica, así que carga más gastos extra y
+puede caer varios puestos en el neto) — no es cosmético.
+
+Limitación anotada: el prorrateo asigna por horas **producidas**, así que el
+margen neto carga gastos de botellas aún no vendidas. Pesa poco en el histórico
+(~7%), puede distorsionar al cortar por mes.
+
 ### 8.2 Google Maps API
 Para los sectores/zonas de clientes: mostrar clientes en un mapa, análisis de
 ventas por zona. Ya se guardan latitud/longitud (con extracción desde link de Maps).
@@ -1122,22 +1163,20 @@ script se versiona, los datos no). Secuencia ejecutada:
 2. `migrar_excel_v2.py --dry-run`: corre TODO y hace ROLLBACK — sirvió para
    ver conteos y anomalías sin riesgo antes de la corrida real.
 3. Corrida real: **una sola transacción** (si algo falla a mitad no queda
-   nada a medias). Carga: catálogos (249 MP, 5 trabajadores, 60 PI, 99 PT,
-   49 sectores, 306 clientes, 7 gastos extra, 52 deudas, 5 cuentas,
-   189 ítems de absorción), 2.454 compras, 4.374 jornadas, 2.534
-   producciones intermedias y 1.497 terminadas **con su detalle completo de
-   insumos** (~26.000 filas de detalle: qué compra/jornada/PI alimentó cada
-   lote), 3.236 ventas (10.267 líneas agrupadas por cliente+fecha),
-   prorrateo mensual completo (56 períodos), y ~12.800 movimientos de
-   dinero (gastos familiares con grupo, pagos de deuda, transferencias,
-   ingresos externos).
+   nada a medias). Carga todos los catálogos (materias primas, trabajadores,
+   intermedios, terminados, sectores, gastos extra, deudas, cuentas, ítems
+   de absorción), y toda la historia: compras, jornadas, producciones
+   intermedias y terminadas **con su detalle completo de insumos** (qué
+   compra/jornada/PI alimentó cada lote — decenas de miles de filas de
+   detalle), ventas (agrupadas por cliente+fecha), el prorrateo mensual
+   completo y los movimientos de dinero (gastos familiares con grupo, pagos
+   de deuda, transferencias, ingresos externos).
 4. Verificación de paridad: totales producido/vendido/Bs por producto
    sumados desde la BD == sumas crudas del excel (la "TABLA PRODUCTOS
    HISTORICO" del excel estaba desactualizada — el control se hizo contra
    las tablas crudas); PU de lotes al azar idéntico dígito a dígito; cero
    detalles huérfanos. La app corriendo sirvió los datos sin tocar código.
-5. Respaldo post-migración (0.64 MB vs 0.11 vacío) + tag
-   `post-migracion-excel`.
+5. Respaldo post-migración + tag `post-migracion-excel`.
 
 Anomalías del excel manejadas por el script (quedan logueadas al correrlo):
 7 fechas imposibles tipo `F31062022` (clampeadas al último día del mes),
@@ -1160,13 +1199,13 @@ DECISIONES_DISENO.md (sección 8).
 
 2. **Lote de producto terminado en stock negativo** (migración 020 +
    bloque 5b del script). El excel no validaba stock: su macro descontaba
-   ventas de un lote agotado. SOBAQUERA VODKA STERN quedó con un lote en −62
-   y el siguiente inflado en 112 cuando físicamente había 50. Los 62 son los
-   mismos. Se reasignan las ventas de exceso, cronológicamente, al siguiente
-   lote del mismo producto con stock. **Importa**: el balance ignora los
-   restantes negativos (filtra `> UMBRAL_STOCK_MINIMO`) pero **sí valorizaba
-   las 112 botellas** que no existen — el fix bajó el stock terminado de
-   124.373,20 a 123.959,87 (413,33 = las 62 botellas fantasma). El total
+   ventas de un lote agotado. Un producto quedó con un lote en negativo y el
+   siguiente inflado con botellas que físicamente no existían; la diferencia
+   son las mismas botellas. Se reasignan las ventas de exceso,
+   cronológicamente, al siguiente lote del mismo producto con stock.
+   **Importa**: el balance ignora los restantes negativos (filtra
+   `> UMBRAL_STOCK_MINIMO`) pero **sí valorizaba las botellas fantasma** que
+   no existen — el fix bajó el stock terminado en ese monto. El total
    vendido no cambia: la venta es un hecho, lo que estaba mal era el lote al
    que se le atribuía.
 
@@ -1176,15 +1215,15 @@ DECISIONES_DISENO.md (sección 8).
    de que la macro del excel sobre-consumió esos lotes; limpiarlos borraría
    el rastro sin cambiar ningún número.
 
-4. **El "desface" de 6.782 Bs contra el escenario B del excel no es un
-   dato faltante: era doble conteo del excel.** Ver DECISIONES_DISENO.md 8.2.
+4. **El "desface" contra el escenario B del excel no es un dato faltante:
+   era doble conteo del excel.** Ver DECISIONES_DISENO.md 8.2.
 
 5. **Jornadas migradas marcadas como pagadas** (migración 022). El excel no
    tenía tabla de pagos a trabajadores, pero en la realidad ya se habían
    pagado todas (semanal, cada sábado). Sin este fix, `Id_Pago_Trabajador`
-   quedaba `NULL` en las 4.374 jornadas migradas y el endpoint
-   `/trabajadores/{id}/pago-sugerido` las sumaba todas: 119.772 Bs
-   "sugeridos" para un solo trabajador antes del fix. Se creó un
+   quedaba `NULL` en todas las jornadas migradas y el endpoint
+   `/trabajadores/{id}/pago-sugerido` las sumaba todas: años de sueldo
+   "sugeridos" de golpe para un solo trabajador antes del fix. Se creó un
    `Pago_Trabajador` por (trabajador, semana), agrupando por el sábado que
    cierra cada semana, con monto = horas × tarifa pactada. **Sin
    `Id_Movimiento`** — mismo criterio que compras/ventas: esa plata salió de
@@ -1276,8 +1315,8 @@ Opus para las que tocan lógica de precios/costeo en varias capas.
 
 ### 10.1 Pago por sueldo semanal (bug: tarifa como Bs/hora) — Opus
 El pago se cargaba como Bs/hora y se multiplicaba directo por las horas, así que
-un sueldo semanal de 280 Bs por 48 h daba 280×8 = 2240 Bs por 8 h en vez de
-46.66. Se pensaba el pago en términos semanales.
+un sueldo semanal (ej. S Bs por H horas/semana) daba S×8 por 8 h en vez de
+(S/H)×8. Se pensaba el pago en términos semanales.
 
 **Estado: implementado.** Sin migración (los campos `Pago_Trabajador` y
 `Horas_Base_Trabajador` ya existían). Nueva semántica: `Pago_Trabajador` = sueldo
@@ -1287,8 +1326,9 @@ base). Se reemplazaron los 7 sitios que usaban `Pago_Trabajador` como Bs/hora
 (pago sugerido, cierre semanal, producción intermedia/terminada, reproceso y las
 dos valorizaciones de horas standby en balance). Catálogo: relabel a "Sueldo
 semanal" + "Horas por semana" (obligatorio) y columna calculada "Bs/hora"; el
-API `/trabajadores` devuelve la `tarifa`. Verificado: Deisy 280/48 → pago
-sugerido 46.66. Ver DECISIONES_DISENO 3.2. (Los trabajadores viejos cargados en
+API `/trabajadores` devuelve la `tarifa`. Verificado con un trabajador de
+prueba: sueldo/horas → tarifa correcta. Ver DECISIONES_DISENO 3.2. (Los
+trabajadores viejos cargados en
 Bs/hora quedan con tarifa baja hasta reingresar su sueldo semanal; eran datos de
 prueba.)
 
@@ -1296,9 +1336,9 @@ prueba.)
 Al abrir el cierre de mes, Junio 2026 salía como ya prorrateado.
 
 **Estado: resuelto (limpieza de datos, no era bug de código).** Había 2 filas
-huérfanas en `Prorrateo_Mensual` (Id 1 y 2: 490+250) de un prorrateo de prueba
-temprano, con montos que ya no coincidían con los gastos actuales del mes
-(490+180). Se borraron esas 2 filas; Junio quedó libre (`puede: true`).
+huérfanas en `Prorrateo_Mensual` de un prorrateo de prueba temprano, con montos
+que ya no coincidían con los gastos actuales del mes. Se borraron esas 2 filas;
+Junio quedó libre (`puede: true`).
 
 ### 10.3 Compras — predeterminar última cantidad+precio por proveedor — Opus
 Al elegir materia prima + proveedor en Compras, autocompletar la cantidad y el

@@ -15,6 +15,9 @@ datos_reales/
 *.backup
 *.dump
 
+# Power BI (el .pbix en modo Import cachea una copia completa de los datos)
+*.pbix
+
 # Archivos viejos o temporales
 *_OLD.*
 *_old.*

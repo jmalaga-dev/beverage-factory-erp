@@ -116,8 +116,8 @@ trabajador, no con el pago real semanal.
 **Tarifa/hora derivada del sueldo (mejora: pago semanal).** El sueldo NO se
 carga como Bs/hora sino como **sueldo del periodo** (`Pago_Trabajador` = sueldo
 semanal) sobre las **horas de ese periodo** (`Horas_Base_Trabajador` = horas por
-semana). La tarifa/hora es `Pago_Trabajador / Horas_Base_Trabajador`: ej. 280 Bs
-por 48 h → 5.8333 Bs/h, y 8 h valen 46.66 Bs (no 280×8). El motivo: el usuario
+semana). La tarifa/hora es `Pago_Trabajador / Horas_Base_Trabajador`: ej. un
+sueldo semanal S por H horas → S/H por hora, y 8 h valen (S/H)×8 (no S×8). El motivo: el usuario
 piensa el pago en términos semanales, no por hora, y calcular la tarifa a mano
 era fuente de errores. Toda la app deriva la tarifa por un único helper,
 `servicios/trabajadores.tarifa_hora(trabajador)`, para que ningún cálculo
@@ -583,6 +583,21 @@ fuente de verdad del error.
 
 ## 8. VERSIONADO Y DATOS
 
+> ⚠️ **REGLA — nada de datos de la empresa en archivos versionados.** El repo va
+> a ser público (GitHub, 8.5). No versionar **ningún** dato del negocio, ni
+> siquiera dentro de código, comentarios, migraciones o documentación (este
+> archivo y MEJORAS_FUTURAS.md incluidos): ni montos en Bs reales, ni nombres de
+> productos/clientes/proveedores/trabajadores, ni nombres de bancos o números de
+> cuenta, ni conteos que revelen la escala del negocio (nº de clientes, ventas,
+> etc.). Al documentar una mejora o un fix, describir la lógica con ejemplos
+> **inventados** o descripciones genéricas ("el balance bajó en ese monto", "un
+> producto quedó en negativo", "decenas de miles de filas"), nunca los valores
+> reales que salieron de la BD. Los datos y constantes específicas del negocio
+> (ej. nombres de cuentas para la migración) van en `datos_reales/`
+> (gitignoreado), con una plantilla genérica versionada aparte. Ejemplos
+> didácticos con nombres/números claramente ficticios (ej. "Pedro trabaja 10 h")
+> sí están permitidos: no son datos, explican la lógica.
+
 - Control de versiones con Git desde el inicio. Se versiona el **código**, NO los
   datos (que viven en PostgreSQL) ni `node_modules` ni `.env` (credenciales).
 - El diseño de la BD se hizo primero (en dbdiagram.io) antes de codear —
@@ -601,16 +616,17 @@ fuente de verdad del error.
 Script único `backend/scripts/migrar_excel_v2.py` (openpyxl + psycopg2, una
 sola transacción, con `--dry-run` que hace ROLLBACK). ¿Por qué un script
 Python y no un SQL en `migraciones/`? Porque no es un cambio de esquema:
-son ~70.000 filas que necesitan transformación (códigos de lote tipo
-`PT0002CADF12072021S4`, dos formatos de fecha, bloques de 6 filas en
-paralelo, referencias cruzadas entre 22 tablas de una misma hoja). El excel
-vive en `datos_reales/` (gitignoreado): el **cómo** se versiona, los
-**datos** no.
+son decenas de miles de filas que necesitan transformación (códigos de lote
+con formato `<código><fecha><secuencia>`, dos formatos de fecha, bloques de
+6 filas en paralelo, referencias cruzadas entre 22 tablas de una misma
+hoja). El excel vive en `datos_reales/` (gitignoreado): el **cómo** se
+versiona, los **datos** no.
 
 Decisiones de mapeo que valen para entender la BD resultante:
 
-- **Los códigos del excel no existen en V2.** `MP0001AZB`, `T0002CAAR`,
-  etc. eran la "clave primaria" del excel; en la BD son ids seriales. El
+- **Los códigos del excel no existen en V2.** Un prefijo por catálogo
+  (materia prima, trabajador, intermedio, terminado) era la "clave primaria"
+  del excel; en la BD son ids seriales. El
   script mantiene diccionarios código→id solo durante la corrida. Lo mismo
   con los códigos de lote (`COD+FEC`): cada uno se volvió una fila de
   `Compra`, `Registro_Trabajador`, `Produccion_Intermedio` o `Produccion`.
@@ -624,17 +640,17 @@ Decisiones de mapeo que valen para entender la BD resultante:
 - **Absorción histórica de utensilios**: el excel decía cuánto absorbió
   cada lote pero no *de qué utensilio*, así que todas las
   `Absorcion_Produccion` históricas apuntan a un único `Item_Absorcion`
-  genérico "ABSORCION HISTORICA (MIGRACION EXCEL)". Los 189 utensilios
-  reales sí entraron al catálogo con sus botellas restantes, para que la
+  genérico "ABSORCION HISTORICA (MIGRACION EXCEL)". Los utensilios reales
+  sí entraron al catálogo con sus botellas restantes, para que la
   absorción futura siga funcionando por ítem.
 - **Ventas agrupadas por (cliente, fecha)**: el excel tenía una línea por
   producto vendido; V2 tiene cabecera `Venta` + `Detalle_Venta`. Cada
   detalle apunta al lote de producción real (se conserva la trazabilidad
   costo→venta).
-- **Cuentas**: se crearon 5 (`BILLETERA FABRICA` rol FABRICA, `BILLETERA
-  CASA` rol CASA, dos BANCO UNION y `INGRESOS LIQUIDOS CONYUGUE` como
-  OTRA). "DINERO DEL NEGOCIO/DE LA CASA" del excel son alias de las dos
-  primeras. Saldos iniciales = último snapshot del excel (decisión: los
+- **Cuentas**: se crearon las billeteras de Fábrica (rol FABRICA) y Casa
+  (rol CASA), un par de cuentas bancarias y una de ingresos externos (rol
+  OTRA). Los alias del excel apuntan a las dos billeteras. Saldos
+  iniciales = último snapshot del excel (decisión: los
   movimientos migrados NO reconstruyen el saldo, porque el excel nunca
   registró la caja de compras/ventas del negocio — por eso las compras y
   ventas históricas quedaron sin `Id_Movimiento`).
@@ -642,9 +658,9 @@ Decisiones de mapeo que valen para entender la BD resultante:
   cuentas, el excel no decía qué gasto salió de qué cuenta. Se asignó
   greedy (en orden hasta agotar lo utilizado de cada cuenta): los totales
   por cuenta son exactos, el detalle línea-a-línea es aproximado.
-- **Deudas**: se migraron las 52 (incluidas las saldadas en 0, para que el
-  historial de amortización tenga contra qué matchear); "BOTELLAS JULIETA"
-  estaba duplicada y se fusionó.
+- **Deudas**: se migraron todas (incluidas las saldadas en 0, para que el
+  historial de amortización tenga contra qué matchear); una deuda que estaba
+  duplicada se fusionó.
 - **No se migró** lo derivado o abandonado: TABLA PRODUCTOS HISTORICO
   (agregado que V2 calcula — y que estaba desactualizado: la paridad se
   verificó contra las tablas crudas), NORMALIZAR POR HORAS (ya no se usa),
@@ -654,20 +670,19 @@ Decisiones de mapeo que valen para entender la BD resultante:
 
 ### 8.2 Equipo durable: Activo o Ítem de absorción (jul 2026)
 
-Al comparar el balance de V2 contra el del excel apareció un desface de
-**6.782 Bs**: la suma de `CANTIDAD RESTANTE × PU PROMEDIO` de los 8 ítems
-durables de la tabla "HISTORICO UTENSILIO O EQUIPO PARA EL BALANCE" del
-excel (ollas, filtro UV, toneles de roble, jarra y cuchara inox), que no se
-migró.
+Al comparar el balance de V2 contra el del excel apareció un desface: la
+suma de `CANTIDAD RESTANTE × PU PROMEDIO` de un puñado de ítems durables de
+la tabla "HISTORICO UTENSILIO O EQUIPO PARA EL BALANCE" del excel (ollas,
+filtro UV, toneles de roble, jarra y cuchara inox), que no se migró.
 
-**No es un dato que falte: era doble conteo del excel.** Los mismos 8 ítems
-ya estaban en la tabla de absorción (las 189 filas que sí se migraron a
-`Item_Absorcion`), **absorbidos al 100%** — toneles 4.200 Bs con 0 botellas
-restantes, filtro UV 307 con 0, etc. Su costo ya se fue íntegro al costo de
-las botellas que produjeron. Y encima el activo "BIENES DEL NEGOCIO" de
-105.000 Bs se describe literalmente como *"FILTRO UV, DESTILADOR, TONELES,
-OTROS"*. El excel contaba el mismo tonel dos veces: su costo prorrateado en
-cada botella **y** como stock de utensilios en el escenario B.
+**No es un dato que falte: era doble conteo del excel.** Esos mismos ítems
+ya estaban en la tabla de absorción (las filas que sí se migraron a
+`Item_Absorcion`), **absorbidos al 100%** — con 0 botellas restantes. Su
+costo ya se fue íntegro al costo de las botellas que produjeron. Y encima el
+activo de bienes del negocio se describe literalmente como *"FILTRO UV,
+DESTILADOR, TONELES, OTROS"*. El excel contaba el mismo tonel dos veces: su
+costo prorrateado en cada botella **y** como stock de utensilios en el
+escenario B.
 
 La regla, que es lo importante: **los mismos Bs no pueden ir a los dos
 lados.** O el costo va a la botella, o el bien queda en el balance.
@@ -687,8 +702,9 @@ Contra conocido: **V2 no tiene depreciación**, así que un activo queda a
 valor pleno para siempre — si el parque de equipos crece, habrá que
 revisarlo (pendiente en MEJORAS_FUTURAS).
 
-Los 6.782 históricos **no se cargan**: ya están absorbidos y además el
-activo de 105.000 los nombra. Cargarlos sería contarlos por tercera vez.
+Los durables históricos **no se cargan**: ya están absorbidos y además el
+activo de bienes del negocio los nombra. Cargarlos sería contarlos por
+tercera vez.
 
 ---
 

@@ -1,6 +1,6 @@
 # Migracion unica: excel consolidado V1 -> BD V2 (jul 2026).
 #
-# Lee datos_reales/Migracion datos a V2.xlsx (una sola hoja con ~22 bloques
+# Lee el excel consolidado desde datos_reales/ (una sola hoja con ~22 bloques
 # de tablas lado a lado) y carga toda la historia en PostgreSQL en UNA sola
 # transaccion: catalogos, compras, jornadas, producciones (con detalle de
 # insumos), ventas, prorrateo de gastos extra, movimientos de dinero
@@ -22,6 +22,7 @@
 # de pago sugerido suma todas las horas historicas de un trabajador como si
 # nunca se le hubiera pagado nada.
 import datetime
+import importlib.util
 import os
 import re
 import sys
@@ -32,7 +33,28 @@ import psycopg2
 import psycopg2.extras
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
-RUTA_EXCEL = os.path.join(os.path.dirname(BASE), "datos_reales", "Migracion datos a V2.xlsx")
+DATOS_REALES = os.path.join(os.path.dirname(BASE), "datos_reales")
+
+# Los nombres reales de cuentas/banco y el del excel son DATOS, no codigo, asi
+# que viven en datos_reales/config_migracion.py (gitignoreado). Plantilla en
+# backend/scripts/config_migracion.ejemplo.py.
+_cfg_path = os.path.join(DATOS_REALES, "config_migracion.py")
+if not os.path.exists(_cfg_path):
+    raise SystemExit(
+        "Falta datos_reales/config_migracion.py. Copia la plantilla "
+        "backend/scripts/config_migracion.ejemplo.py ahi y completa los "
+        "nombres reales de cuentas y del excel."
+    )
+_spec = importlib.util.spec_from_file_location("config_migracion", _cfg_path)
+config = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(config)
+
+RUTA_EXCEL = os.path.join(DATOS_REALES, config.NOMBRE_EXCEL)
+CUENTAS = config.CUENTAS
+ALIAS_CUENTA = config.ALIAS_CUENTA
+# Derivados del rol, para no hardcodear nombres en la logica de mas abajo:
+CUENTA_MARCADOR_BLOQUE = next(n for n, rol in CUENTAS if rol == "FABRICA")
+CUENTA_FALLBACK = next(n for n, rol in CUENTAS if rol == "CASA")
 DRY_RUN = "--dry-run" in sys.argv
 
 anomalias = defaultdict(int)
@@ -311,11 +333,7 @@ for desc, saldo in deudas_crudas:
         (desc, saldo))
 resumen["Deuda"] = len(deuda_id)
 
-# --- Cuenta ---
-CUENTAS = [("BILLETERA FABRICA", "FABRICA"), ("BILLETERA CASA", "CASA"),
-           ("BANCO UNION M.N. 354", "OTRA"), ("BANCO UNION M.N. 808", "OTRA"),
-           ("INGRESOS LIQUIDOS CONYUGUE", "OTRA")]
-ALIAS_CUENTA = {"DINERO DE LA CASA": "BILLETERA CASA", "DINERO DEL NEGOCIO": "BILLETERA FABRICA"}
+# --- Cuenta --- (CUENTAS y ALIAS_CUENTA vienen del config, ver arriba)
 cuenta_id = {}
 for nombre, rol in CUENTAS:
     cuenta_id[nombre] = uno(
@@ -692,7 +710,7 @@ def procesar_bloques(col_fuente, col_disp, col_util, col_espec, col_bs, col_fech
     bloques, actual = [], None
     for f in datos:
         fuente = f[col_fuente]
-        if fuente is not None and str(fuente).strip() == "BILLETERA FABRICA":
+        if fuente is not None and str(fuente).strip() == CUENTA_MARCADOR_BLOQUE:
             if actual:
                 bloques.append(actual)
             actual = {"cuentas": [], "lineas": [], "fecha": None}
@@ -728,7 +746,7 @@ def asignar_greedy(bloque, clave_anomalia):
     """Asigna cada linea de gasto a una cuenta en orden hasta agotar lo utilizado."""
     cuentas = [list(c) for c in bloque["cuentas"]]
     if not cuentas:
-        cuentas = [["BILLETERA CASA", float("inf")]]
+        cuentas = [[CUENTA_FALLBACK, float("inf")]]
         anota(clave_anomalia + "_sin_cuenta")
     idx, resultado = 0, []
     for espec, bs, grupo, fecha in bloque["lineas"]:

@@ -4,11 +4,11 @@
 -- El Excel no tenia una tabla de pagos a trabajadores (el catalogo de
 -- trabajadores solo guardaba el sueldo pactado), pero en la realidad todas
 -- esas jornadas YA fueron pagadas -se paga cada sabado, por la semana
--- trabajada-. La migracion original (020...021) dejo las 4374 jornadas con
+-- trabajada-. La migracion original (020...021) dejo las jornadas con
 -- Id_Pago_Trabajador NULL, que en V2 significa "pendiente de pago": el
 -- endpoint /trabajadores/{id}/pago-sugerido las suma todas y ofrece pagar
--- de nuevo un sueldo que ya se pago hace anios (ej. 119.772 Bs "sugeridos"
--- para un solo trabajador antes de este fix).
+-- de nuevo anios de sueldo ya pagado, de golpe, para un solo trabajador
+-- antes de este fix.
 --
 -- Se crea UN Pago_Trabajador por (trabajador, semana) agrupando sus
 -- jornadas de esa semana, con Fecha_Pago_Trabajador = el sabado de esa
@@ -22,10 +22,10 @@
 -- (ultimo snapshot del Excel) ya esta descontado. Crear un Movimiento SALIDA
 -- ahora restaria esa plata una segunda vez.
 --
--- Alcance: solo toca jornadas con Id_Pago_Trabajador IS NULL (hoy son
--- exactamente las 4374 migradas; si alguna vez se corre de nuevo con
--- jornadas reales sin pagar mezcladas, tambien las agruparia y pagaria -por
--- eso es admin, no automatico, y se corre una sola vez a proposito).
+-- Alcance: solo toca jornadas con Id_Pago_Trabajador IS NULL (al correrlo son
+-- las migradas; si alguna vez se corre de nuevo con jornadas reales sin pagar
+-- mezcladas, tambien las agruparia y pagaria -por eso es admin, no automatico,
+-- y se corre una sola vez a proposito).
 -- =========================================================
 
 WITH jornadas_semana AS (
