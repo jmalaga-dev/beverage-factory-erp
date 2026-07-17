@@ -47,7 +47,7 @@ const categorias = [
   { titulo: 'Ventas', links: [
     { to: '/clientes', label: 'Clientes' },
     { to: '/ventas', label: 'Ventas' },
-    { to: '/devoluciones', label: 'Devoluciones' },  // evento post-venta
+    { to: '/devoluciones', label: 'Devoluciones y Reproceso' },  // evento post-venta
   ] },
   { titulo: 'Finanzas', links: [
     { to: '/pagos', label: 'Pagos' },

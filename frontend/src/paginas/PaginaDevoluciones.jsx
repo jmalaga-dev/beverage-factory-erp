@@ -196,7 +196,7 @@ function PaginaDevoluciones() {
 
   return (
     <div>
-      <h2>Devoluciones y reproceso</h2>
+      <h2>Devoluciones y Reproceso</h2>
 
       {/* ============ DEVOLUCIÓN ============ */}
       <div style={{ border: '1px solid #ccc', padding: '0.6rem', margin: '0.5rem 0' }}>
