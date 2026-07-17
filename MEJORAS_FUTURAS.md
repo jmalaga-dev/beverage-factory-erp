@@ -1179,6 +1179,20 @@ DECISIONES_DISENO.md (sección 8).
 4. **El "desface" de 6.782 Bs contra el escenario B del excel no es un
    dato faltante: era doble conteo del excel.** Ver DECISIONES_DISENO.md 8.2.
 
+5. **Jornadas migradas marcadas como pagadas** (migración 022). El excel no
+   tenía tabla de pagos a trabajadores, pero en la realidad ya se habían
+   pagado todas (semanal, cada sábado). Sin este fix, `Id_Pago_Trabajador`
+   quedaba `NULL` en las 4.374 jornadas migradas y el endpoint
+   `/trabajadores/{id}/pago-sugerido` las sumaba todas: 119.772 Bs
+   "sugeridos" para un solo trabajador antes del fix. Se creó un
+   `Pago_Trabajador` por (trabajador, semana), agrupando por el sábado que
+   cierra cada semana, con monto = horas × tarifa pactada. **Sin
+   `Id_Movimiento`** — mismo criterio que compras/ventas: esa plata salió de
+   la caja hace años y el saldo actual (último snapshot del excel) ya está
+   descontado; crear un movimiento nuevo la restaría dos veces. Verificado:
+   cruce horas×tarifa crudo vs total agrupado exacto por trabajador, cero
+   jornadas sin vincular, cero movimientos de caja creados.
+
 ### 8.5 Subir el repositorio a GitHub
 Actualmente el versionado es local. Subir a GitHub cuando haya una beta, con el
 README y la documentación, para que el repositorio sea visible (útil para CV).

@@ -15,6 +15,12 @@
 #    el excel no dice que utensilio absorbio cada lote.
 #
 # Uso:  python backend/scripts/migrar_excel_v2.py [--dry-run]
+#
+# Despues de correr esto, aplicar tambien migraciones/022_jornadas_migradas_pagadas.sql:
+# las jornadas quedan con Id_Pago_Trabajador NULL (el excel no tenia tabla de
+# pagos), y en V2 eso significa "pendiente de pago" -sin ese fix, el endpoint
+# de pago sugerido suma todas las horas historicas de un trabajador como si
+# nunca se le hubiera pagado nada.
 import datetime
 import os
 import re

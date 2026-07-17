@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
@@ -32,6 +32,11 @@ function PaginaProrrateo() {
     apiGet(`/gastos-mes/${mes}`).then(setEstado).catch((e) => setMensaje(e.message))
     apiGet(`/prorrateo/preview/${mes}`).then(setPreview).catch((e) => setMensaje(e.message))
   }
+
+  // Cargar el mes actual al entrar a la pantalla: sin esto, "cargar" solo se
+  // disparaba al tocar el selector de mes, y julio (el mes por defecto de
+  // mesActual()) quedaba sin gastos visibles hasta cambiar de mes y volver.
+  useEffect(() => { cargar(anioMes) }, [])
 
   function cambiarMes(mes) { setAnioMes(mes); setMensaje(''); cargar(mes) }
 
