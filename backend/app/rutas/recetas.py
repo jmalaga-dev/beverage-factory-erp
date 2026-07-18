@@ -33,10 +33,15 @@ def _serializar(sesion, r):
             "nombre": nombre,
             "cantidad": float(d.Cantidad_Receta),
         })
+    # Solo el terminado tiene paquete: su rendimiento esta en botellas, y con
+    # Botellas_Por_Paquete del catalogo el frontend muestra el equivalente en
+    # paquetes ("rinde 56 botellas ~ 7 paquetes"). El intermedio no se empaqueta.
+    botellas_por_paquete = None
     if r.Tipo_Receta == "TERMINADO":
         pt = sesion.get(Producto_Terminado, r.Id_Producto_Terminado)
         nombre_prod = pt.Descripcion_Producto_Terminado if pt else "?"
         id_producto = r.Id_Producto_Terminado
+        botellas_por_paquete = pt.Botellas_Por_Paquete if pt else None
     else:
         pi = sesion.get(Producto_Intermedio, r.Id_Producto_Intermedio)
         nombre_prod = pi.Descripcion_Producto_Intermedio if pi else "?"
@@ -48,6 +53,7 @@ def _serializar(sesion, r):
         "producto": nombre_prod,
         "nombre": r.Nombre_Receta,
         "rendimiento": float(r.Rendimiento_Receta),
+        "botellas_por_paquete": botellas_por_paquete,
         "habilitado": r.Habilitado_Receta,
         "detalles": detalles,
     }

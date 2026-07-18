@@ -486,6 +486,39 @@ simple). Habilita: resúmenes en paquetes equivalentes (4.7), el costo por
 paquete en la simulación (1.5), y registrar producción/venta por paquete
 con conversión automática a botellas.
 
+**Estado: implementado (columna) + datos cargados (jul 2026).** La columna la
+creó la migración 009 (default 1, `CHECK >= 1`) y el catálogo de Productos
+Terminados ya la exponía editable vía el componente genérico `Catalogo`, con
+su validación en `rutas/catalogos.py`. Lo único que faltaba eran **los
+valores reales**, que estaban todos en el default 1.
+
+**Decisión (jul 2026): los valores NO se versionan.** Cargarlos como una
+migración `.sql` en el repo habría metido la estructura de packaging del
+negocio (qué producto va en paquete de cuántas) en un repo que va a ser
+público — exactamente lo que prohíbe la regla de no versionar datos de la
+empresa. Y no es un cambio de esquema: la columna ya existía. Se cargaron con
+un script de un solo uso **fuera del repo** (idempotente, con `--dry-run`
+previo y verificación cruzada de ids contra la BD antes de escribir). Los
+datos viven en PostgreSQL y los protege el respaldo de 8.3, no Git. El mismo
+criterio aplica a futuras cargas de datos de negocio: script efímero, no
+migración.
+
+Efecto inmediato: la columna "paquetes equivalentes" de 4.7 dejó de ser una
+copia de las botellas (todo estaba en 1) y ahora dice algo real.
+
+**Derivado ya construido:** helper `fmtBotellasYPaquetes(botellas, bpp)` en
+`frontend/src/formato.js`, que expresa una cantidad de botellas también en
+paquetes ("56 botellas o 7 paquetes"). Omite los paquetes cuando `bpp <= 1`
+o es nulo: en un producto suelto el paquete **es** la botella, y repetir el
+mismo número con otro nombre confunde en vez de ayudar. Usado en el selector
+"Aplicar receta" de Producción Terminada y en la tabla de Recetas (solo en
+las de tipo TERMINADO — el intermedio rinde en su propia unidad y no se
+empaqueta, ver la decisión de unidades más abajo). `rutas/recetas.py` agrega
+`botellas_por_paquete` al payload, no nulo solo para recetas de terminado.
+
+Pendiente de esta línea: los campos duales paquetes/botellas en Venta y
+Producción Terminada (ver 6.13).
+
 ---
 
 ## 4. BALANCE
@@ -802,6 +835,32 @@ tabla). El tercer punto se resolvió con 6.4. El mismo patrón de buscador +
 orden alfabético se generalizó en el componente `TablaFiltrable`, reutilizado
 también en el detalle de Balance (ver 4.5).
 
+**Ampliación (jul 2026) — los tres consolidados de stock + Deudas.** Con los
+datos reales migrados, las tablas "stock general por producto (consolidado)"
+de Compras (materia prima), Producción Intermedia y Producción Terminada
+quedaron largas: no había forma de responder "¿cuánto tengo de X?" sin
+scrollear. Lo mismo en **Deudas**, donde además la mayoría de las filas ya
+están saldadas y ahogaban a las pocas con saldo vivo.
+
+Las cuatro pasaron a `TablaFiltrable` (buscador + orden alfabético + plegable
+con contador), que ya existía y ya se usaba en Balance — no hizo falta
+componente nuevo. Se pasan con `abiertoInicial={true}` para conservar el
+comportamiento previo (estaban siempre visibles). De paso, dos columnas que
+el endpoint ya devolvía y la pantalla no mostraba: `costo_promedio` en el
+consolidado de materia prima (existía desde 1.3) y `paquetes_equivalentes`
+en el de producto terminado (existía desde 4.7).
+
+`TablaFiltrable` ganó un prop opcional **`estiloFila(fila) => estilo`**: la
+tabla de Deudas atenúa las de saldo 0, y migrarla sin eso habría borrado esa
+señal (justo la que separa las deudas vivas de las saldadas). Los demás
+llamadores lo omiten y no cambian.
+
+**Deudas también se reordenó:** los tres formularios (deuda simple, préstamo,
+pago) estaban **debajo** de la tabla, al revés que todas las demás pantallas.
+Ahora van arriba y la tabla queda al final — primero se registra, después se
+consulta el resultado. El mensaje de feedback se movió con ellos, junto a los
+botones que lo disparan.
+
 ### 6.4 Secciones colapsables en Catálogos
 La página de catálogos tiene 6 tablas apiladas; scrollear hasta la última es
 molesto. Hacer secciones plegables o sub-pantallas con mini-menú.
@@ -935,6 +994,50 @@ cambiaron** (el taxi es solo pantalla). Frontend (`PaginaVentas.jsx`):
   las líneas actuales (no re-mete lotes agotados ni pasa del stock).
 
 Verificado con `curl` (endpoint) y `vite build` (compila).
+
+### 6.13 Cargar cantidades en paquetes + botellas (Venta y Producción) — del Excel
+Hoy toda cantidad de producto terminado se carga en botellas, pero en la
+práctica se piensa y se vende en paquetes ("5 paquetes y 1 suelta"), y hacer
+la multiplicación mental en cada línea es donde se cuelan los errores.
+
+Alcance decidido (jul 2026), en **Venta** y en **Producción Terminada**: dos
+campos editables (*cantidad paquetes* y *cantidad botellas*) más un tercero
+**no editable** con la suma —
+`total = paquetes × Botellas_Por_Paquete + botellas` — que es el único valor
+que viaja al backend. En Venta aplica tanto a la línea manual como a la
+resuelta por FIFO.
+
+**Sin cambio de BD ni de servicios:** `Detalle_Venta` y `Produccion` ya
+guardan botellas, y deben seguir guardando botellas (es la unidad en que
+están todo el histórico, el costeo por lote, el stock y la absorción de 1.4).
+Esto es exclusivamente una ayuda de carga en el frontend.
+
+**Decisión (jul 2026): en productos sueltos** (`Botellas_Por_Paquete = 1`) **se
+oculta el campo de paquetes** y no se muestra la sumatoria. Con paquete de 1
+los dos campos significan lo mismo y la suma se vuelve engañosa (5 paquetes +
+1 botella = 6 no se lee como nada útil). Mismo criterio que ya usa
+`fmtBotellasYPaquetes` (ver 3.9).
+
+**Cuidado al implementar (no es tan trivial como parece):** en Ventas ese
+total ya alimenta el precio sugerido, la ganancia por línea, el prorrateo del
+taxi y el descuento de stock comprometido del `SelectorFifo` (todo de 6.12).
+El total tiene que ser un **valor derivado en render**, nunca estado propio
+duplicado: si se desincroniza, los cálculos de ganancia se rompen en silencio,
+sin error visible.
+
+### 6.14 Unidad de producto intermedio (etiqueta)
+`Producto_Intermedio` no dice en qué unidad está medido: se ve un "30" en las
+tablas sin saber si son litros, unidades o botellas. Falta una columna
+`Unidad_Producto_Intermedio` (LITRO / UNIDAD / KG), editable en el catálogo y
+mostrada al lado del número en tablas y desplegables.
+
+**Decisión de alcance (jul 2026): es SOLO una etiqueta, sin conversión.** El
+sistema nunca convierte unidades de intermedios — se produce X y se consume X
+en la misma unidad, siempre, y el costo por unidad se deriva de ahí. Agregar
+conversión (cargar en una unidad distinta a la de producción) tocaría el
+costeo y el stock por lote, y es un trabajo de otra magnitud; se descartó por
+ahora. El campo existente `Litros_Botella_Final` es otra cosa (dato de la
+botella final) y no cumple esta función.
 
 ---
 

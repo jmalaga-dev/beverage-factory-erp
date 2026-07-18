@@ -21,3 +21,17 @@ export function fmtNumero(n, decimales = 2) {
     maximumFractionDigits: decimales,
   }).format(n)
 }
+
+// Una cantidad de botellas expresada tambien en paquetes, para leer de un
+// vistazo cuanto es en la unidad en que se vende. Solo presentacion.
+// Ej. (56, 8) -> "56 botellas o 7 paquetes"
+//     (50, 12) -> "50 botellas o 4,17 paquetes"   (no cierra un paquete exacto)
+//     (56, 1)  -> "56 botellas"                   (producto suelto: no hay paquete)
+export function fmtBotellasYPaquetes(botellas, botellasPorPaquete) {
+  if (botellas === null || botellas === undefined || Number.isNaN(botellas)) return '—'
+  const texto = `${fmtNumero(botellas)} botellas`
+  // Sin paquete configurado, o paquete de 1: el paquete ES la botella, no
+  // aporta nada repetir el mismo numero con otro nombre.
+  if (!botellasPorPaquete || botellasPorPaquete <= 1) return texto
+  return `${texto} o ${fmtNumero(botellas / botellasPorPaquete)} paquetes`
+}

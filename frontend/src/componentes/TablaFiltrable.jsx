@@ -3,7 +3,10 @@ import { useState } from 'react'
 // Tabla de solo lectura, plegable (mismo patron que Catalogos), con
 // buscador (filtra por cualquier columna) y ordenada alfabeticamente
 // por una clave. Pensada para listas largas tipo catalogo (ver 6.3/6.4).
-function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false }) {
+//
+// estiloFila: opcional, (fila) => objeto de estilo. Para marcar visualmente
+// filas segun su estado (ej. una deuda ya saldada, atenuada).
+function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false, estiloFila }) {
   const [filtro, setFiltro] = useState('')
   const [abierto, setAbierto] = useState(abiertoInicial)
 
@@ -36,7 +39,7 @@ function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = 
                 <tr><td colSpan={columnas.length}>Sin resultados</td></tr>
               )}
               {filtradas.map((f, i) => (
-                <tr key={i}>
+                <tr key={i} style={estiloFila ? estiloFila(f) : undefined}>
                   {columnas.map((c) => (
                     <td key={c.key}>{c.formato ? c.formato(f[c.key]) : f[c.key]}</td>
                   ))}

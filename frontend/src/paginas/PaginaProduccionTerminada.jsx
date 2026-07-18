@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
+import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
-import { fmtNumero } from '../formato'
+import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
 import { fusionar } from '../insumos'
 
 function PaginaProduccionTerminada() {
@@ -206,7 +207,9 @@ function PaginaProduccionTerminada() {
             valor={recetaSel}
             onCambiar={setRecetaSel}
             obtenerId={(r) => r.id_receta}
-            obtenerTexto={(r) => `${r.nombre || r.producto} (rinde ${r.rendimiento})`}
+            obtenerTexto={(r) =>
+              `${r.nombre || r.producto} (rinde ${fmtBotellasYPaquetes(r.rendimiento, r.botellas_por_paquete)})`
+            }
             placeholder="-- Receta --"
           />
           <input type="number" placeholder="Cantidad a producir"
@@ -320,17 +323,18 @@ function PaginaProduccionTerminada() {
       <button onClick={producir}>PRODUCIR</button>
       {mensaje && <p>{mensaje}</p>}
 
-      <h2>Stock general por producto (consolidado)</h2>
-      <table border="1">
-        <thead><tr><th>Producto</th><th>Stock total</th><th>Costo promedio</th></tr></thead>
-        <tbody>
-          {stockGeneral.map((s) => (
-            <tr key={s.id_producto_terminado}>
-              <td>{s.descripcion}</td><td>{fmtNumero(s.stock_total)}</td><td>{fmtNumero(s.costo_promedio, 4)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TablaFiltrable
+        titulo="Stock general por producto (consolidado)"
+        filas={stockGeneral}
+        claveOrden="descripcion"
+        abiertoInicial={true}
+        columnas={[
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'stock_total', label: 'Stock total', formato: (v) => fmtNumero(v) },
+          { key: 'paquetes_equivalentes', label: 'Paquetes eq.', formato: (v) => fmtNumero(v) },
+          { key: 'costo_promedio', label: 'Costo promedio', formato: (v) => fmtNumero(v, 4) },
+        ]}
+      />
 
       <h2>Stock por lote</h2>
       <table border="1">

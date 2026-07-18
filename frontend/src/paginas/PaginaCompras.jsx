@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
 
@@ -688,21 +689,18 @@ function PaginaCompras() {
       )}
 
       {/* Tabla 1: stock general por materia prima */}
-      <h2>Stock general (sin lote)</h2>
-      <table border="1">
-        <thead>
-          <tr><th>Materia prima</th><th>Unidad</th><th>Stock total</th></tr>
-        </thead>
-        <tbody>
-          {stockGeneral.map((s) => (
-            <tr key={s.id_materia_prima}>
-              <td>{s.descripcion}</td>
-              <td>{s.unidad}</td>
-              <td>{fmtNumero(s.stock_total)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TablaFiltrable
+        titulo="Stock general (sin lote)"
+        filas={stockGeneral}
+        claveOrden="descripcion"
+        abiertoInicial={true}
+        columnas={[
+          { key: 'descripcion', label: 'Materia prima' },
+          { key: 'unidad', label: 'Unidad' },
+          { key: 'stock_total', label: 'Stock total', formato: (v) => fmtNumero(v) },
+          { key: 'costo_promedio', label: 'Costo promedio', formato: (v) => fmtNumero(v, 4) },
+        ]}
+      />
 
       {/* Tabla 2: stock por lote */}
       <h2>Stock por lote</h2>

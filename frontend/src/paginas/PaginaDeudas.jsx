@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtMoneda } from '../formato'
 
@@ -101,23 +102,6 @@ function PaginaDeudas() {
     <div>
       <h2>Deudas</h2>
 
-      <table border="1">
-        <thead>
-          <tr><th>Descripción</th><th>Saldo</th></tr>
-        </thead>
-        <tbody>
-          {deudas.map((d) => (
-            <tr key={d.id_deuda} style={d.saldo <= 0 ? { opacity: 0.5 } : {}}>
-              <td>{d.descripcion}</td>
-              <td>{fmtMoneda(d.saldo)}</td>
-            </tr>
-          ))}
-          {deudas.length === 0 && <tr><td colSpan={2}>Sin deudas registradas</td></tr>}
-        </tbody>
-      </table>
-
-      {mensaje && <p>{mensaje}</p>}
-
       <h3>Registrar deuda simple (sin ingreso de dinero)</h3>
       <p style={{ fontSize: '0.9em', color: '#888' }}>
         Ej: el interés que cobra el banco, o un gasto que alguien pagó por ti. Sube
@@ -174,6 +158,22 @@ function PaginaDeudas() {
         />
         <button onClick={registrarPago}>Registrar pago</button>
       </div>
+
+      {mensaje && <p>{mensaje}</p>}
+
+      {/* La tabla va debajo de los formularios, como en el resto de las
+          pantallas: primero se registra, despues se consulta el resultado. */}
+      <TablaFiltrable
+        titulo="Deudas registradas"
+        filas={deudas}
+        claveOrden="descripcion"
+        abiertoInicial={true}
+        estiloFila={(d) => (d.saldo <= 0 ? { opacity: 0.5 } : undefined)}
+        columnas={[
+          { key: 'descripcion', label: 'Descripción' },
+          { key: 'saldo', label: 'Saldo', formato: (v) => fmtMoneda(v) },
+        ]}
+      />
     </div>
   )
 }

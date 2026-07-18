@@ -610,6 +610,17 @@ fuente de verdad del error.
   actuales) y se corren manualmente (`backend/scripts/backup_db.ps1`);
   automatizar con Task Scheduler y definir una política de retención quedan
   pendientes para cuando el tamaño real lo justifique.
+- **Carga de datos de negocio ≠ migración** (jul 2026, a partir de la carga de
+  botellas por paquete, mejora 3.9). Si la columna **ya existe** y lo único que
+  falta son sus valores reales, eso NO es una migración: es un `UPDATE` de
+  datos, y meterlo en `migraciones/*.sql` versionaría la información del
+  negocio en un repo público — justo lo que prohíbe la regla de arriba. Se
+  hace con un **script de un solo uso fuera del repo**, idempotente y con
+  `--dry-run` previo, verificando los ids contra la BD antes de escribir. Los
+  datos quedan protegidos por el respaldo (8.3), no por Git. `migraciones/`
+  es solo para cambios de **esquema**; los valores que viajan con ellos deben
+  ser defaults neutros (como el `DEFAULT 1` de la migración 009), nunca la
+  tabla real.
 
 ### 8.1 Migración del Excel a la BD (mejora 8.4, jul 2026)
 

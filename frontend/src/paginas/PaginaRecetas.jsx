@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
-import { fmtNumero } from '../formato'
+import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
 
 // Pre-recetas (mejora 3.6). Una receta produce un producto intermedio O un
 // producto terminado, a partir de un rendimiento base y sus insumos (MP e
@@ -121,7 +121,13 @@ function PaginaRecetas() {
             <tr key={r.id_receta} style={r.habilitado ? {} : { opacity: 0.5 }}>
               <td>{r.producto}</td>
               <td>{r.nombre || '—'}</td>
-              <td>{fmtNumero(r.rendimiento)}</td>
+              {/* El terminado rinde botellas (se muestra tambien en paquetes);
+                  el intermedio rinde en su propia unidad, sin equivalencia. */}
+              <td>
+                {r.tipo === 'TERMINADO'
+                  ? fmtBotellasYPaquetes(r.rendimiento, r.botellas_por_paquete)
+                  : fmtNumero(r.rendimiento)}
+              </td>
               <td>{r.detalles.map((d) => `${d.nombre} (${fmtNumero(d.cantidad)})`).join(', ')}</td>
               <td>
                 <button onClick={() => alternarHabilitado(r)}>
