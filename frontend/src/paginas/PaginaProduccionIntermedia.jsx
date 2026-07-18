@@ -348,7 +348,7 @@ function PaginaProduccionIntermedia() {
           valor={intLote}
           onCambiar={setIntLote}
           obtenerId={(p) => p.id_produccion_intermedio}
-          obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}, costo ${p.costo_unitario})`}
+          obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}${p.unidad ? ' ' + p.unidad : ''}, costo ${p.costo_unitario})`}
           placeholder="-- Producción intermedia (manual) --"
         />
         <input type="number" placeholder="Cantidad"
@@ -385,6 +385,7 @@ function PaginaProduccionIntermedia() {
         columnas={[
           { key: 'descripcion', label: 'Producto' },
           { key: 'stock_total', label: 'Stock total', formato: (v) => fmtNumero(v) },
+          { key: 'unidad', label: 'Unidad' },
           { key: 'costo_promedio', label: 'Costo promedio', formato: (v) => fmtNumero(v, 4) },
         ]}
       />
@@ -392,7 +393,7 @@ function PaginaProduccionIntermedia() {
       <h2>Stock de producciones intermedias</h2>
       <table border="1">
         <thead>
-          <tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Costo unitario</th></tr>
+          <tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Unidad</th><th>Costo unitario</th></tr>
         </thead>
         <tbody>
           {producciones.map((p) => (
@@ -400,6 +401,7 @@ function PaginaProduccionIntermedia() {
               <td>{p.id_produccion_intermedio}</td>
               <td>{p.descripcion}</td>
               <td>{fmtNumero(p.cantidad_restante)}</td>
+              <td>{p.unidad || '—'}</td>
               <td>{fmtNumero(p.costo_unitario, 4)}</td>
             </tr>
           ))}

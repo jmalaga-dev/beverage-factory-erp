@@ -69,6 +69,7 @@ def listar_producciones_intermedias(sesion: Session = Depends(get_sesion)):
         resultado.append({
             "id_produccion_intermedio": p.Id_Produccion_Intermedio,
             "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
+            "unidad": producto.Unidad_Producto_Intermedio if producto else None,
             "cantidad_restante": float(p.Cantidad_Restante_Producida),
             "costo_unitario": float(p.Costo_Unitario_Produccion_Intermedio or 0),
         })
@@ -91,6 +92,7 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
             producto = sesion.get(Producto_Intermedio, pid)
             resumen[pid] = {
                 "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
+                "unidad": producto.Unidad_Producto_Intermedio if producto else None,
                 "stock_total": 0,
                 "valor_total": 0,   # para el promedio ponderado
             }
@@ -107,6 +109,7 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
         resultado.append({
             "id_producto_intermedio": pid,
             "descripcion": datos["descripcion"],
+            "unidad": datos["unidad"],
             "stock_total": stock,
             "costo_promedio": round(costo_prom, 4),
         })
@@ -184,6 +187,8 @@ def listar_lotes_pt(sesion: Session = Depends(get_sesion)):
             "stock": float(p.Cantidad_Restante_Produccion),
             "costo_unitario": float(p.Precio_Unitario_Producto_Terminado or 0),
             "precio_recomendado": float(producto.Precio_Venta_Recomendado_Producto_Terminado or 0) if producto else 0,
+            # Para cargar la cantidad en paquetes + botellas sueltas (6.13).
+            "botellas_por_paquete": producto.Botellas_Por_Paquete if producto else 1,
         })
     return resultado
 

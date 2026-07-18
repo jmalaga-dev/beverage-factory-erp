@@ -44,3 +44,9 @@ REPARTO_VENTA_FABRICA = Decimal("0.70")
 # (Total_Inmuebles/Total_Equipos/Total_Otros_Activos), asi que agregar una
 # categoria nueva tambien requeriria una columna nueva en Balance.
 CATEGORIAS_TIPO_BIEN = ["INMUEBLE", "EQUIPO", "OTRO"]
+
+# Unidades en que se puede medir un producto intermedio (mejora 6.14).
+# Es SOLO una etiqueta para leer las tablas: el sistema nunca convierte
+# entre unidades de intermedios (se produce y se consume en la misma).
+# Agregar una unidad aca requiere ampliar el CHECK de la migracion 023.
+UNIDADES_PRODUCTO_INTERMEDIO = ["LITRO", "UNIDAD", "KG"]

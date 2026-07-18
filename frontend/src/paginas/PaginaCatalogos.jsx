@@ -71,10 +71,14 @@ function PaginaCatalogos() {
         campos={[
           { nombre: 'descripcion', label: 'Descripción', tipo: 'text', obligatorio: true },
           { nombre: 'litros', label: 'Litros', tipo: 'number' },
+          // Etiqueta, no conversion: el intermedio se produce y se consume
+          // siempre en la misma unidad (mejora 6.14).
+          { nombre: 'unidad', label: 'Unidad', tipo: 'select', opciones: ['LITRO', 'UNIDAD', 'KG'] },
         ]}
         camposTabla={[
           { key: 'descripcion', label: 'Descripción' },
           { key: 'litros', label: 'Litros' },
+          { key: 'unidad', label: 'Unidad' },
         ]}
       />
 

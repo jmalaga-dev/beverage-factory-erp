@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
-from app.config import ROLES_CUENTA
+from app.config import ROLES_CUENTA, UNIDADES_PRODUCTO_INTERMEDIO
 from app.dependencias import get_sesion
 from app.servicios.trabajadores import tarifa_hora
 from app.models import (
@@ -466,6 +466,7 @@ def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
             "id_producto_intermedio": p.Id_Producto_Intermedio,
             "descripcion": p.Descripcion_Producto_Intermedio,
             "litros": float(p.Litros_Botella_Final or 0),
+            "unidad": p.Unidad_Producto_Intermedio,
             "habilitado": p.Habilitado_Producto_Intermedio,
             "en_uso": p.Id_Producto_Intermedio in usados,
         }
@@ -476,6 +477,14 @@ def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
 class ProductoIntermedioEntrada(BaseModel):
     descripcion: str
     litros: Decimal | None = None
+    unidad: str | None = None
+
+    @field_validator("unidad")
+    @classmethod
+    def _validar_unidad(cls, v):
+        if v is not None and v not in UNIDADES_PRODUCTO_INTERMEDIO:
+            raise ValueError(f"Unidad inválida: {v}. Opciones: {', '.join(UNIDADES_PRODUCTO_INTERMEDIO)}")
+        return v
 
 
 @router.post("/productos-intermedios")
@@ -483,7 +492,8 @@ def crear_producto_intermedio(datos: ProductoIntermedioEntrada, sesion: Session 
     if not datos.descripcion.strip():
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
     p = Producto_Intermedio(Descripcion_Producto_Intermedio=datos.descripcion,
-                            Litros_Botella_Final=datos.litros or None)
+                            Litros_Botella_Final=datos.litros or None,
+                            Unidad_Producto_Intermedio=datos.unidad or "LITRO")
     sesion.add(p)
     sesion.commit()
     return {"mensaje": "Producto intermedio creado", "id": p.Id_Producto_Intermedio}
@@ -492,6 +502,14 @@ def crear_producto_intermedio(datos: ProductoIntermedioEntrada, sesion: Session 
 class ProductoIntermedioEdicion(BaseModel):
     descripcion: str | None = None
     litros: Decimal | None = None
+    unidad: str | None = None
+
+    @field_validator("unidad")
+    @classmethod
+    def _validar_unidad(cls, v):
+        if v is not None and v not in UNIDADES_PRODUCTO_INTERMEDIO:
+            raise ValueError(f"Unidad inválida: {v}. Opciones: {', '.join(UNIDADES_PRODUCTO_INTERMEDIO)}")
+        return v
 
 
 @router.patch("/productos-intermedios/{id_producto}")
@@ -505,6 +523,8 @@ def actualizar_producto_intermedio(id_producto: int, datos: ProductoIntermedioEd
         p.Descripcion_Producto_Intermedio = datos.descripcion.strip()
     if datos.litros is not None:
         p.Litros_Botella_Final = datos.litros
+    if datos.unidad is not None:
+        p.Unidad_Producto_Intermedio = datos.unidad
     sesion.commit()
     return {"mensaje": "Producto intermedio actualizado", "id": p.Id_Producto_Intermedio}
 

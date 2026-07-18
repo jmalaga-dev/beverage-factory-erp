@@ -1025,6 +1025,36 @@ El total tiene que ser un **valor derivado en render**, nunca estado propio
 duplicado: si se desincroniza, los cálculos de ganancia se rompen en silencio,
 sin error visible.
 
+**Estado: implementado (jul 2026).** Componente
+`componentes/CantidadPaquetes.jsx` + el helper puro `totalBotellas(paquetes,
+botellas, bpp)` que exporta. Sin migración ni cambios de servicio, como estaba
+previsto: lo único que se agregó al backend es `botellas_por_paquete` en
+`GET /lotes-producto-terminado`, que la pantalla de Ventas necesitaba para
+saber el tamaño de paquete de cada lote.
+
+- **Dónde:** la línea manual de **Ventas**, el **`SelectorFifo`** (prop nuevo
+  y opcional `obtenerBotellasPorPaquete`; MP e intermedio lo omiten y siguen
+  con un solo campo) y la cantidad a producir de **Producción Terminada**.
+- **El total nunca es estado.** Se deriva con `totalBotellas()` en cada
+  render, y es lo único que viaja al backend. En Producción Terminada además
+  reemplaza a `parseFloat(cantidad)` en el indicador de costo unitario parcial
+  (6.11), que si no habría seguido dividiendo por las botellas sueltas e
+  informado un costo por botella inflado.
+- **Cambiar de producto limpia la cantidad**, en las tres puntas. Un valor en
+  paquetes pertenece al tamaño de paquete del producto anterior: arrastrarlo a
+  otro producto daría un total distinto del que se tecleó, sin aviso.
+- **Productos sueltos** (`bpp = 1`): un solo campo, sin sumatoria (decisión de
+  arriba). `totalBotellas` además **ignora** un valor de paquetes cuando el
+  producto es suelto — el campo está oculto, así que el usuario no podría ni
+  verlo ni corregirlo, y no debe sumar en silencio.
+- En la tabla de líneas de la venta, la cantidad muestra el equivalente en
+  paquetes al lado de las botellas, para revisar la venta en la unidad en que
+  se piensa.
+
+Verificado: `totalBotellas` extraído del archivo real y probado en 8 casos
+(incluido el del pedido — 5 paquetes + 1 botella con paquete de 6 = 31 —, los
+sueltos con paquetes colgados, vacíos y fracciones) y `vite build`.
+
 ### 6.14 Unidad de producto intermedio (etiqueta)
 `Producto_Intermedio` no dice en qué unidad está medido: se ve un "30" en las
 tablas sin saber si son litros, unidades o botellas. Falta una columna
@@ -1038,6 +1068,31 @@ conversión (cargar en una unidad distinta a la de producción) tocaría el
 costeo y el stock por lote, y es un trabajo de otra magnitud; se descartó por
 ahora. El campo existente `Litros_Botella_Final` es otra cosa (dato de la
 botella final) y no cumple esta función.
+
+**Estado: implementado (jul 2026).** Migración 023: columna
+`Unidad_Producto_Intermedio` con `CHECK IN ('LITRO','UNIDAD','KG')` y default
+**LITRO**, más la lista `UNIDADES_PRODUCTO_INTERMEDIO` en `app/config.py`
+(mismo patrón que `CATEGORIAS_TIPO_BIEN` de 4.2; ampliarla exige ampliar
+también el CHECK).
+
+**Sin backfill inteligente, a propósito.** A diferencia de la migración 006
+—que reprodujo un criterio por texto que el código ya venía usando— acá no hay
+ningún criterio previo que replicar: adivinar la unidad por el nombre del
+producto clasificaría mal en silencio. Todos quedan en LITRO (la unidad de la
+mayoría, que son líquidos) y los que no lo sean se corrigen desde el catálogo.
+
+La unidad se elige con un *select* en el catálogo de Producto Intermedio
+(reutilizando el tipo `select` que el componente `Catalogo` ya soportaba desde
+2A) y se muestra al lado del número en: el consolidado de stock intermedio, la
+tabla de lotes de producción intermedia, y los dos desplegables de lote de
+intermedio (Producción Intermedia y Terminada). El backend la expone en
+`/productos-intermedios`, `/stock-intermedio-general` y
+`/producciones-intermedias`.
+
+Verificado contra la BD real: migración aplicada (los intermedios existentes
+quedaron en LITRO), ciclo completo crear→editar→borrar de un intermedio
+`__TEST` con unidad, y el rechazo de una unidad fuera de la lista con su
+mensaje de error. Datos de prueba limpiados.
 
 ---
 

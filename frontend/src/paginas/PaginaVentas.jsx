@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
+import CantidadPaquetes, { totalBotellas } from '../componentes/CantidadPaquetes'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtMoneda, fmtNumero } from '../formato'
 
@@ -17,8 +18,10 @@ function PaginaVentas() {
   // se reparte 70/30 entre Fábrica y Casa según recuperación de inversión (2.C).
   const [lineas, setLineas] = useState([])   // [{id_produccion, cantidad, precio_real}]
 
-  // Campos temporales para agregar una línea
+  // Campos temporales para agregar una línea. La cantidad se carga en
+  // paquetes + botellas sueltas (6.13); el total en botellas es derivado.
   const [linProd, setLinProd] = useState('')
+  const [linCantidadPaquetes, setLinCantidadPaquetes] = useState('')
   const [linCantidad, setLinCantidad] = useState('')
   const [linPrecio, setLinPrecio] = useState('')
 
@@ -91,7 +94,11 @@ function PaginaVentas() {
   for (const l of lotes) {
     if (!vistos.has(l.id_producto)) {
       vistos.add(l.id_producto)
-      productos.push({ id_producto: l.id_producto, nombre_producto: l.nombre_producto })
+      productos.push({
+        id_producto: l.id_producto,
+        nombre_producto: l.nombre_producto,
+        botellas_por_paquete: l.botellas_por_paquete,
+      })
     }
   }
 
@@ -100,22 +107,22 @@ function PaginaVentas() {
   }
 
   function agregarLinea() {
-    if (linProd === '' || linCantidad === '' || linPrecio === '') {
+    if (linProd === '' || linCantidadTotal <= 0 || linPrecio === '') {
       setMensaje('Completa lote, cantidad y precio')
       return
     }
     const lote = lotes.find((l) => l.id_produccion === parseInt(linProd))
     const yaUsado = yaUsadoDeLote(parseInt(linProd))
-    if (lote && yaUsado + parseFloat(linCantidad) > lote.stock) {
+    if (lote && yaUsado + linCantidadTotal > lote.stock) {
       setMensaje(`Ese lote solo tiene ${lote.stock} en stock${yaUsado > 0 ? ` (ya agregaste ${yaUsado})` : ''}`)
       return
     }
     setLineas([...lineas, {
       id_produccion: parseInt(linProd),
-      cantidad: parseFloat(linCantidad),
+      cantidad: linCantidadTotal,
       precio_real: parseFloat(linPrecio),
     }])
-    setLinProd(''); setLinCantidad(''); setLinPrecio('')
+    setLinProd(''); setLinCantidadPaquetes(''); setLinCantidad(''); setLinPrecio('')
     setMensaje('')
   }
 
@@ -152,6 +159,9 @@ function PaginaVentas() {
 
   function elegirProducto(id) {
     setLinProd(id)
+    // Limpiar la cantidad: un valor en paquetes pertenece al tamaño de paquete
+    // del lote anterior, y arrastrarlo daría un total distinto del tecleado.
+    setLinCantidadPaquetes(''); setLinCantidad('')
     const lote = lotes.find((x) => x.id_produccion === parseInt(id))
     if (lote) setLinPrecio(precioDefault(lote))
   }
@@ -186,11 +196,16 @@ function PaginaVentas() {
 
   const loteEnCurso = linProd !== '' ? lotes.find((x) => x.id_produccion === parseInt(linProd)) : null
   const precioBajoCosto = loteEnCurso && linPrecio !== '' && parseFloat(linPrecio) < loteEnCurso.costo_unitario
+  // Total en botellas de la línea en curso (6.13): derivado, nunca estado.
+  const bppEnCurso = loteEnCurso ? loteEnCurso.botellas_por_paquete : 1
+  const linCantidadTotal = totalBotellas(linCantidadPaquetes, linCantidad, bppEnCurso)
 
   // ----- Cálculos de la venta (ganancia + prorrateo de taxi) -----
   const taxiNum = parseFloat(taxi) || 0
-  const totalBotellas = lineas.reduce((s, l) => s + l.cantidad, 0)
-  const taxiPorBotella = totalBotellas > 0 ? taxiNum / totalBotellas : 0
+  // Botellas de TODA la venta (para prorratear el taxi). Nombre explicito
+  // para no chocar con el helper importado totalBotellas() de 6.13.
+  const totalBotellasVenta = lineas.reduce((s, l) => s + l.cantidad, 0)
+  const taxiPorBotella = totalBotellasVenta > 0 ? taxiNum / totalBotellasVenta : 0
   const hayTaxi = taxiNum > 0
 
   const filas = lineas.map((l) => {
@@ -202,7 +217,11 @@ function PaginaVentas() {
     const taxiLinea = l.cantidad * taxiPorBotella
     const gananciaNeta = gananciaBruta - taxiLinea
     const pct = ingreso > 0 ? (gananciaBruta / ingreso) * 100 : 0
-    return { ...l, costo, sugerido, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct, bajoCosto: l.precio_real < costo }
+    return {
+      ...l, costo, sugerido, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct,
+      bpp: lote ? lote.botellas_por_paquete : 1,
+      bajoCosto: l.precio_real < costo,
+    }
   })
 
   const totIngreso = filas.reduce((s, f) => s + f.ingreso, 0)
@@ -249,8 +268,13 @@ function PaginaVentas() {
           obtenerTexto={(l) => `${l.nombre_producto} - Lote ${l.id_produccion} (stock: ${l.stock} | costo: ${l.costo_unitario} | sugerido: ${precioSugerido(l)} Bs)`}
           placeholder="-- Lote de producto --"
         />
-        <input type="number" placeholder="Cantidad"
-          value={linCantidad} onChange={(e) => setLinCantidad(e.target.value)} />
+        <CantidadPaquetes
+          botellasPorPaquete={bppEnCurso}
+          paquetes={linCantidadPaquetes}
+          botellas={linCantidad}
+          onCambiarPaquetes={setLinCantidadPaquetes}
+          onCambiarBotellas={setLinCantidad}
+        />
         <input type="number" placeholder="Precio de venta"
           value={linPrecio} onChange={(e) => setLinPrecio(e.target.value)} />
         <button onClick={agregarLinea}>Agregar línea</button>
@@ -270,6 +294,7 @@ function PaginaVentas() {
         obtenerTexto={(p) => p.nombre_producto}
         placeholder="-- Producto (FIFO) --"
         onResolver={agregarPorFifo}
+        obtenerBotellasPorPaquete={(p) => p.botellas_por_paquete}
       />
 
       {/* Líneas de la venta como tabla */}
@@ -293,7 +318,14 @@ function PaginaVentas() {
             {filas.map((f, i) => (
               <tr key={i} style={f.bajoCosto ? { color: 'red' } : undefined}>
                 <td>{nombreLote(f.id_produccion)}{f.bajoCosto && ' ⚠'}</td>
-                <td style={{ textAlign: 'right' }}>{fmtNumero(f.cantidad, 2)}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {fmtNumero(f.cantidad, 2)}
+                  {f.bpp > 1 && (
+                    <span style={{ color: '#557', fontSize: '0.85em' }}>
+                      {' '}({fmtNumero(f.cantidad / f.bpp)} paq)
+                    </span>
+                  )}
+                </td>
                 <td style={{ textAlign: 'right' }}>{fmtMoneda(f.costo)}</td>
                 <td style={{ textAlign: 'right', color: '#557' }}>{fmtMoneda(f.sugerido)}</td>
                 <td style={{ textAlign: 'right' }}>
@@ -322,7 +354,7 @@ function PaginaVentas() {
           </label>
           {hayTaxi && (
             <span style={{ marginLeft: '0.5rem', color: '#557' }}>
-              = {fmtMoneda(taxiPorBotella)} Bs por botella ({fmtNumero(totalBotellas, 2)} botellas)
+              = {fmtMoneda(taxiPorBotella)} Bs por botella ({fmtNumero(totalBotellasVenta, 2)} botellas)
             </span>
           )}
         </div>

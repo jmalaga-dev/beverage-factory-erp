@@ -73,6 +73,9 @@ class Producto_Intermedio(Base):
     Descripcion_Producto_Intermedio = Column(String, nullable=False)
     Litros_Botella_Final = Column(Numeric)
     Habilitado_Producto_Intermedio = Column(Boolean, nullable=False, server_default="true")
+    # Etiqueta descriptiva (LITRO/UNIDAD/KG, mejora 6.14). No hay conversion:
+    # un intermedio se produce y se consume siempre en la misma unidad.
+    Unidad_Producto_Intermedio = Column(String, nullable=False, server_default="LITRO")
 
     producciones = relationship("Produccion_Intermedio", back_populates="producto_intermedio")
 

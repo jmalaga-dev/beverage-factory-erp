@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import CantidadPaquetes, { totalBotellas } from '../componentes/CantidadPaquetes'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
 import { fusionar } from '../insumos'
@@ -20,6 +21,9 @@ function PaginaProduccionTerminada() {
   const [trabajadores, setTrabajadores] = useState([]) // para la tarifa (indicadores en vivo, 6.11)
 
   const [idProducto, setIdProducto] = useState('')
+  // Cantidad a producir en paquetes + botellas sueltas (6.13). El total en
+  // botellas se deriva con totalBotellas(), nunca se guarda como estado.
+  const [cantidadPaquetes, setCantidadPaquetes] = useState('')
   const [cantidad, setCantidad] = useState('')
 
   // Listas de insumos
@@ -136,7 +140,10 @@ function PaginaProduccionTerminada() {
     apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${parseFloat(recetaCantidad)}`)
       .then((d) => {
         setIdProducto(String(d.id_producto))
+        // La receta escala en botellas: se vuelca al campo de botellas y se
+        // limpian los paquetes, para no sumar un resto de la carga anterior.
         setCantidad(String(d.cantidad_producir))
+        setCantidadPaquetes('')
         setInsumosMP(fusionar([], d.insumos_mp.map((a) => ({ id_compra: a.id_compra, cantidad: a.cantidad })), 'id_compra'))
         setInsumosIntermedio(fusionar([], d.insumos_intermedio.map((a) => ({ id_prod: a.id_prod, cantidad: a.cantidad })), 'id_prod'))
         setInsumosTrabajo([])
@@ -147,15 +154,23 @@ function PaginaProduccionTerminada() {
       .catch((e) => setMensaje(e.message))
   }
 
+  // Cambiar de producto limpia la cantidad: un valor en paquetes pertenece al
+  // tamaño de paquete del producto anterior, y arrastrarlo daria un total
+  // distinto del que se tecleo (o quedaria oculto si el nuevo es suelto).
+  function elegirProducto(id) {
+    setIdProducto(id)
+    setCantidadPaquetes(''); setCantidad('')
+  }
+
   function producir() {
-    if (idProducto === '' || cantidad === '') { setMensaje('Elige producto y cantidad'); return }
+    if (idProducto === '' || cantidadTotal <= 0) { setMensaje('Elige producto y cantidad'); return }
     if (insumosIntermedio.length === 0 && insumosMP.length === 0 && insumosTrabajo.length === 0) {
       setMensaje('Agrega al menos un insumo'); return
     }
 
     apiPost('/producciones-terminadas', {
       id_producto_terminado: parseInt(idProducto),
-      cantidad_producida: parseFloat(cantidad),
+      cantidad_producida: cantidadTotal,
       insumos_intermedio: insumosIntermedio.map((x) => [x.id_prod, x.cantidad]),
       insumos_mp: insumosMP.map((x) => [x.id_compra, x.cantidad]),
       insumos_trabajo: insumosTrabajo.map((x) => [x.id_registro, x.horas]),
@@ -163,12 +178,21 @@ function PaginaProduccionTerminada() {
     })
       .then((data) => {
         setMensaje(`Producción creada. Costo unitario: ${data.costo_unitario} Bs`)
-        setIdProducto(''); setCantidad('')
+        setIdProducto(''); setCantidad(''); setCantidadPaquetes('')
         setInsumosIntermedio([]); setInsumosMP([]); setInsumosTrabajo([])
         cargar()
       })
       .catch((e) => setMensaje(e.message))
   }
+
+  // Producto elegido y su tamaño de paquete: manda cuantos campos de cantidad
+  // se muestran (6.13). El total en botellas es lo unico que se envia y lo
+  // que divide el costo unitario parcial de abajo.
+  const productoElegido = idProducto !== ''
+    ? productos.find((p) => p.id_producto_terminado === parseInt(idProducto))
+    : null
+  const bppElegido = productoElegido ? productoElegido.botellas_por_paquete : 1
+  const cantidadTotal = totalBotellas(cantidadPaquetes, cantidad, bppElegido)
 
   // Indicadores en vivo (mejora 6.11): costo unitario parcial y horas
   // invertidas hasta el momento, recalculados al agregar/quitar insumos.
@@ -190,8 +214,8 @@ function PaginaProduccionTerminada() {
   }, 0)
   const costoTotalParcial = costoIntermedio + costoMP + costoTrabajo
   const horasInvertidas = insumosTrabajo.reduce((suma, x) => suma + x.horas, 0)
-  const costoUnitarioParcial = cantidad !== '' && parseFloat(cantidad) > 0
-    ? costoTotalParcial / parseFloat(cantidad)
+  const costoUnitarioParcial = cantidadTotal > 0
+    ? costoTotalParcial / cantidadTotal
     : null
 
   return (
@@ -222,13 +246,19 @@ function PaginaProduccionTerminada() {
         <SelectorBuscable
           opciones={productos.filter((p) => p.habilitado)}
           valor={idProducto}
-          onCambiar={setIdProducto}
+          onCambiar={elegirProducto}
           obtenerId={(p) => p.id_producto_terminado}
           obtenerTexto={(p) => p.descripcion}
           placeholder="-- Producto terminado a producir --"
         />
-        <input type="number" placeholder="Cantidad a producir"
-          value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        <CantidadPaquetes
+          botellasPorPaquete={bppElegido}
+          paquetes={cantidadPaquetes}
+          botellas={cantidad}
+          onCambiarPaquetes={setCantidadPaquetes}
+          onCambiarBotellas={setCantidad}
+          etiquetaBotellas="Botellas sueltas"
+        />
       </div>
 
       {/* Producto intermedio (insumo principal) */}
@@ -247,7 +277,7 @@ function PaginaProduccionTerminada() {
           valor={intLote}
           onCambiar={setIntLote}
           obtenerId={(p) => p.id_produccion_intermedio}
-          obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}, costo ${p.costo_unitario})`}
+          obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}${p.unidad ? ' ' + p.unidad : ''}, costo ${p.costo_unitario})`}
           placeholder="-- Producción intermedia (manual) --"
         />
         <input type="number" placeholder="Cantidad"
