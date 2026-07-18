@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import './App.css'
 import MenuCategoria from './componentes/MenuCategoria'
+import LimiteError from './componentes/LimiteError'
 import { FechaGlobalProvider, useFechaGlobal } from './componentes/FechaGlobal'
 import PaginaClientes from './paginas/PaginaClientes'
 import PaginaCompras from './paginas/PaginaCompras'
@@ -10,6 +11,7 @@ import PaginaJornadas from './paginas/PaginaJornadas'
 import PaginaProduccionIntermedia from './paginas/PaginaProduccionIntermedia'
 import PaginaProduccionTerminada from './paginas/PaginaProduccionTerminada'
 import PaginaRecetas from './paginas/PaginaRecetas'
+import PaginaSimulacion from './paginas/PaginaSimulacion'
 import PaginaVentas from './paginas/PaginaVentas'
 import PaginaPagos from './paginas/PaginaPagos'
 import PaginaGastos from './paginas/PaginaGastos'
@@ -37,6 +39,7 @@ const categorias = [
     { to: '/compras', label: 'Compras' },
     { to: '/jornadas', label: 'Jornadas' },
     { to: '/recetas', label: 'Recetas' },
+    { to: '/simulacion', label: 'Simulación' },   // antes de producir: ¿conviene?
     { to: '/produccion-intermedia', label: 'Prod. Intermedia' },
     { to: '/produccion-terminada', label: 'Prod. Terminada' },
     // Subgrupo 2: ajustes y cierre sobre lo ya producido (separador visual).
@@ -98,13 +101,32 @@ function AppInterno() {
         </nav>
 
         {/* Aquí se muestra la pantalla según la ruta */}
-        <Routes>
+        <Contenido />
+      </div>
+    </BrowserRouter>
+  )
+}
+
+// Las rutas, envueltas en el error boundary (6.15). Va acá adentro y no en
+// AppInterno porque necesita useLocation, que solo existe dentro del Router.
+// La `clave` = la ruta actual: al navegar a otra pantalla el boundary se
+// resetea, así una pantalla rota no deja el cartel pegado sobre las demás.
+function Contenido() {
+  const location = useLocation()
+  return (
+    <LimiteError clave={location.pathname}>
+      <Routes>
+        {/* La raíz no mostraba nada (no matcheaba ninguna ruta): entrar a la
+            app dejaba el contenido en blanco. Va al balance, que es la vista
+            de conjunto. */}
+        <Route path="/" element={<Navigate to="/balance" replace />} />
           <Route path="/clientes" element={<PaginaClientes />} />
           <Route path="/compras" element={<PaginaCompras />} />
           <Route path="/catalogos" element={<PaginaCatalogos />} />
           <Route path="/proveedores" element={<PaginaProveedores />} />
           <Route path="/jornadas" element={<PaginaJornadas />} />
           <Route path="/recetas" element={<PaginaRecetas />} />
+          <Route path="/simulacion" element={<PaginaSimulacion />} />
           <Route path="/produccion-intermedia" element={<PaginaProduccionIntermedia />} />
           <Route path="/produccion-terminada" element={<PaginaProduccionTerminada />} />
           <Route path="/ventas" element={<PaginaVentas />} />
@@ -120,9 +142,16 @@ function AppInterno() {
           <Route path="/activos" element={<PaginaActivos />} />
           <Route path="/balance" element={<PaginaBalance />} />
           <Route path="/comparar-balances" element={<PaginaComparativaBalances />} />
-        </Routes>
-      </div>
-    </BrowserRouter>
+        {/* Cualquier otra URL (un link viejo, un error de tipeo) caía en
+            blanco sin explicación. Ahora avisa y ofrece la salida. */}
+        <Route path="*" element={
+          <div style={{ padding: '1rem' }}>
+            <h3>Esa pantalla no existe</h3>
+            <p>La dirección que abriste no corresponde a ninguna pantalla. Usá el menú de arriba.</p>
+          </div>
+        } />
+      </Routes>
+    </LimiteError>
   )
 }
 

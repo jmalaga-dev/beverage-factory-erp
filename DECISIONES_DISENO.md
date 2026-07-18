@@ -571,6 +571,26 @@ datos.
 
 ---
 
+### 6.1 Verificar el frontend: compilar NO es probar (jul 2026)
+
+`npx vite build` compiló limpio con un bug que dejaba una pantalla entera en
+blanco: una variable local llamada igual que un helper importado ponía el
+import en su zona muerta temporal, y la pantalla tiraba `ReferenceError:
+Cannot access 'X' before initialization` al renderizar. Esbuild no hace ese
+análisis; el build solo prueba que el código **parsea y resuelve imports**.
+
+Regla que queda: para un cambio de frontend, verificar significa **abrir la
+pantalla** (o renderizar el componente) y confirmar que monta, no solo que
+compila. El build sigue siendo útil como primer filtro barato, pero no
+sustituye a ejecutar.
+
+Dos cosas ayudan a que esto se note temprano:
+- El **error boundary** (mejora 6.15) ahora deja el error visible en pantalla
+  con su stack, en vez de blanquear la app sin explicación.
+- Vale barrer las colisiones `import` vs. `const` local antes de dar por
+  cerrado un cambio; son invisibles al build y el mensaje de error no dice
+  "hay dos cosas con este nombre".
+
 ## 7. CORS Y DOS SERVIDORES
 
 Frontend (localhost:5173) y backend (localhost:8000) corren por separado y se

@@ -173,6 +173,63 @@ botella y por paquete en los 3 escenarios. Todo dinámico: se ajustan las
 cantidades para ver hasta dónde el producto nuevo es rentable. Es solo
 lectura (no toca stock ni dinero): un servicio de consulta + una pantalla.
 
+**Estado: implementado (jul 2026).** `servicios/simulacion.py` +
+`rutas/simulacion.py` (`POST /simulacion`, `GET /simulacion/referencia`) y la
+pantalla **Simulación** (grupo *Producción*, antes de Prod. Intermedia: la
+pregunta "¿conviene?" va antes de producir). Sin migración ni tablas nuevas:
+lee `Compra` y `Produccion_Intermedio`. Es `POST` aunque no escriba nada,
+porque la receta hipotética es una lista que no entra cómoda en la query
+string (mismo criterio que `/ventas/preview-reparto`).
+
+**Decisión de negocio 1 — ventana de tiempo configurable (12 meses por
+defecto), no todo el histórico.** Al medirlo contra los datos reales, la
+diferencia era decisiva: en el insumo más comprado, todo el histórico da un
+rango de 1,00 a 17,33 (17x) mientras que los últimos 12 meses dan 16,00 a
+17,33 (1,1x). Con el histórico completo, el "escenario más barato" quedaba
+anclado a un precio de hace 5 años que ya no se consigue, y hacía ver
+rentable un producto por un costo imposible. Se eligió **configurable en
+pantalla** (y no fijo en 12) porque además sirve para detectar datos
+sospechosos: si al ampliar la ventana aparece un precio muy por debajo del
+actual, es candidato a revisar (ver 5.2). `0 = todo el historial`.
+
+Un insumo **sin movimiento en la ventana** cae a su último precio conocido y
+se marca con un aviso en su fila, en vez de quedar en cero: un cero
+silencioso haría ver el producto más barato de lo que es. Si nunca se compró,
+la fila queda en "—" y la respuesta trae `incompleto: true`, que la pantalla
+muestra como advertencia de que el total se queda corto.
+
+**Decisión de negocio 2 — promedio ponderado por cantidad** (Bs totales ÷
+cantidad total), no promedio simple de precios unitarios: una compra de 1 kg
+no puede pesar lo mismo que una de 100 kg. Es el mismo criterio del costo
+promedio del stock consolidado, así que los números son comparables entre
+pantallas.
+
+**Decisión de negocio 3 — los escenarios son SOLO insumos**, igual que las
+recetas de 3.6: las horas de un producto que todavía no existe no se saben, e
+inventarlas ensuciaría la comparación entre escenarios. Pero como el costo de
+insumos solo no alcanza para decidir un precio, la pantalla muestra además
+tres indicadores de referencia **no editables** en Bs/botella —**mano de
+obra**, **absorción** (1.4) y **gastos extra** (1.1)— sacados del histórico
+real de la misma ventana, y una tabla final con los 3 escenarios ya sumados a
+esa carga fija.
+
+Los tres indicadores se calculan como **total Bs ÷ total botellas del
+período**, no como promedio de los ratios mensuales. Con el promedio de
+ratios, un mes de poca producción pesa igual que uno de mucha, y como los
+meses flacos tienen ratios altísimos (el rango mensual real va de 0,11 a 2,40
+Bs/botella, 22x) el resultado sale ~17% inflado. El total sobre total
+responde de verdad "cuánto carga una botella".
+
+Dato que salió de los datos reales al construirlo: la mano de obra por
+botella de los últimos 12 meses casi **duplica** la del histórico completo.
+Es otra razón para que la ventana sea explícita y visible en pantalla.
+
+Verificado contra la BD real: aritmética cruzada a mano (30 L ÷ 0,75 = 40
+botellas; costo total ÷ botellas × paquete; + carga fija), los bordes
+(rendimiento 0, receta vacía, sin litros por botella, ventana sin compras que
+dispara el fallback) y el recorrido completo en la pantalla en vivo, incluido
+el re-cálculo automático al mover la ventana.
+
 ---
 
 ## 2. LÓGICA FINANCIERA DE REPARTO POR PRIORIDAD DE CUENTAS
@@ -770,6 +827,28 @@ efectivo y sube la deuda, pero como el stock aún no llegó, el balance no lo
 cuenta como activo hasta recibirlo (no se modela "anticipo a proveedores").
 Para pedidos de pocos días es despreciable.
 
+### 5.2 Detección y corrección de precios sospechosos en compras (pendiente)
+Salió al construir la simulación (1.5): hay materias primas cuyo precio
+unitario mínimo histórico es varias veces más barato que cualquier compra
+reciente (en un caso, 17x). Parte será inflación real de 5 años, pero parte
+son probablemente **errores de carga** arrastrados desde el Excel (una
+cantidad o un precio mal tipeado en su momento).
+
+Hoy la simulación los deja ver —ampliando la ventana aparecen como un mínimo
+muy por debajo del resto— pero **no hay forma de corregirlos**: `Compra` no
+tiene `PATCH`, a diferencia de las jornadas (3.4). Faltaría:
+- Un reporte de outliers: por materia prima, las compras cuyo precio unitario
+  se aleja mucho de la mediana de su año (ej. más de 3 desviaciones, o un
+  factor configurable).
+- Decidir **si una compra vieja se puede editar**, que no es obvio: su lote ya
+  alimentó producciones cuyo costo se calculó con ese precio, y corregirlo
+  hacia atrás cambiaría costos ya cerrados. Probablemente la respuesta sea
+  marcar la compra como "dato dudoso" y excluirla de las estadísticas, sin
+  tocar el histórico (mismo principio de inmutabilidad del resto del sistema).
+
+No es urgente: la ventana de 12 meses de la simulación ya evita que estos
+precios contaminen la decisión del día a día.
+
 ---
 
 ## 6. UX / UI (todas para después de completar la funcionalidad)
@@ -1054,6 +1133,38 @@ saber el tamaño de paquete de cada lote.
 Verificado: `totalBotellas` extraído del archivo real y probado en 8 casos
 (incluido el del pedido — 5 paquetes + 1 botella con paquete de 6 = 31 —, los
 sueltos con paquetes colgados, vacíos y fracciones) y `vite build`.
+
+### 6.15 Que un error no deje la app entera en blanco
+**Estado: implementado (jul 2026).** Salió de un bug real: un `ReferenceError`
+en la pantalla de Ventas (ver 6.13) no dejaba solo esa pantalla rota — React,
+sin ningún error boundary, desmontaba **todo** el árbol, así que se perdía
+hasta el menú y no había forma de navegar a otro lado. La app quedaba muda,
+sin decir qué pasó.
+
+Al revisarlo aparecieron **tres** causas distintas de pantalla en blanco, que
+es fácil confundir entre sí:
+
+1. **Error de render** → nuevo `componentes/LimiteError.jsx`, el único
+   componente de clase del proyecto (React no expone los hooks de error
+   boundary a los componentes de función). Muestra un cartel en el lugar de la
+   pantalla rota, aclara que el resto de la app sigue viva y que los datos no
+   se perdieron, e incluye el detalle técnico para poder reportarlo. Recibe
+   `clave={location.pathname}`: al navegar a otra pantalla se resetea, así una
+   rota no deja el cartel pegado sobre las demás.
+2. **Ruta `/` inexistente** → entrar a la raíz no matcheaba nada y dejaba el
+   contenido vacío (se veía en consola: `No routes matched location "/"`).
+   Ahora redirige a `/balance`, que es la vista de conjunto.
+3. **Sin catch-all** → una URL mal tecleada o un link viejo caían en blanco
+   igual. Ahora hay una ruta `*` que lo dice y remite al menú.
+
+Las rutas se movieron a un componente `Contenido()` dentro del `BrowserRouter`,
+porque el boundary necesita `useLocation` y ese hook solo existe adentro del
+Router.
+
+**Nota de verificación (importante):** `vite build` compiló sin quejarse con
+el bug que originó todo esto adentro. Esbuild no analiza zonas muertas
+temporales, así que **compilar no prueba que una pantalla monte** — hay que
+abrirla. Ver la nota en DECISIONES_DISENO.md.
 
 ### 6.14 Unidad de producto intermedio (etiqueta)
 `Producto_Intermedio` no dice en qué unidad está medido: se ve un "30" en las

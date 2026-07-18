@@ -30,6 +30,7 @@ from app.rutas import (
     proveedores,
     recetas,
     saldo_producto,
+    simulacion,
     transferencias,
     ventas,
 )
@@ -83,3 +84,4 @@ app.include_router(recetas.router)
 app.include_router(devoluciones.router)
 app.include_router(cierre.router)
 app.include_router(saldo_producto.router)
+app.include_router(simulacion.router)
