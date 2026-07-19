@@ -278,11 +278,18 @@ verlo también por mes (Power BI, 8.1).
   movimientos SALIDA coordinados** (atómico). Orden de prioridad en
   `PRIORIDAD_CUENTAS` (`app/config.py`). Verificado con prueba de integración
   (orden por prioridad, split, atomicidad, cobertura).
-- **Deferido de 2B:** compras y pagos por prioridad — sus registros enlazan un
-  solo movimiento; partir el pago entre cuentas rompería ese enlace y el
-  cálculo del balance, requiere cambio de modelo. Y los aportes externos
-  integrados al reparto (hoy se cargan con `INGRESO_EXTERNO` y el gasto sale de
-  esa cuenta).
+- **Deferido de 2B — actualizado (jul 2026).** La nota original decía que
+  compras y pagos por prioridad quedaban fuera. Revisado contra el código,
+  eso ya no es exacto: **compras y gastos SÍ se reparten por prioridad**
+  (`servicios/compras_lote.py` y `gastos_lote.py`, con `compras-lote` y su
+  `preview`, drenando Fábrica→Casa). Lo que sigue pendiente es:
+  - **Pagos a trabajadores por prioridad** (`servicios/pagos.py` no usa
+    `PRIORIDAD_CUENTAS`). Acá sí aplica la limitación original: `Pago_Trabajador`
+    enlaza **un solo** `Id_Movimiento`, así que partir el pago entre cuentas
+    rompe ese enlace y el cálculo del balance — requiere cambio de modelo, no
+    es trabajo de pantalla.
+  - Los **aportes externos** integrados al reparto (hoy se cargan con
+    `INGRESO_EXTERNO` y el gasto sale de esa cuenta).
 - **2C — Reparto 70/30 de ventas (en progreso, por tajadas):**
   - ✅ **Tajada 1 — Acumulador de inversión/ingresos por producto**
     (`app/servicios/saldo_producto.py`, `GET /saldo-productos`, de solo
@@ -424,6 +431,40 @@ merma automática (evento de inventario, no borrar la fila — ver el principio
 de inmutabilidad del histórico) cuando un consumo deja el resto bajo el
 umbral. Falta decidir el disparador: ¿en cada consumo?, ¿una acción manual
 "limpiar residuos"? No es urgente: sin impacto financiero ni visual hoy.
+
+**Estado: implementado (jul 2026).** `servicios/residuos.py`,
+`GET /residuos` + `POST /residuos/limpiar`, y una sección nueva en la pantalla
+de **Mermas**, arriba de las tablas de stock.
+
+**Decisión del disparador: manual y en dos pasos, nunca automático.** Primero
+"Buscar residuos" lista exactamente qué lotes se pondrían en cero, con un
+checkbox por fila (todos tildados; se destilda el que se quiera dejar), y
+recién al confirmar se aplican las mermas, solo sobre lo tildado. La otra
+opción anotada —mermar solo en cada consumo— generaría movimientos de
+inventario que nadie pidió ni vio.
+
+Detalles que importan:
+- **No borra la fila**: cierra el lote con una `MERMA` por el resto exacto,
+  respetando la inmutabilidad del histórico.
+- **No absorben costo** (1.4). Una merma normal reparte su costo entre las
+  botellas futuras; estos restos valen fracciones de centavo y crear un ítem
+  de absorción por cada uno sería ruido en la pantalla de Absorción.
+- **El filtro es `0 < restante <= umbral`**. El límite inferior es
+  deliberado: los restantes **negativos** (los 5 que quedaron de la migración
+  del excel, ver 8.4) quedan fuera — no son residuos, y "limpiarlos" con una
+  merma agregaría una salida sobre un lote que ya está en rojo.
+- **Se re-lee el resto de la BD al confirmar**, no se confía en el que vino
+  del navegador: si el lote cambió entre la vista previa y la confirmación,
+  esa fila se omite con aviso en vez de mermar algo que ya tiene stock útil.
+- El umbral se muestra en pantalla pero **viene del endpoint**, para no
+  duplicar la constante de `config.py` en el frontend.
+- De paso, las tres tablas de stock de esa pantalla (163 + 16 + 97 lotes
+  apilados) pasaron a `TablaFiltrable` plegable con buscador.
+
+Verificado con una prueba dentro de una transacción **revertida al final**
+(la BD quedó intacta): detecta el residuo, ignora el lote sano y el negativo,
+lo deja en cero, deja de listarlo, y una segunda limpieza del mismo lote se
+omite sin romper.
 
 ### 3.6 Pre-recetas (producción intermedia pre-llenada) — del Excel
 Plantilla por producto intermedio ("Jarabe Base 1 = 5 kg de azúcar + 3 L de
@@ -688,6 +729,69 @@ Para mostrarlo también en la columna "Última foto" haría falta:
 - Decidir si se amplía el modelo para capturar también intermedio y materia
   prima en cada foto (cambio de esquema, migración nueva), o si se deja el
   detalle histórico solo para terminado.
+
+**Estado: implementado (jul 2026), con el modelo ampliado.** Se eligió la
+opción completa (los cuatro bloques) y no la mínima, por una razón de
+oportunidad: solo existía **una** foto y el sistema todavía no estaba en uso
+real, así que ampliar el modelo no costaba histórico. Ese dato solo se puede
+capturar hacia adelante — cuanto antes se amplía, antes empieza a servir.
+
+**Migración 024:** tabla `Balance_Detalle` (`Tipo_Detalle` MP / INTERMEDIO /
+TERMINADO / ACTIVO + id del item, descripción, cantidad, valor), que
+reemplaza a `Balance_Detalle_Producto`. La migración **copia** las filas
+existentes antes de hacer `DROP` de la vieja, así que no se perdió nada.
+De paso, los **activos** ahora tienen detalle: la foto guardaba solo los tres
+totales (inmuebles/equipos/otros), no qué activos los componían.
+
+**Decisión de diseño — la descripción se guarda copiada, no por relación.**
+Una foto tiene que poder leerse tal como era: si un producto se renombra (o
+se borra porque nunca se usó), la foto de hace un año debe seguir diciendo
+cómo se llamaba entonces. Por lo mismo `Id_Item_Balance_Detalle` **no lleva
+foreign key** — apunta al catálogo que corresponda según el tipo, y no debe
+bloquear el borrado de un item.
+
+**Frontend:** componente `DetalleFoto.jsx` (un desplegable que adentro tiene
+los cuatro bloques, cada uno plegable con buscador), usado dos veces en
+**Comparar cierres**: "Detalle Foto A" y "Detalle Foto B", debajo de la tabla
+comparativa. Se piden al desplegar, no al cargar la pantalla: son dos fotos y
+cada una puede traer cientos de filas que casi nunca se miran. Van marcados
+`no-imprimir` (el PDF del cierre es la tabla comparativa, no el listado
+completo de items).
+
+**Código de color por foto.** Cada foto tiene su color en toda la pantalla
+—etiqueta del selector, cabecera de su columna en la tabla comparativa, y el
+título y borde de su bloque de detalle— para no perder de vista cuál es cuál
+al ir y venir entre las dos. El título de la foto manda visualmente sobre sus
+sub-bloques (más grande, en negrita y con fondo tintado; los sub-bloques van
+en gris neutro), que era la jerarquía pedida.
+
+Tres decisiones: los colores son **variables CSS** (`--foto-a` / `--foto-b` en
+`index.css`) con **variante propia para modo oscuro** —el azul y el ámbar del
+tema claro no tienen contraste suficiente sobre el fondo oscuro—; se eligió
+**azul vs ámbar y no rojo/verde**, porque ese par se distingue también con
+daltonismo; y el color **nunca es la única pista**, siempre acompaña al texto
+"Foto A"/"Foto B". Las cabeceras de columna necesitan
+`.tabla-balance th.col-foto-a` y no solo `.col-foto-a`: la regla
+`.tabla-balance th { color: var(--text-h) }` tiene más especificidad y le
+ganaba al selector de clase suelto.
+
+**Un bloque vacío se muestra igual, dicho con todas las letras** ("sin detalle
+guardado en esta foto"). Ocultarlo era la primera versión y estaba mal: al
+comparar una foto vieja —que solo guardaba producto terminado— contra una
+nueva, los bloques faltantes se leían como "no tenía stock de eso" en vez de
+"no se guardaba". Un hueco de datos y un cero significan cosas distintas.
+
+**Bug latente encontrado de paso:** `tomar_balance` no tenía default de fecha,
+así que `POST /balances` sin `fecha_balance` fallaba con un "Error de base de
+datos" genérico. No se notaba porque la pantalla siempre manda la fecha. Ahora
+usa `fecha or date.today()`, la convención del resto del backend (6.10).
+
+Verificado contra la BD real: los cuatro bloques de la foto nueva cruzan
+**exacto** contra los totales que la misma foto guarda por separado (materia
+prima, intermedio, terminado y activos), la foto vieja conserva sus 58 filas
+copiadas por la migración, y el recorrido completo en pantalla (abrir las dos
+fotos, sus sub-bloques y el contenido de una tabla). Respaldo `pg_dump` previo
+al `DROP`.
 
 ### 4.7 Paquetes equivalentes y redondeo a 2 decimales — del Excel
 En el detalle de producto terminado del balance (y donde aplique), además de
@@ -974,6 +1078,30 @@ de la venta nunca se bloquea.
 Ya se implementó autocompletar el precio recomendado en ventas y el sugerido en
 pagos. Extender este tipo de ayudas donde aplique.
 
+**Estado: implementado (jul 2026).** Se buscaron los formularios donde el
+dato a cargar es predecible desde el historial, y salieron tres:
+
+- **Compras** → cantidad y precio de la **última compra de esa materia**.
+  Ya existía un autocompletado con `/ultima-compra/{materia}/{proveedor}`,
+  pero exigía **ambos**, y como las 2454 compras migradas del excel tienen
+  `Id_Proveedor` en NULL, no disparaba nunca para esas materias. Ahora se
+  dispara con la materia sola (nuevo `GET /ultimo-precio-materia/{id}`) y se
+  afina al par materia+proveedor si hay proveedor elegido.
+- **Jornadas** → horas de la **última jornada de ese trabajador**. La mayoría
+  trabaja la misma cantidad de horas casi todos los días. Se resuelve en el
+  frontend con las jornadas ya cargadas, sin pedirle nada al backend.
+- **Cierre de mes** → monto **realmente pagado el mes anterior**, en vez del
+  estimado fijo del catálogo (que era lo que sugería antes). La factura de
+  luz del mes pasado predice mucho mejor la de este mes que un número cargado
+  una vez al crear el gasto y nunca actualizado. Si no hay mes anterior, cae
+  al estimado del catálogo.
+
+Los tres muestran **de dónde salió** la sugerencia ("sugerido según la última
+compra (fecha) — editable"): un número que aparece solo, sin decir por qué, se
+registra sin mirar. Ninguno bloquea la edición.
+
+Verificado en las tres pantallas en vivo contra datos reales.
+
 ### 6.8 Menú de navegación mejorado
 El menú superior ya está largo (12+ pestañas). Agrupar por categorías (Catálogos,
 Operaciones, Finanzas, Cierre) con submenús o secciones.
@@ -1233,8 +1361,11 @@ Verificado: deuda simple, préstamo, pago, los guardrails (pago > saldo de
 deuda, saldo de cuenta insuficiente) y la deduplicación por descripción.
 Datos de prueba limpiados.
 
-**Pendiente:** la **deuda a proveedor** nacida de una compra a crédito
-parcial (ver la ampliación de 5.1) se conecta cuando se implemente ese caso.
+~~**Pendiente:** la deuda a proveedor nacida de una compra a crédito parcial se
+conecta cuando se implemente ese caso.~~ **Ya resuelto** por la ampliación de
+5.1 (jul 2026): la compra a crédito parcial crea la deuda agrupada por
+proveedor (`deuda_de_proveedor` con `Id_Proveedor`) y se paga desde esta misma
+pantalla. Esta nota quedó desactualizada.
 
 ### 7.1 Códigos QR para etiquetas físicas
 Generar códigos QR (en el backend, no se guardan en BD) para etiquetar físicamente
@@ -1290,9 +1421,18 @@ Fábrica", con descripción de dónde viene). En el Excel había una hoja de
 transacciones que hacía ambas cosas. La tabla `Movimiento` ya está
 preparada: tiene `Id_Cuenta_Origen` e `Id_Cuenta_Destino` — una
 transferencia llena ambas (resta de una, suma a la otra), un ingreso externo
-solo el destino. Falta servicio + endpoint + pantalla. Con el reparto por
-prioridad (sección 2) las transferencias manuales deberían volverse raras,
-pero el ingreso externo sigue siendo necesario siempre.
+solo el destino. Con el reparto por prioridad (sección 2) las transferencias
+manuales deberían volverse raras, pero el ingreso externo sigue siendo
+necesario siempre.
+
+**Estado: implementado.** (El doc se había quedado sin registrarlo; se
+verificó contra el código en jul 2026.) Servicio
+`servicios/transferencias.py`, rutas `POST /transferencias` y
+`POST /ingresos-externos`, y la pantalla **Transferencias** (grupo
+*Finanzas*). La transferencia llena origen y destino en un solo `Movimiento`;
+el ingreso externo usa el tipo `INGRESO_EXTERNO` (migración 010), a propósito
+distinto de `ENTRADA` para que el balance no lo cuente como venta de la
+semana — mismo principio de categorizar-sin-adivinar de 4.1.
 
 ---
 

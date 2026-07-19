@@ -334,3 +334,61 @@
     color: #000;
   }
 }
+
+/* ==========================================================
+   Detalle por item de cada foto en Comparar cierres (4.6)
+   ==========================================================
+   Jerarquia visual pedida: el titulo de la foto manda sobre sus bloques.
+   La foto A y la foto B tienen cada una su color (ver --foto-a / --foto-b
+   en index.css, con su version para modo oscuro), aplicado tambien a las
+   columnas de la tabla comparativa para que se lean como lo mismo.
+
+   El color NUNCA es la unica pista: siempre va acompanado del texto
+   "Foto A" / "Foto B". */
+
+.detalle-foto {
+  border-left: 4px solid;
+  padding-left: 0.75rem;
+  margin-bottom: 1rem;
+}
+.detalle-foto--a { border-left-color: var(--foto-a-borde); }
+.detalle-foto--b { border-left-color: var(--foto-b-borde); }
+
+/* Titulo de la foto: el nivel fuerte. */
+.detalle-foto__titulo {
+  cursor: pointer;
+  user-select: none;
+  margin: 0 0 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.detalle-foto--a .detalle-foto__titulo { color: var(--foto-a); background: var(--foto-a-bg); }
+.detalle-foto--b .detalle-foto__titulo { color: var(--foto-b); background: var(--foto-b-bg); }
+
+/* Sub-bloques (materia prima, intermedio...): un escalon por debajo, sin
+   color propio, para que el titulo de la foto siga siendo el que manda. */
+.detalle-foto__bloques h3 {
+  font-size: 0.92em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0.4rem 0;
+}
+
+/* Cabeceras de columna de la tabla comparativa, con el mismo codigo.
+   Van con `.tabla-balance th.col-*` y no solo `.col-*`: la regla
+   `.tabla-balance th { color: var(--text-h) }` de mas arriba tiene mas
+   especificidad (0,1,1) y le ganaba al selector de clase suelto (0,1,0). */
+.tabla-balance th.col-foto-a {
+  color: var(--foto-a);
+  border-bottom: 2px solid var(--foto-a-borde);
+}
+.tabla-balance th.col-foto-b {
+  color: var(--foto-b);
+  border-bottom: 2px solid var(--foto-b-borde);
+}
+
+/* Etiquetas de los selectores de foto, con el mismo codigo de color. */
+.etiqueta-foto-a { color: var(--foto-a); }
+.etiqueta-foto-b { color: var(--foto-b); }

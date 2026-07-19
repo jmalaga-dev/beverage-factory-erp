@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiGet } from '../api'
 import FilaBalance from '../componentes/FilaBalance'
+import DetalleFoto from '../componentes/DetalleFoto'
 import { filasBalance, filasMovimientos } from '../filasBalance'
 import { fmtMoneda } from '../formato'
 
@@ -62,7 +63,7 @@ function PaginaComparativaBalances() {
 
       <div className="no-imprimir" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
         <label>
-          Foto A:{' '}
+          <strong className="etiqueta-foto-a">Foto A</strong>:{' '}
           <select value={idA} onChange={(e) => setIdA(e.target.value)}>
             {balances.map((b) => (
               <option key={b.id_balance} value={b.id_balance}>{etiquetaFoto(b)}</option>
@@ -70,7 +71,7 @@ function PaginaComparativaBalances() {
           </select>
         </label>
         <label>
-          Foto B:{' '}
+          <strong className="etiqueta-foto-b">Foto B</strong>:{' '}
           <select value={idB} onChange={(e) => setIdB(e.target.value)}>
             {balances.map((b) => (
               <option key={b.id_balance} value={b.id_balance}>{etiquetaFoto(b)}</option>
@@ -88,8 +89,8 @@ function PaginaComparativaBalances() {
         <thead>
           <tr>
             <th>Concepto</th>
-            <th className="num">Foto A {fotoA ? `(${etiquetaFoto(fotoA)})` : ''}</th>
-            <th className="num">Foto B {fotoB ? `(${etiquetaFoto(fotoB)})` : ''}</th>
+            <th className="num col-foto-a">Foto A {fotoA ? `(${etiquetaFoto(fotoA)})` : ''}</th>
+            <th className="num col-foto-b">Foto B {fotoB ? `(${etiquetaFoto(fotoB)})` : ''}</th>
             <th className="num">Diferencia (B − A)</th>
           </tr>
         </thead>
@@ -115,6 +116,23 @@ function PaginaComparativaBalances() {
           ))}
         </tbody>
       </table>
+
+      {/* Detalle por item de cada foto (4.6). Va después de la tabla: primero
+          se compara el conjunto, y recién si algo llama la atención se abre a
+          ver de qué productos está compuesto. */}
+      <h2 style={{ marginTop: '2rem' }} className="no-imprimir">Detalle por item de cada foto</h2>
+      <div className="no-imprimir">
+        <DetalleFoto
+          variante="a"
+          idBalance={fotoA ? fotoA.id_balance : null}
+          titulo={`Detalle Foto A ${fotoA ? `(${etiquetaFoto(fotoA)})` : ''}`}
+        />
+        <DetalleFoto
+          variante="b"
+          idBalance={fotoB ? fotoB.id_balance : null}
+          titulo={`Detalle Foto B ${fotoB ? `(${etiquetaFoto(fotoB)})` : ''}`}
+        />
+      </div>
     </div>
   )
 }

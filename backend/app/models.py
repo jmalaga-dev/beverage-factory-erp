@@ -120,7 +120,6 @@ class Producto_Terminado(Base):
 
     producciones = relationship("Produccion", back_populates="producto_terminado")
     horas_mes = relationship("Horas_Producto_Mes", back_populates="producto_terminado")
-    balance_detalles = relationship("Balance_Detalle_Producto", back_populates="producto_terminado")
 
 
 class Sector(Base):
@@ -595,17 +594,30 @@ class Balance(Base):
     Valor_Stock_Producto_Terminado_Conservador = Column(Numeric)  # NUEVO
     Valor_Utensilios_Sin_Absorber = Column(Numeric)  # NUEVO
 
-    detalles = relationship("Balance_Detalle_Producto", back_populates="balance")
+    detalles = relationship("Balance_Detalle", back_populates="balance")
 
 
-class Balance_Detalle_Producto(Base):
-    __tablename__ = "Balance_Detalle_Producto"
+class Balance_Detalle(Base):
+    """
+    Detalle historico de una foto de balance (mejora 4.6, migracion 024).
+
+    Una fila por item con valor en esa foto, de los cuatro bloques:
+    MP / INTERMEDIO / TERMINADO / ACTIVO. Reemplaza a la vieja
+    Balance_Detalle_Producto, que solo cubria producto terminado.
+
+    La descripcion se guarda COPIADA, no por relacion: una foto tiene que
+    poder leerse tal como era, aunque el item se renombre o se borre despues.
+    Por eso Id_Item_Balance_Detalle tampoco tiene ForeignKey — apunta al
+    catalogo que corresponda segun el tipo, y no debe bloquear un borrado.
+    """
+    __tablename__ = "Balance_Detalle"
 
     Id_Balance_Detalle = Column(Integer, primary_key=True)
     Id_Balance = Column(Integer, ForeignKey("Balance.Id_Balance"), nullable=False)
-    Id_Producto_Terminado = Column(Integer, ForeignKey("Producto_Terminado.Id_Producto_Terminado"), nullable=False)
-    Cantidad_En_Stock = Column(Numeric)
-    Valor_En_Stock = Column(Numeric)
+    Tipo_Detalle = Column(String, nullable=False)   # MP / INTERMEDIO / TERMINADO / ACTIVO
+    Id_Item_Balance_Detalle = Column(Integer, nullable=False)
+    Descripcion_Balance_Detalle = Column(String, nullable=False)
+    Cantidad_Balance_Detalle = Column(Numeric)      # los ACTIVO no tienen cantidad
+    Valor_Balance_Detalle = Column(Numeric, nullable=False)
 
     balance = relationship("Balance", back_populates="detalles")
-    producto_terminado = relationship("Producto_Terminado", back_populates="balance_detalles")

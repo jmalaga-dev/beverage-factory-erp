@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.models import Balance
+from app.models import Balance, Balance_Detalle
 from app.servicios.balance import (
     calcular_estado_actual,
     resumen_desde_ultima_foto,
@@ -78,3 +78,41 @@ def balance_resumen_semana(sesion: Session = Depends(get_sesion)):
     requiere tomar una foto nueva.
     """
     return resumen_desde_ultima_foto(sesion)
+
+
+@router.get("/balances/{id_balance}/detalle")
+def detalle_balance(id_balance: int, sesion: Session = Depends(get_sesion)):
+    """
+    Detalle por item de una foto guardada (mejora 4.6), agrupado por bloque:
+    materia prima, intermedio, terminado y activos.
+
+    Lee lo que quedo CONGELADO en la foto (incluida la descripcion de cada
+    item tal como se llamaba ese dia), no el catalogo de hoy: por eso responde
+    "como estaba" y no "como esta".
+
+    Las fotos anteriores a la migracion 024 solo tienen bloque TERMINADO; sus
+    otros bloques vienen vacios porque ese dato nunca se guardo, no porque
+    valieran cero. El frontend lo aclara.
+    """
+    if sesion.get(Balance, id_balance) is None:
+        raise HTTPException(status_code=404, detail=f"No existe balance con Id {id_balance}")
+
+    filas = (
+        sesion.query(Balance_Detalle)
+        .filter(Balance_Detalle.Id_Balance == id_balance)
+        .order_by(Balance_Detalle.Tipo_Detalle, Balance_Detalle.Descripcion_Balance_Detalle)
+        .all()
+    )
+    bloques = {"MP": [], "INTERMEDIO": [], "TERMINADO": [], "ACTIVO": []}
+    for f in filas:
+        bloques.setdefault(f.Tipo_Detalle, []).append({
+            "id_item": f.Id_Item_Balance_Detalle,
+            "descripcion": f.Descripcion_Balance_Detalle,
+            "cantidad": float(f.Cantidad_Balance_Detalle or 0),
+            "valor": float(f.Valor_Balance_Detalle or 0),
+        })
+    return {
+        "id_balance": id_balance,
+        "bloques": bloques,
+        "totales": {k: sum(x["valor"] for x in v) for k, v in bloques.items()},
+    }

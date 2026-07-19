@@ -21,9 +21,19 @@ function PaginaProrrateo() {
   // Alta de un monto del mes
   const [selGasto, setSelGasto] = useState('')
   const [monto, setMonto] = useState('')
+  // De dónde salió el monto sugerido, para que se vea que es editable (6.7).
+  const [origenMonto, setOrigenMonto] = useState('')
   // Pago: cuenta elegida por fila
   const [cuentaPago, setCuentaPago] = useState({})     // {id_gasto_extra_mes: id_cuenta}
   const [mensaje, setMensaje] = useState('')
+
+  // 'YYYY-MM' del mes anterior. Se hace con aritmética de meses (no restando
+  // días) para que enero caiga en diciembre del año previo sin casos raros.
+  function mesAnterior(mes) {
+    const [anio, m] = mes.split('-').map(Number)
+    const total = anio * 12 + (m - 1) - 1
+    return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
+  }
 
   function cargar(mes) {
     if (!mes || mes.trim() === '') return
@@ -61,11 +71,26 @@ function PaginaProrrateo() {
       .catch((e) => setMensaje(e.message))
   }
 
-  // Sugerir el monto típico del gasto elegido
+  // Sugerir el monto del gasto elegido (6.7). Prioridad: lo que se pagó de
+  // verdad el mes anterior, y solo si no hay, el estimado fijo del catálogo.
+  // La factura de luz del mes pasado predice mucho mejor la de este mes que
+  // un número cargado una vez al crear el gasto y nunca actualizado.
   function elegirGasto(id) {
     setSelGasto(id)
     const g = recurrentes.find((x) => x.id_gasto_extra === parseInt(id))
-    if (g && g.precio_mensual) setMonto(String(g.precio_mensual))
+    const porDefecto = g && g.precio_mensual ? String(g.precio_mensual) : ''
+    setMonto(porDefecto)
+    setOrigenMonto(porDefecto ? 'el estimado del catálogo' : '')
+
+    apiGet(`/gastos-mes/${mesAnterior(anioMes)}`)
+      .then((d) => {
+        const previo = (d.detalle || []).find((x) => x.id_gasto_extra === parseInt(id))
+        if (previo) {
+          setMonto(String(previo.monto))
+          setOrigenMonto(`lo pagado en ${mesAnterior(anioMes)}`)
+        }
+      })
+      .catch(() => { /* sin datos del mes anterior: queda el del catálogo */ })
   }
 
   return (
@@ -96,6 +121,11 @@ function PaginaProrrateo() {
           placeholder="-- Gasto recurrente --"
         />
         <input type="number" placeholder="Monto de este mes" value={monto} onChange={(e) => setMonto(e.target.value)} />
+        {origenMonto && (
+          <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+            sugerido según {origenMonto} — editable
+          </span>
+        )}
         <button onClick={agregarMonto}>Guardar monto</button>
       </div>
 

@@ -11,6 +11,17 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+  /* Identidad de cada foto en la comparativa de cierres (4.6). Azul vs ámbar
+     y no rojo/verde: este par se distingue también con daltonismo, que es el
+     caso más común. El color va acompañado de la etiqueta "Foto A"/"Foto B",
+     nunca es la única pista. */
+  --foto-a: #0e7490;
+  --foto-a-bg: rgba(14, 116, 144, 0.07);
+  --foto-a-borde: rgba(14, 116, 144, 0.45);
+  --foto-b: #b45309;
+  --foto-b-bg: rgba(180, 83, 9, 0.07);
+  --foto-b-borde: rgba(180, 83, 9, 0.45);
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -43,6 +54,15 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    /* Los mismos dos colores, subidos de luminosidad: sobre el fondo oscuro
+       el azul y el ámbar originales quedan sin contraste suficiente. */
+    --foto-a: #67e8f9;
+    --foto-a-bg: rgba(103, 232, 249, 0.10);
+    --foto-a-borde: rgba(103, 232, 249, 0.45);
+    --foto-b: #fbbf24;
+    --foto-b-bg: rgba(251, 191, 36, 0.10);
+    --foto-b-borde: rgba(251, 191, 36, 0.45);
   }
 
   #social .button-icon {

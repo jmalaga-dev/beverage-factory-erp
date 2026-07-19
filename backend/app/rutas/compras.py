@@ -323,3 +323,34 @@ def stock_materia_prima(sesion: Session = Depends(get_sesion)):
             "costo_promedio": round(costo_prom, 4),
         })
     return resultado
+
+
+@router.get("/ultimo-precio-materia/{id_materia_prima}")
+def ultimo_precio_materia(id_materia_prima: int, sesion: Session = Depends(get_sesion)):
+    """
+    Ultima compra de esa materia prima: precio unitario, cantidad y fecha
+    (mejora 6.7). Sirve para predeterminar el precio al cargar una compra
+    nueva, que es el dato que mas se repite entre compras seguidas.
+
+    Es por MATERIA, no por proveedor: hoy las 2454 compras migradas del excel
+    tienen Id_Proveedor en NULL, asi que filtrar por proveedor devolveria
+    vacio para casi todo el catalogo. Cuando haya historial con proveedor,
+    afinarlo es un WHERE mas (ver 5.1).
+
+    Devuelve null en `precio_unitario` si nunca se compro: el frontend deja el
+    campo vacio en vez de sugerir un cero que se registraria sin querer.
+    """
+    ultima = (
+        sesion.query(Compra)
+        .filter(Compra.Id_Materia_Prima == id_materia_prima, Compra.Cantidad_Compra > 0)
+        .order_by(Compra.Fecha_Compra.desc(), Compra.Id_Compra.desc())
+        .first()
+    )
+    if ultima is None:
+        return {"precio_unitario": None, "cantidad": None, "precio_total": None, "fecha": None}
+    return {
+        "precio_unitario": float(ultima.Precio_Compra / ultima.Cantidad_Compra),
+        "cantidad": float(ultima.Cantidad_Compra),
+        "precio_total": float(ultima.Precio_Compra),
+        "fecha": ultima.Fecha_Compra.isoformat(),
+    }

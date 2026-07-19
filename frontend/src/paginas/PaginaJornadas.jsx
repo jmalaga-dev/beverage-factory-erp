@@ -12,6 +12,8 @@ function PaginaJornadas() {
   const [idTrabajador, setIdTrabajador] = useState('')
   const [horas, setHoras] = useState('')
   const [mensaje, setMensaje] = useState('')
+  // De qué jornada salió la sugerencia de horas (6.7). null = sin historial.
+  const [horasSugeridas, setHorasSugeridas] = useState(null)
   // Filtro de la tabla: 'no_pagadas' (default, como antes), 'standby' (horas
   // registradas que aun no se consumieron en una produccion — las que el
   // cierre de produccion va a repartir) o 'todas'. Mutuamente excluyentes.
@@ -36,6 +38,24 @@ function PaginaJornadas() {
 
   useEffect(() => { cargar() }, [])
 
+  // Al elegir trabajador, proponer las horas de su última jornada (6.7): la
+  // mayoría trabaja la misma cantidad de horas casi todos los días, así que
+  // es el valor que más se repite. Se calcula sobre las jornadas ya cargadas,
+  // sin pedirle nada al backend.
+  function elegirTrabajador(id) {
+    setIdTrabajador(id)
+    const suyas = jornadas.filter((j) => String(j.id_trabajador) === String(id))
+    if (suyas.length === 0) { setHorasSugeridas(null); return }
+    // La lista puede venir en cualquier orden: buscar la de fecha más reciente
+    // y, a igual fecha, la de id más alto (la última registrada ese día).
+    const ultima = suyas.reduce((a, b) => {
+      if (a.fecha !== b.fecha) return a.fecha > b.fecha ? a : b
+      return a.id_jornada > b.id_jornada ? a : b
+    })
+    setHoras(String(ultima.horas))
+    setHorasSugeridas(ultima)
+  }
+
   function registrar() {
     if (idTrabajador === '' || horas === '') {
       setMensaje('Elige trabajador y horas')
@@ -49,6 +69,7 @@ function PaginaJornadas() {
       .then(() => {
         setMensaje('Jornada registrada')
         setHoras('')
+        setHorasSugeridas(null)
         cargar()
       })
       .catch((e) => setMensaje(e.message))
@@ -121,13 +142,18 @@ function PaginaJornadas() {
         <SelectorBuscable
           opciones={trabajadores.filter((t) => t.habilitado)}
           valor={idTrabajador}
-          onCambiar={setIdTrabajador}
+          onCambiar={elegirTrabajador}
           obtenerId={(t) => t.id_trabajador}
           obtenerTexto={(t) => `${t.nombre} (${t.tarifa} Bs/hora)`}
           placeholder="-- Trabajador --"
         />
         <input type="number" placeholder="Horas trabajadas"
           value={horas} onChange={(e) => setHoras(e.target.value)} />
+        {horasSugeridas && (
+          <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+            sugerido: su última jornada ({horasSugeridas.fecha}) — editable
+          </span>
+        )}
         <button onClick={registrar}>Registrar jornada</button>
       </div>
       {mensaje && <p>{mensaje}</p>}

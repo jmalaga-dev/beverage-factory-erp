@@ -17,6 +17,9 @@ function PaginaCompras() {
   const [idCuenta, setIdCuenta] = useState('')
   const [cantidad, setCantidad] = useState('')
   const [precioTotal, setPrecioTotal] = useState('')
+  // De dónde salió la cantidad/precio sugeridos, para que se vea que son un
+  // valor por defecto editable y no un dato en firme (6.7).
+  const [origenSugerencia, setOrigenSugerencia] = useState('')
 
   // Proveedores activos de la materia elegida (mejora 5.1). Segun cuantos
   // haya: 0 -> bloquear y pedir registrar; 1 -> autoseleccion; >1 -> elegir.
@@ -93,14 +96,33 @@ function PaginaCompras() {
   // Predeterminar cantidad y precio con los de la ÚLTIMA compra de esa materia
   // a ese proveedor (mejora 10.3). Solo con ambos elegidos; si no hay historial
   // de ese par, no toca nada. Son valores por defecto: se pueden editar.
+  // Se dispara con la MATERIA sola, sin esperar al proveedor (6.7): así ya
+  // hay una sugerencia apenas se elige qué comprar. Si además hay proveedor,
+  // se afina a la última compra de ese par, que es más específica.
   useEffect(() => {
-    if (idMateria === '' || idProveedor === '') return
+    if (idMateria === '') { setOrigenSugerencia(''); return }
+
+    // Respaldo general: la última compra de esa materia con cualquiera. Es el
+    // único que funciona con el historial migrado del excel, donde las 2454
+    // compras tienen Id_Proveedor en NULL.
+    const general = () => apiGet(`/ultimo-precio-materia/${idMateria}`).then((u) => {
+      if (u.precio_unitario == null) { setOrigenSugerencia(''); return }
+      setCantidad(String(u.cantidad))
+      setPrecioTotal(String(u.precio_total))
+      setOrigenSugerencia(`la última compra (${u.fecha})`)
+    })
+
+    if (idProveedor === '') { general().catch(console.error); return }
+
     apiGet(`/ultima-compra/${idMateria}/${idProveedor}`)
       .then((r) => {
         if (r.hay) {
           setCantidad(String(r.cantidad))
           setPrecioTotal(String(r.precio_total))
+          setOrigenSugerencia('la última compra a este proveedor')
+          return
         }
+        return general()
       })
       .catch(console.error)
   }, [idMateria, idProveedor])
@@ -109,6 +131,23 @@ function PaginaCompras() {
   const pagoAhora = aCredito ? parseFloat(montoPagado || '0') : parseFloat(precioTotal || '0')
   const faltante = (parseFloat(precioTotal || '0') - pagoAhora)
   const nombreProveedorSel = proveedores.find((p) => p.id_proveedor === parseInt(idProveedor))?.nombre
+
+  // Unidad de la materia elegida (Kg, L...), para rotular el campo cantidad.
+  // Una por sección: las tres cargan una materia distinta al mismo tiempo.
+  const unidadDe = (id) => materias.find((m) => m.id_materia_prima === parseInt(id))?.unidad
+  const unidadMateria = unidadDe(idMateria)
+  const unidadLoteMateria = unidadDe(loteMateria)
+  const unidadDivMateria = unidadDe(divMateria)
+
+  // Precio por unidad de lo que se está cargando. Es el número con el que se
+  // compara si una compra salió cara o barata (el total solo no dice nada:
+  // depende de cuánto se compró). Derivado, nunca estado.
+  const precioUnitarioCalculado = (() => {
+    const c = parseFloat(cantidad)
+    const p = parseFloat(precioTotal)
+    if (!c || !p || c <= 0) return null
+    return (p / c).toFixed(2)
+  })()
 
   // Cuando cambia la materia elegida para agregar una línea a la tabla,
   // traer sus proveedores activos (mismo patron que el formulario simple)
@@ -413,10 +452,30 @@ function PaginaCompras() {
           />
         )}
 
-        <input type="text" placeholder="Cantidad"
-          value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
-        <input type="text" placeholder="Precio total"
-          value={precioTotal} onChange={(e) => setPrecioTotal(e.target.value)} />
+        {/* Etiquetas visibles, no solo placeholder: el placeholder desaparece
+            en cuanto el campo tiene valor, así que al autocompletar (6.7) se
+            perdía la única pista de cuál era cuál. La unidad y el "Bs" salen
+            del catálogo, para no tener que adivinar en qué se mide. */}
+        <label style={{ marginLeft: '0.4rem' }}>
+          Cantidad{unidadMateria ? ` (${unidadMateria})` : ''}:{' '}
+          <input type="text" placeholder="Cantidad" style={{ width: '7rem' }}
+            value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        </label>
+        <label style={{ marginLeft: '0.4rem' }}>
+          Precio total (Bs):{' '}
+          <input type="text" placeholder="Precio total" style={{ width: '7rem' }}
+            value={precioTotal} onChange={(e) => setPrecioTotal(e.target.value)} />
+        </label>
+        {precioUnitarioCalculado && (
+          <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+            = {precioUnitarioCalculado} Bs por {unidadMateria || 'unidad'}{' '}
+          </span>
+        )}
+        {origenSugerencia && (
+          <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+            (sugerido según {origenSugerencia} — editable)
+          </span>
+        )}
 
         {/* Compra a credito / pedido pendiente (mejora 5.1 ampliacion) */}
         <div style={{ marginTop: '0.5rem' }}>
@@ -473,10 +532,16 @@ function PaginaCompras() {
             obtenerTexto={(m) => m.descripcion}
             placeholder="-- Materia prima --"
           />
-          <input type="text" placeholder="Cantidad"
-            value={loteCantidad} onChange={(e) => setLoteCantidad(e.target.value)} />
-          <input type="text" placeholder="Precio total"
-            value={lotePrecioTotal} onChange={(e) => setLotePrecioTotal(e.target.value)} />
+          <label style={{ marginLeft: '0.4rem' }}>
+            Cantidad{unidadLoteMateria ? ` (${unidadLoteMateria})` : ''}:{' '}
+            <input type="text" placeholder="Cantidad" style={{ width: '7rem' }}
+              value={loteCantidad} onChange={(e) => setLoteCantidad(e.target.value)} />
+          </label>
+          <label style={{ marginLeft: '0.4rem' }}>
+            Precio total (Bs):{' '}
+            <input type="text" placeholder="Precio total" style={{ width: '7rem' }}
+              value={lotePrecioTotal} onChange={(e) => setLotePrecioTotal(e.target.value)} />
+          </label>
 
           {loteMateria !== '' && loteProveedores.length === 0 && (
             <span style={{ color: '#a00' }}>
@@ -574,10 +639,16 @@ function PaginaCompras() {
             obtenerTexto={(m) => m.descripcion}
             placeholder="-- Materia prima --"
           />
-          <input type="text" placeholder="Cantidad"
-            value={divCantidad} onChange={(e) => setDivCantidad(e.target.value)} />
-          <input type="text" placeholder="Factor (ej. área)"
-            value={divFactor} onChange={(e) => setDivFactor(e.target.value)} />
+          <label style={{ marginLeft: '0.4rem' }}>
+            Cantidad{unidadDivMateria ? ` (${unidadDivMateria})` : ''}:{' '}
+            <input type="text" placeholder="Cantidad" style={{ width: '6rem' }}
+              value={divCantidad} onChange={(e) => setDivCantidad(e.target.value)} />
+          </label>
+          <label style={{ marginLeft: '0.4rem' }}>
+            Factor (ej. área):{' '}
+            <input type="text" placeholder="Factor" style={{ width: '6rem' }}
+              value={divFactor} onChange={(e) => setDivFactor(e.target.value)} />
+          </label>
           <button onClick={agregarLineaDividida}>Agregar línea</button>
         </div>
 

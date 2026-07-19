@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from app.config import UMBRAL_STOCK_MINIMO
 from app.models import (
-    Balance, Balance_Detalle_Producto,
+    Balance, Balance_Detalle,
     Cliente, Cuenta, Deuda, Activo, Tipo_Bien,
     Compra, Detalle_Venta, Item_Absorcion, Materia_Prima, Pago_Trabajador,
     Produccion, Producto_Intermedio, Producto_Terminado, Venta,
@@ -313,10 +313,14 @@ def resumen_desde_ultima_foto(sesion):
 def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
     """
     Toma una foto del balance actual de la fabrica.
-    fecha_balance: fecha de la foto (referencia para "la semana").
+    fecha_balance: fecha de la foto (referencia para "la semana"). None = hoy.
     dias_semana: cuantos dias hacia atras cuentan como "esta semana".
     Devuelve el objeto Balance creado.
     """
+    # Sin fecha explicita, hoy: misma convencion que el resto del backend
+    # (6.10). Antes quedaba en None y el INSERT fallaba con un "Error de base
+    # de datos" generico; no se notaba porque la pantalla siempre manda fecha.
+    fecha_balance = fecha_balance or date.today()
 
     try:
         # ===== ACTIVOS LIQUIDOS: suma de saldos de todas las cuentas =====
@@ -341,20 +345,39 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
 
         # ===== INVENTARIOS VALORIZADOS =====
         # Stock de materia prima: restante x precio unitario del lote
+        # Mientras se valoriza cada bloque se acumula tambien su detalle por
+        # item, para guardarlo en la foto (4.6). Estructura comun:
+        #   {tipo: {id_item: [descripcion, cantidad, valor]}}
+        detalle_foto = {"MP": {}, "INTERMEDIO": {}, "TERMINADO": {}, "ACTIVO": {}}
+
+        def acumular(tipo, id_item, descripcion, cantidad, valor):
+            fila = detalle_foto[tipo].setdefault(id_item, [descripcion, 0, 0])
+            fila[1] += cantidad
+            fila[2] += valor
+
         compras = sesion.query(Compra).filter(Compra.Cantidad_Restante_Compra > UMBRAL_STOCK_MINIMO).all()
         valor_stock_mp = 0
         for c in compras:
             precio_unit = c.Precio_Compra / c.Cantidad_Compra
-            valor_stock_mp += c.Cantidad_Restante_Compra * precio_unit
+            valor = c.Cantidad_Restante_Compra * precio_unit
+            valor_stock_mp += valor
+            mp = sesion.get(Materia_Prima, c.Id_Materia_Prima)
+            acumular("MP", c.Id_Materia_Prima,
+                     mp.Descripcion_Materia_Prima if mp else f"(materia {c.Id_Materia_Prima})",
+                     c.Cantidad_Restante_Compra, valor)
 
         # Stock de producto intermedio valorizado (a su costo unitario)
         prods_int = sesion.query(Produccion_Intermedio).filter(
             Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO
         ).all()
-        valor_stock_intermedio = sum(
-            p.Cantidad_Restante_Producida * (p.Costo_Unitario_Produccion_Intermedio or 0)
-            for p in prods_int
-        )
+        valor_stock_intermedio = 0
+        for p in prods_int:
+            valor = p.Cantidad_Restante_Producida * (p.Costo_Unitario_Produccion_Intermedio or 0)
+            valor_stock_intermedio += valor
+            pi = sesion.get(Producto_Intermedio, p.Id_Producto_Intermedio)
+            acumular("INTERMEDIO", p.Id_Producto_Intermedio,
+                     pi.Descripcion_Producto_Intermedio if pi else f"(intermedio {p.Id_Producto_Intermedio})",
+                     p.Cantidad_Restante_Producida, valor)
 
         # Horas de trabajo en stand-by (registradas pero no consumidas)
         jornadas_pend = sesion.query(Registro_Trabajador).filter(
@@ -374,7 +397,6 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         ).all()
         valor_stock_pt = 0
         valor_stock_pt_conservador = 0
-        detalle_por_producto = {}  # id_producto -> (cantidad, valor)
         for p in producciones:
             producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
             precio_venta = producto.Precio_Venta_Recomendado_Producto_Terminado or 0
@@ -382,11 +404,19 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             valor = p.Cantidad_Restante_Produccion * precio_venta
             valor_stock_pt += valor
             valor_stock_pt_conservador += p.Cantidad_Restante_Produccion * min(costo, precio_venta)
-            # acumular para el detalle por producto
-            if p.Id_Producto_Terminado not in detalle_por_producto:
-                detalle_por_producto[p.Id_Producto_Terminado] = [0, 0]
-            detalle_por_producto[p.Id_Producto_Terminado][0] += p.Cantidad_Restante_Produccion
-            detalle_por_producto[p.Id_Producto_Terminado][1] += valor
+            acumular("TERMINADO", p.Id_Producto_Terminado,
+                     producto.Descripcion_Producto_Terminado if producto else f"(producto {p.Id_Producto_Terminado})",
+                     p.Cantidad_Restante_Produccion, valor)
+
+        # Detalle de activos fijos: la foto ya guardaba los tres TOTALES
+        # (inmuebles/equipos/otros), pero no que activos los componian.
+        for a in sesion.query(Activo).all():
+            tipo_bien = sesion.get(Tipo_Bien, a.Id_Tipo_Bien) if a.Id_Tipo_Bien else None
+            nombre = a.Descripcion_Activo or "(activo sin descripción)"
+            if tipo_bien:
+                nombre = f"{nombre} ({tipo_bien.Nombre_Tipo_Bien})"
+            # Sin cantidad: un activo es una unidad, lo que importa es su valor.
+            acumular("ACTIVO", a.Id_Activo, nombre, 0, a.Valor_Activo or 0)
 
         # Utensilios/feriados comprados pero todavia no absorbidos (4.8)
         valor_utensilios = valor_utensilios_sin_absorber(sesion)
@@ -488,14 +518,19 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         sesion.add(balance)
         sesion.flush()  # para obtener el Id_Balance
 
-        # Detalle por producto
-        for id_prod, (cantidad, valor) in detalle_por_producto.items():
-            sesion.add(Balance_Detalle_Producto(
-                Id_Balance=balance.Id_Balance,
-                Id_Producto_Terminado=id_prod,
-                Cantidad_En_Stock=cantidad,
-                Valor_En_Stock=valor,
-            ))
+        # Detalle por item de los cuatro bloques (4.6). La descripcion se
+        # guarda copiada: la foto tiene que poder leerse tal como era aunque
+        # el item se renombre o se borre despues.
+        for tipo, items in detalle_foto.items():
+            for id_item, (descripcion, cantidad, valor) in items.items():
+                sesion.add(Balance_Detalle(
+                    Id_Balance=balance.Id_Balance,
+                    Tipo_Detalle=tipo,
+                    Id_Item_Balance_Detalle=id_item,
+                    Descripcion_Balance_Detalle=descripcion,
+                    Cantidad_Balance_Detalle=cantidad,
+                    Valor_Balance_Detalle=valor,
+                ))
 
         sesion.commit()
         return balance

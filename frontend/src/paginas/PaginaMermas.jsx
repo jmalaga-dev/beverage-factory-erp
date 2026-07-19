@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero } from '../formato'
 
@@ -25,6 +26,14 @@ function PaginaMermas() {
   const [botellasAbsorcion, setBotellasAbsorcion] = useState('')  // vacio = tasa por defecto
   const [tasa, setTasa] = useState(10)
 
+  // Limpieza de residuos bajo el umbral (mejora 3.5). Flujo en dos pasos:
+  // `residuos` en null = todavia no se busco; [] = se busco y no hay.
+  // `elegidos` guarda solo los DESTILDADOS (ausente = tildado), para que la
+  // lista arranque toda seleccionada sin tener que llenar el objeto.
+  const [residuos, setResiduos] = useState(null)
+  const [elegidos, setElegidos] = useState({})
+  const [umbral, setUmbral] = useState(0.0001)
+
   function cargar() {
     apiGet('/lotes-compra').then(setLotesMP).catch(console.error)
     apiGet('/producciones-intermedias').then(setLotesInt).catch(console.error)
@@ -33,6 +42,38 @@ function PaginaMermas() {
   }
 
   useEffect(() => { cargar() }, [])
+
+  // Paso 1: mostrar qué se pondría en cero. No toca nada todavía.
+  function buscarResiduos() {
+    apiGet('/residuos')
+      .then((d) => {
+        setUmbral(d.umbral)
+        setResiduos(d.residuos)
+        setElegidos({})
+        setMensaje('')
+      })
+      .catch((e) => setMensaje(e.message))
+  }
+
+  // Paso 2: aplicar la merma, solo sobre los que quedaron tildados.
+  function confirmarLimpieza() {
+    const seleccion = residuos
+      .filter((r) => elegidos[`${r.origen}-${r.id_lote}`] !== false)
+      .map((r) => ({ origen: r.origen, id_lote: r.id_lote }))
+    if (seleccion.length === 0) { setMensaje('No dejaste ningún residuo seleccionado'); return }
+
+    apiPost('/residuos/limpiar', { seleccion, fecha: fechaParaEnviar })
+      .then((d) => {
+        const omitidos = d.omitidos.length > 0
+          ? ` (${d.omitidos.length} se omitieron: cambiaron desde la vista previa)`
+          : ''
+        setMensaje(`${d.limpiados.length} lotes cerrados en cero${omitidos}`)
+        setResiduos(null)
+        setElegidos({})
+        cargar()
+      })
+      .catch((e) => setMensaje(e.message))
+  }
 
   // Costo unitario del lote elegido, segun su origen (para estimar el costo
   // que se absorbera en una merma).
@@ -203,46 +244,93 @@ function PaginaMermas() {
 
       {mensaje && <p>{mensaje}</p>}
 
-      <h2>Stock actual — Materia prima</h2>
-      <table border="1">
-        <thead><tr><th>Lote</th><th>Materia</th><th>Restante</th></tr></thead>
-        <tbody>
-          {lotesMP.map((l) => (
-            <tr key={l.id_compra}>
-              <td>{l.id_compra}</td><td>{l.nombre_materia}</td><td>{fmtNumero(l.cantidad_restante)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* --- Limpieza de residuos bajo el umbral (mejora 3.5) --- */}
+      <h2>Limpiar residuos de stock</h2>
+      <p style={{ fontSize: '0.9em', color: '#666' }}>
+        Lotes que quedaron con un resto minúsculo (menos de {umbral}) y nunca
+        se cierran del todo. No afectan el balance —ya se excluyen de todos los
+        cálculos— pero se acumulan. Cerrarlos genera una <strong>merma</strong> por
+        ese resto exacto: no borra el lote, deja el evento registrado.
+      </p>
+      <button onClick={buscarResiduos}>Buscar residuos</button>
 
-      <h2>Stock actual — Producto intermedio</h2>
-      <table border="1">
-        <thead><tr><th>Lote</th><th>Producto</th><th>Restante</th><th>Costo</th></tr></thead>
-        <tbody>
-          {lotesInt.map((l) => (
-            <tr key={l.id_produccion_intermedio}>
-              <td>{l.id_produccion_intermedio}</td><td>{l.descripcion}</td>
-              <td>{fmtNumero(l.cantidad_restante)}</td><td>{fmtNumero(l.costo_unitario, 4)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {residuos !== null && residuos.length === 0 && (
+        <p style={{ color: '#575' }}>No hay residuos: todos los lotes están limpios.</p>
+      )}
 
-      <h2>Stock actual — Producto terminado</h2>
-      <table border="1">
-        <thead><tr><th>Lote</th><th>Producto</th><th>Restante</th><th>Costo</th></tr></thead>
-        <tbody>
-          {lotesTerm.map((l) => (
-            <tr key={l.id_produccion}>
-              <td>{l.id_produccion}</td><td>{l.descripcion}</td>
-              <td>{fmtNumero(l.cantidad_restante)}</td><td>{fmtNumero(l.costo_unitario, 4)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {residuos !== null && residuos.length > 0 && (
+        <div style={{ border: '1px solid #a06000', padding: '0.6rem', margin: '0.5rem 0' }}>
+          <p style={{ marginTop: 0 }}>
+            <strong>Se pondrán en cero estos {residuos.length} lotes.</strong> Revisá
+            antes de confirmar; destildá el que quieras dejar como está.
+          </p>
+          <table border="1">
+            <thead>
+              <tr><th></th><th>Origen</th><th>Lote</th><th>Producto</th><th>Resto a mermar</th></tr>
+            </thead>
+            <tbody>
+              {residuos.map((r) => {
+                const clave = `${r.origen}-${r.id_lote}`
+                return (
+                  <tr key={clave}>
+                    <td>
+                      <input type="checkbox" checked={elegidos[clave] !== false}
+                        onChange={(e) => setElegidos({ ...elegidos, [clave]: e.target.checked })} />
+                    </td>
+                    <td>{r.origen}</td>
+                    <td>{r.id_lote}</td>
+                    <td>{r.nombre}</td>
+                    <td style={{ textAlign: 'right' }}>{r.restante}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p>
+            <button onClick={confirmarLimpieza}>
+              CONFIRMAR y mermar {residuos.filter((r) => elegidos[`${r.origen}-${r.id_lote}`] !== false).length} lotes
+            </button>
+            {' '}
+            <button onClick={() => { setResiduos(null); setElegidos({}) }}>Cancelar</button>
+          </p>
+        </div>
+      )}
 
-          
-      
+      {/* --- Stock actual, plegable: son tablas largas que casi siempre
+              estorban mientras se carga una merma (mismo patrón que 6.4) --- */}
+      <TablaFiltrable
+        titulo="Stock actual — Materia prima"
+        filas={lotesMP}
+        claveOrden="nombre_materia"
+        columnas={[
+          { key: 'id_compra', label: 'Lote' },
+          { key: 'nombre_materia', label: 'Materia' },
+          { key: 'cantidad_restante', label: 'Restante', formato: (v) => fmtNumero(v) },
+        ]}
+      />
+      <TablaFiltrable
+        titulo="Stock actual — Producto intermedio"
+        filas={lotesInt}
+        claveOrden="descripcion"
+        columnas={[
+          { key: 'id_produccion_intermedio', label: 'Lote' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'cantidad_restante', label: 'Restante', formato: (v) => fmtNumero(v) },
+          { key: 'unidad', label: 'Unidad' },
+          { key: 'costo_unitario', label: 'Costo', formato: (v) => fmtNumero(v, 4) },
+        ]}
+      />
+      <TablaFiltrable
+        titulo="Stock actual — Producto terminado"
+        filas={lotesTerm}
+        claveOrden="descripcion"
+        columnas={[
+          { key: 'id_produccion', label: 'Lote' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'cantidad_restante', label: 'Restante', formato: (v) => fmtNumero(v) },
+          { key: 'costo_unitario', label: 'Costo', formato: (v) => fmtNumero(v, 4) },
+        ]}
+      />
     </div>
   )
 }
