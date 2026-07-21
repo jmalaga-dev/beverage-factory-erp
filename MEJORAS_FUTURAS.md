@@ -1662,6 +1662,63 @@ por ahora, no como pendiente.
 Para el final (etapa E), después de que el sistema esté probado en el uso
 diario real.
 
+**Estado: escrito y parcialmente verificado (jul 2026). Falta correrlo.**
+
+Archivos: `docker-compose.yml` (demo), `docker-compose.real.yml` (override),
+`docker/` (Dockerfiles de backend y frontend, `nginx.conf`, `init/00_init.sh`,
+`seed_demo.sql`, `README.md`) y `.dockerignore`.
+
+**Dos variantes, decisión de negocio (jul 2026):**
+- **Demo con datos ficticios** — para mostrar el sistema (CV, terceros). Todo
+  el contenido de `seed_demo.sql` es inventado; no hay un solo dato del
+  negocio, porque el repo es público (regla de DECISIONES_DISENO.md §8).
+- **Real desde un respaldo** — para que alguien evalúe el sistema con la
+  información verdadera. El `.dump` se **monta al ejecutar** desde una carpeta
+  de la máquina; nunca se copia a la imagen ni al repositorio (`*.dump` está
+  en `.gitignore` y en `.dockerignore`). Si se comparte la imagen construida,
+  los datos no viajan adentro.
+
+**Power BI no puede ir en un contenedor**: es una app de escritorio Windows,
+sin versión Linux. Lo que sí se resolvió es dejar la base accesible desde
+afuera (puerto 5433) y crear el rol `powerbi_lectura` en el arranque, para
+que Power BI Desktop del anfitrión se conecte igual que hoy se conecta a la
+base local.
+
+**Huecos que aparecieron al empaquetar (y se taparon):**
+- **No existía `requirements.txt`.** El backend no declaraba sus dependencias
+  en ningún lado: nadie —ni el propio autor en otra PC— podía reproducir el
+  entorno. Se generó desde los imports reales, con las versiones instaladas y
+  fijadas con `==`.
+- **No existía `.env.example`**, así que no había forma de saber qué
+  variables hacen falta sin abrir el `.env` real.
+- **CORS y la URL del backend estaban fijas en el código.** Ahora salen de
+  `CORS_ORIGINS` (backend) y `VITE_API_URL` (frontend, resuelta al compilar).
+  Los valores por defecto son los de siempre: **el entorno local no cambió**.
+- **Choque de puertos:** el compose publica el backend en **8001** y la base
+  en **5433**, no en 8000/5432, porque el entorno de desarrollo ya los ocupa
+  y los contenedores no arrancarían con el entorno local prendido.
+
+**Qué está verificado y qué no.** Docker no está instalado en la máquina de
+desarrollo, así que **`docker compose up` nunca se ejecutó**. Sí se verificó,
+contra PostgreSQL real y sobre una base descartable (creada y borrada):
+- El esquema base + las **24 migraciones** aplican limpio sobre una base
+  vacía. Es un camino que nunca se había probado: la base real creció
+  migración por migración, no de cero.
+- El esquema resultante es **idéntico** al de producción: 226 columnas contra
+  226, cero diferencias en ambos sentidos.
+- El `seed_demo.sql` carga sin errores sobre ese esquema.
+- **La API real responde bien contra esa base** (se levantó uvicorn en el
+  puerto 8001 apuntando a la base de prueba y se consultaron 9 endpoints).
+  Los números del seed son coherentes: 120 botellas producidas − 24 vendidas
+  = 96 en stock, 16 paquetes equivalentes, y el balance calcula.
+- Los `docker-compose.yml` son YAML válido, el `00_init.sh` pasa `bash -n`, y
+  los tres puertos cuadran entre sí (el frontend llama al puerto que el
+  backend publica, y ese origen está en la lista de CORS).
+
+Queda sin probar el plumbing de Docker: construcción de las imágenes, red
+entre contenedores y orden de arranque. Al instalar Docker, el primer
+`docker compose up --build` es la prueba pendiente.
+
 ### 8.7 Self-hosting real (mediano plazo, con túnel)
 Distinto de 8.6: esto es para uso productivo real, no solo demo. Unas 3
 personas necesitarán conectarse, casi siempre en el horario de trabajo (la

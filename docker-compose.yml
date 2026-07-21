@@ -1,0 +1,81 @@
+# Fabrica V2 en contenedores (mejora 8.6).
+#
+# Modo por defecto: DEMO con datos ficticios. Levantar con:
+#     docker compose up --build
+# y abrir http://localhost:8080
+#
+# Para correrlo con datos REALES a partir de un respaldo, ver
+# docker-compose.real.yml y docker/README.md.
+#
+# Nada de esto toca la instalacion local (Python/Node/PostgreSQL a mano):
+# son contenedores aparte, con su propia base en un volumen propio.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fabrica
+      POSTGRES_USER: fabrica
+      POSTGRES_PASSWORD: fabrica_demo
+      MODO_DATOS: demo
+      # Si se define, se crea el rol de solo lectura para Power BI. Power BI
+      # Desktop no corre en un contenedor (es una app Windows): se conecta
+      # desde la maquina anfitriona al puerto 5432 publicado abajo.
+      POWERBI_PASSWORD: powerbi_demo
+    ports:
+      # Publicado para poder conectar Power BI o pgAdmin desde afuera.
+      - "5433:5432"
+    volumes:
+      - datos_db:/var/lib/postgresql/data
+      # Solo lectura: el contenedor no debe poder modificar el repositorio.
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+      - ./fabrica_v2_postgres.sql:/sql/00_schema.sql:ro
+      - ./backend/migraciones:/sql/migraciones:ro
+      - ./docker/seed_demo.sql:/sql/seed_demo.sql:ro
+    healthcheck:
+      # El backend no debe arrancar antes de que la base acepte conexiones,
+      # o falla al primer query. `pg_isready` es el chequeo propio de postgres.
+      test: ["CMD-SHELL", "pg_isready -U fabrica -d fabrica"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      DB_HOST: db          # el nombre del servicio resuelve por DNS interno
+      DB_PORT: 5432        # puerto INTERNO, no el 5433 publicado
+      DB_NAME: fabrica
+      DB_USER: fabrica
+      DB_PASSWORD: fabrica_demo
+      # El navegador pide desde el frontend servido en 8080: sin este origen
+      # el navegador bloquea todas las llamadas por CORS.
+      CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+    ports:
+      # 8001 y no 8000 a proposito: el entorno de desarrollo local ya usa el
+      # 8000, y si chocan el contenedor no arranca. Con este puerto se pueden
+      # tener los dos prendidos a la vez.
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        # Se resuelve al COMPILAR. Es la URL a la que llega el NAVEGADOR, no
+        # el contenedor: por eso es localhost:8001 (el puerto PUBLICADO por el
+        # backend) y no http://backend:8000, que solo existe dentro de la red
+        # de Docker y el navegador no sabria resolver.
+        VITE_API_URL: http://localhost:8001
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  datos_db:

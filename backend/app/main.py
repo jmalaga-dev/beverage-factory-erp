@@ -5,6 +5,8 @@ Solo ensambla: crea la app, configura CORS y manejo de errores,
 y registra los routers de app/rutas (uno por dominio).
 """
 
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -41,10 +43,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Permitir que el frontend (que corre en otro puerto) pueda pedir datos a esta API
+# Permitir que el frontend (que corre en otro puerto) pueda pedir datos a esta
+# API. Los origenes salen del .env (CORS_ORIGINS, separados por coma) para que
+# el despliegue en Docker —donde el frontend se sirve con nginx en otro
+# puerto— pueda agregar el suyo sin tocar codigo. Sin la variable, quedan los
+# dos de desarrollo de siempre: el entorno local no cambia.
+CORS_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",") if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],   # permite GET, POST, etc.
     allow_headers=["*"],

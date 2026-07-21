@@ -1,0 +1,21 @@
+# Dependencias del backend (Fabrica V2).
+#
+# Se derivaron de los imports reales del codigo, con las versiones que estan
+# instaladas y funcionando hoy. Estan fijadas con == a proposito: el objetivo
+# de este archivo es que otra maquina (o un contenedor) levante EXACTAMENTE el
+# mismo entorno que esta PC, no la ultima version de cada cosa.
+#
+# Instalar:  pip install -r requirements.txt
+
+fastapi==0.138.0
+uvicorn==0.49.0
+SQLAlchemy==2.0.51
+psycopg2-binary==2.9.12
+python-dotenv==1.2.2
+pydantic==2.13.4
+
+# Solo lo necesita el script de migracion del excel
+# (backend/scripts/migrar_excel_v2.py), no la aplicacion. Se deja aca para no
+# tener un segundo archivo por una sola dependencia; si algun dia molesta en
+# el contenedor, se saca y se documenta aparte.
+openpyxl==3.1.5

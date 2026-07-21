@@ -1,0 +1,21 @@
+# Lo que NO debe entrar en las imagenes de Docker.
+# Ademas de achicar la imagen, evita que datos o secretos viajen dentro de
+# ella: una imagen se comparte, y lo que este adentro va con ella.
+
+# Secretos y datos reales
+**/.env
+*.dump
+datos_reales/
+*.pbix
+
+# Dependencias y builds (se generan dentro del contenedor)
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.venv
+
+# Historia y herramientas
+.git
+.claude
+reportes-powerbi/*.pbix

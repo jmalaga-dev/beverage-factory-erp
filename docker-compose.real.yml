@@ -1,0 +1,31 @@
+# Variante con DATOS REALES, a partir de un respaldo pg_dump.
+#
+# Se usa SUMADO al compose principal, no en lugar de el:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.real.yml up --build
+#
+# Pensado para que otra persona pruebe el sistema con la informacion
+# verdadera del negocio y evalue que da y que no da.
+#
+# ---------------------------------------------------------------------------
+# REGLA: el respaldo NO se copia a la imagen ni al repositorio.
+# Se monta desde una carpeta de la maquina en el momento de ejecutar, y
+# `.dump` ya esta en .gitignore. La imagen construida no lo contiene: si se
+# comparte la imagen, no viajan los datos.
+# ---------------------------------------------------------------------------
+#
+# Antes de levantar, definir de donde sale el respaldo (la carpeta, no el
+# archivo: el script toma el primer .dump que encuentre):
+#
+#   Windows PowerShell:  $env:RUTA_RESPALDOS="D:\Backups_BD_Fabrica"
+#   Linux/Mac:           export RUTA_RESPALDOS=/ruta/a/respaldos
+#
+# Si la base ya fue inicializada antes, hay que borrar su volumen para que
+# vuelva a correr la inicializacion:  docker compose down -v
+
+services:
+  db:
+    environment:
+      MODO_DATOS: real
+    volumes:
+      - ${RUTA_RESPALDOS:-./respaldos}:/dump:ro

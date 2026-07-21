@@ -4,7 +4,11 @@
 // apiGet / apiPost. Si cambia el puerto o el dominio (al desplegar),
 // solo se edita BASE_URL aqui.
 
-const BASE_URL = 'http://127.0.0.1:8000'
+// La URL puede venir de una variable de entorno de Vite (VITE_API_URL), que
+// se resuelve al compilar. Sirve para el despliegue con Docker, donde el
+// backend no esta en 127.0.0.1:8000. Sin la variable queda el valor de
+// siempre, asi que el entorno de desarrollo local no cambia en nada.
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 // Lee del backend y devuelve el JSON. Si la respuesta es un error,
 // lanza una excepcion con el mensaje del backend (campo "detail").
