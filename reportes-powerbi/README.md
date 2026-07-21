@@ -583,6 +583,76 @@ Cada fila de esta consulta tiene que ser un punto en el gráfico de líneas.
 
 ---
 
+# Dashboard 5 — Ingreso externo mes a mes, año contra año
+
+*¿En qué mes y qué año entró más plata de afuera (no ventas)?*
+
+"Ingreso externo" es plata que entra a una cuenta sin que sea el cobro de una
+venta: aportes propios, préstamos, cualquier entrada registrada desde la
+pantalla de Transferencias con el botón de ingreso externo. Vive en
+`Movimiento` como `Tipo_Movimiento = 'INGRESO_EXTERNO'`, junto con todo el
+resto de la plata que se mueve (ventas, pagos, transferencias entre cuentas
+propias) — no es una tabla aparte.
+
+## Tablas a cargar
+
+`Movimiento`, más la tabla `Calendario` ya armada para los dashboards 2 a 4
+(reusarla, no crear otra).
+
+## Relación
+
+```
+Calendario[Fecha] (1)  →  Movimiento[Fecha_Movimiento] (muchos)
+```
+
+## Medida nueva
+
+```dax
+Ingreso Externo =
+CALCULATE (
+    SUM ( 'Movimiento'[Monto_Movimiento] ),
+    'Movimiento'[Tipo_Movimiento] = "INGRESO_EXTERNO"
+)
+```
+
+## Armar el visual
+
+Mismo truco del Dashboard 2 (separar mes y año en dos roles en vez de una
+fecha continua en el eje):
+
+- **Eje X** → `Calendario[Nombre Mes]` (los 12 meses)
+- **Leyenda** → `Calendario[Año]` (cada año, una línea)
+- **Valores** → `[Ingreso Externo]`
+
+Gráfico de **líneas**, igual que la captura de referencia (Dashboard 2): un
+color por año, los 12 meses en el eje, así se ve de un vistazo qué mes
+concentra más ingreso externo y si eso se repite año a año o fue un pico
+puntual.
+
+⚠️ Depende del mismo fix de orden que el Dashboard 2: si `Nombre Mes` no
+está configurado como "Ordenar por → `Mes`" (ver la sección de la tabla
+Calendario), el eje sale alfabético en vez de cronológico.
+
+Opcional: una tarjeta con `[Ingreso Externo]` filtrada al año en curso, para
+el total acumulado sin abrir el gráfico.
+
+## Verificación
+
+```sql
+SELECT to_char("Fecha_Movimiento", 'YYYY') AS anio,
+       to_char("Fecha_Movimiento", 'MM') AS mes,
+       SUM("Monto_Movimiento") AS ingreso_externo
+FROM "Movimiento"
+WHERE "Tipo_Movimiento" = 'INGRESO_EXTERNO'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+Cada fila de esta consulta tiene que coincidir con el punto de la línea de
+ese año en ese mes, en Power BI.
+
+---
+
 ## Dashboards pendientes (no documentados todavía)
 
 - **Rentabilidad real por producto con el acumulado de la sección 2** → ese sí
