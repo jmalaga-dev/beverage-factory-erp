@@ -1457,8 +1457,12 @@ día (registrar, validar, balance, resumen diario); el análisis exploratorio
 e histórico va a Power BI (Desktop es gratis; conexión con usuario de solo
 lectura a PostgreSQL).
 
-**Estado: en progreso (jul 2026) — conexión lista + primer dashboard
-documentado.** Todo en `reportes-powerbi/README.md`.
+**Estado: en progreso (jul 2026) — conexión lista + 9 dashboards
+documentados.** Todo en `reportes-powerbi/README.md`. "Documentado" =
+tablas + relaciones + medidas DAX + armado del visual + consulta SQL de
+verificación; **armarlos en Power BI Desktop es manual** (es una app de
+escritorio Windows), así que el README es la receta, no una prueba de que el
+visual ya se montó.
 
 - **Rol `powerbi_lectura`**: usuario de PostgreSQL con `SELECT` y nada más
   (mínimo privilegio: si el reporte falla, no puede tocar un dato).
@@ -1473,7 +1477,25 @@ documentado.** Todo en `reportes-powerbi/README.md`.
   el README (conexión + DAX + cómo armar cada visual): con eso se reconstruye.
   Alternativa futura si se quiere versionar el diseño: formato `.pbip`
   (carpeta de JSON, sin datos embebidos).
-- **Dashboard 1 — Pareto 80/20**: medidas DAX + armado del visual.
+- **Dashboards documentados (9):**
+  1. **Pareto 80/20 de rentabilidad** (margen bruto/neto con selector).
+  2. **Producto más vendido / con más margen por período** (+ comparación
+     año contra año).
+  3. **Mejor cliente / mejor zona** (+ mapa por lat/long).
+  4. **Evolución de patrimonio y escenarios** (fotos de `Balance`).
+  5. **Ingreso externo mes a mes, año contra año.**
+  6. **Rentabilidad acumulada por producto** (recuperación de inversión, el
+     `saldo` de 2.C — distinto del Pareto; verificado contra la BD real).
+  7. **Evolución de precio por materia prima + detección de outliers** (cara
+     visual de 5.2; `ALCOHOL CAIMAN` va de 1,00 a 17,33 en el histórico).
+  8. **Mano de obra por trabajador y mes** (horas, costo derivado de la tarifa
+     de 10.1, y botellas/hora a nivel fábrica).
+  9. **Deudas: saldo vivo + pagos en el tiempo** (no es aging clásico: `Deuda`
+     no tiene vencimiento y `Movimiento_Deuda` sólo guarda `PAGO`, así que el
+     saldo histórico no se reconstruye — sí la foto de hoy y los pagos).
+- **Pendiente (1):** análisis de precios **por proveedor** — bloqueado por
+  datos, no por código: 5.1 ya creó las tablas pero `Proveedor` está vacía y
+  las compras migradas tienen `Id_Proveedor` en NULL.
 
 **Definición de "ganancia" (importante, se decidió acá):** el Pareto NO usa el
 `saldo` de la mejora 2.C. Son métricas distintas y está bien que no coincidan:

@@ -653,11 +653,418 @@ ese año en ese mes, en Power BI.
 
 ---
 
+# Dashboard 6 — Rentabilidad acumulada por producto (recuperación de inversión)
+
+*¿Qué productos ya le devolvieron a la fábrica lo que costó producirlos, y
+cuáles todavía están en rojo?*
+
+Ojo: **no es el Pareto (Dashboard 1)**. El Pareto mira la ganancia de lo
+**vendido**; esto mira la **recuperación de capital**: resta el costo de **todo
+lo producido**, incluido el stock que todavía no se vendió. Un producto nuevo
+con mucha producción y pocas ventas sale muy negativo acá aunque cada botella
+vendida deje margen — es exactamente el `saldo` de la mejora 2.C
+(`saldo_producto.py`), la misma cuenta que usa el reparto 70/30 al vender.
+
+```
+saldo del producto = ingresos de todas sus ventas − inversión en producirlo
+inversión = Σ ( Cantidad_Producida × Precio_Unitario ) de todos sus lotes
+```
+
+## Tablas a cargar
+
+Ninguna nueva: reusa `Produccion`, `Detalle_Venta`, `Producto_Terminado` del
+Dashboard 1. Las relaciones que hacen falta ya están armadas ahí
+(`Detalle_Venta → Produccion → Producto_Terminado`).
+
+## Medidas DAX
+
+```dax
+Inversión acumulada =
+SUMX (
+    'Produccion',
+    'Produccion'[Cantidad_Producida_Produccion]
+        * 'Produccion'[Precio_Unitario_Producto_Terminado]
+)
+```
+
+`[Ingresos]` ya existe (Dashboard 1). Al ponerlo junto a un producto en un
+visual, el filtro viaja `Producto_Terminado → Produccion → Detalle_Venta`, así
+que da los ingresos **de ese producto** sin escribir nada nuevo.
+
+```dax
+Saldo del producto = [Ingresos] - [Inversión acumulada]
+```
+
+```dax
+Recuperó inversión =
+IF ( [Saldo del producto] > 0, "Sí", "No" )
+```
+
+KPI — cuántos productos siguen sin recuperar:
+
+```dax
+Productos sin recuperar =
+COUNTROWS (
+    FILTER (
+        VALUES ( 'Producto_Terminado'[Descripcion_Producto_Terminado] ),
+        [Saldo del producto] < 0
+    )
+)
+```
+
+> **Ajuste por reproceso (hoy = 0, incluir cuando exista).** Al reprocesar,
+> las botellas pasan de un lote a otro pero la `Cantidad_Producida` del origen
+> no baja, así que su costo queda contado en los dos lotes y la inversión se
+> infla. `saldo_producto.py` lo corrige restando ese costo duplicado
+> (`Movimiento_Inventario` tipo `REPROCESO`/`SALIDA`). En esta base **no hay
+> ningún reproceso todavía**, así que la medida de arriba coincide exacto con
+> la app. Cuando haya reprocesos, restarle a `[Inversión acumulada]` el costo
+> arrastrado (`Σ Cantidad_Movimiento × Precio_Unitario del lote origen`) para
+> volver a cuadrar.
+
+## Armar el visual
+
+1. **Gráfico de barras**: eje `Producto_Terminado[Descripcion_Producto_Terminado]`,
+   valor `[Saldo del producto]`, **ordenado ascendente** (los más negativos
+   arriba: son los que más lejos están de recuperar).
+2. Color por `[Recuperó inversión]` (rojo = No, verde = Sí) para leer de un
+   golpe quién está en rojo.
+3. Tarjeta con `[Productos sin recuperar]`.
+4. Filtro visual *Top/Bottom N* por `[Saldo del producto]` si hay demasiados
+   productos para leerlos todos.
+
+Opcional — si querés el mismo corte **por mes** (¿cómo venía el saldo hace 3
+meses?), sumá la tabla `Calendario` y su relación a `Venta`; pero recordá que
+la inversión también es acumulada, así que un corte por fecha necesita una
+medida de saldo "hasta la fecha" más elaborada. La foto de todos los tiempos
+(la de arriba) es la que responde la pregunta principal.
+
+## Verificación
+
+```sql
+WITH inv AS (
+  SELECT "Id_Producto_Terminado" AS pid,
+         SUM("Cantidad_Producida_Produccion" * "Precio_Unitario_Producto_Terminado") AS inversion
+  FROM "Produccion" GROUP BY 1),
+ing AS (
+  SELECT p."Id_Producto_Terminado" AS pid,
+         SUM(dv."Cantidad_Venta" * dv."Precio_Venta_Real") AS ingresos
+  FROM "Detalle_Venta" dv
+  JOIN "Produccion" p ON p."Id_Produccion" = dv."Id_Produccion"
+  GROUP BY 1)
+SELECT pt."Descripcion_Producto_Terminado",
+       ROUND(COALESCE(ing.ingresos,0)::numeric, 2) AS ingresos,
+       ROUND(COALESCE(inv.inversion,0)::numeric, 2) AS inversion,
+       ROUND((COALESCE(ing.ingresos,0) - COALESCE(inv.inversion,0))::numeric, 2) AS saldo
+FROM "Producto_Terminado" pt
+LEFT JOIN inv ON inv.pid = pt."Id_Producto_Terminado"
+LEFT JOIN ing ON ing.pid = pt."Id_Producto_Terminado"
+WHERE COALESCE(inv.inversion,0) <> 0 OR COALESCE(ing.ingresos,0) <> 0
+ORDER BY saldo ASC;
+```
+
+El `saldo` de cada fila tiene que coincidir con `[Saldo del producto]` de ese
+producto en Power BI. La cuenta de filas con `saldo < 0` es
+`[Productos sin recuperar]`.
+
+---
+
+# Dashboard 7 — Evolución de precio por materia prima (y detección de outliers)
+
+*¿Cómo se movió el precio de cada insumo en el tiempo, y qué precios viejos
+parecen errores de carga del Excel?*
+
+Este dashboard es la cara visual de la mejora **5.2**: hay materias primas cuyo
+precio unitario mínimo histórico está muy por debajo de cualquier compra
+reciente (en la base real, `ALCOHOL CAIMAN` va de 1,00 a 17,33 — 17x; varios
+envases de 200 a más de 1000). Parte es inflación de 5 años, parte son
+probables errores de tipeo arrastrados del Excel. Verlos en una línea temporal
+es lo que permite distinguir una cosa de la otra.
+
+## Tablas a cargar
+
+`Compra`, `Materia_Prima`, más la tabla `Calendario`.
+
+## Relaciones
+
+```
+Compra[Id_Materia_Prima] (muchos) → Materia_Prima[Id_Materia_Prima] (1)
+Calendario[Fecha]        (1)       → Compra[Fecha_Compra]           (muchos)
+```
+
+⚠️ **`Precio_Compra` es el precio TOTAL de la compra, no el unitario.** El
+precio por unidad es `Precio_Compra / Cantidad_Compra`. Por eso el promedio
+correcto es **ponderado** (total Bs ÷ total cantidad), no el promedio de los
+unitarios: una compra de 1 kg no puede pesar igual que una de 100 kg. Es el
+mismo criterio del costo promedio del stock (mejora 1.3) y de la simulación
+(1.5), así que los números son comparables entre pantallas.
+
+## Medidas DAX
+
+```dax
+Bs comprados = SUM ( 'Compra'[Precio_Compra] )
+```
+```dax
+Cantidad comprada = SUM ( 'Compra'[Cantidad_Compra] )
+```
+```dax
+Precio unitario ponderado = DIVIDE ( [Bs comprados], [Cantidad comprada] )
+```
+
+Para los outliers, el mínimo y el máximo precio unitario de una sola compra en
+el filtro actual:
+
+```dax
+PU mínimo = MINX ( 'Compra', DIVIDE ( 'Compra'[Precio_Compra], 'Compra'[Cantidad_Compra] ) )
+```
+```dax
+PU máximo = MAXX ( 'Compra', DIVIDE ( 'Compra'[Precio_Compra], 'Compra'[Cantidad_Compra] ) )
+```
+```dax
+Ratio máx/mín = DIVIDE ( [PU máximo], [PU mínimo] )
+```
+
+Un `[Ratio máx/mín]` alto (ej. > 3) es la señal de "acá hay un precio raro":
+puede ser inflación real o un error. La línea temporal dice cuál.
+
+## Armar los visuales
+
+**Línea de evolución (el visual principal):**
+1. Segmentación (slicer) con `Materia_Prima[Descripcion_Materia_Prima]` — se
+   elige **un** insumo por vez (si no, la línea mezcla peras con manzanas).
+2. Gráfico de **líneas**: eje `Calendario[Año-Mes]` (o `Calendario[Año]` para
+   una vista más gruesa), valor `[Precio unitario ponderado]`.
+3. ⚠️ Depende del mismo fix de orden de `Año-Mes` de la tabla Calendario; sin
+   eso el eje sale desordenado.
+
+**Tabla de outliers (para barrer todos los insumos de un vistazo):**
+- Tabla: filas `Materia_Prima[Descripcion_Materia_Prima]`, columnas
+  `[PU mínimo]`, `[Precio unitario ponderado]`, `[PU máximo]`,
+  `[Ratio máx/mín]`, ordenada por `[Ratio máx/mín]` descendente.
+- Filtro visual: `[Cantidad comprada]` con "n.º de compras" alto (o un recuento)
+  para no marcar como outlier un insumo con 2 compras — el ratio sólo es
+  informativo con suficiente historia.
+- Formato condicional (fondo de la columna `[Ratio máx/mín]`) para pintar de
+  rojo los ratios altos.
+
+**Cómo usarlo:** ordenás la tabla por ratio, y para cada insumo sospechoso
+hacés clic (o lo elegís en el slicer) y mirás la línea. Si el precio bajo es un
+punto aislado de hace años y todo lo reciente es más caro, es candidato a error
+de carga (mejora 5.2). Si la subida es gradual, es inflación real.
+
+## Verificación
+
+```sql
+SELECT mp."Descripcion_Materia_Prima",
+       COUNT(*) AS n_compras,
+       ROUND(MIN(c."Precio_Compra" / c."Cantidad_Compra")::numeric, 2) AS pu_min,
+       ROUND((SUM(c."Precio_Compra") / SUM(c."Cantidad_Compra"))::numeric, 2) AS pu_ponderado,
+       ROUND(MAX(c."Precio_Compra" / c."Cantidad_Compra")::numeric, 2) AS pu_max
+FROM "Compra" c
+JOIN "Materia_Prima" mp ON mp."Id_Materia_Prima" = c."Id_Materia_Prima"
+WHERE c."Cantidad_Compra" > 0
+GROUP BY 1
+HAVING COUNT(*) > 15
+ORDER BY (MAX(c."Precio_Compra" / c."Cantidad_Compra")
+          / NULLIF(MIN(c."Precio_Compra" / c."Cantidad_Compra"), 0)) DESC;
+```
+
+`pu_ponderado` tiene que coincidir con `[Precio unitario ponderado]` de ese
+insumo (sin segmentación de fecha), y `pu_min` / `pu_max` con las medidas
+homónimas. La materia prima al tope de esta lista es la de ratio más alto — la
+primera candidata a revisar.
+
+---
+
+# Dashboard 8 — Mano de obra por trabajador y mes
+
+*¿Cuántas horas puso cada trabajador, cuánto costó, y cuántas botellas salieron
+por hora?*
+
+## Tablas a cargar
+
+`Registro_Trabajador` (las jornadas), `Trabajador`, `Produccion` (ya cargada
+del Dashboard 1) y la tabla `Calendario`.
+
+## Relaciones
+
+```
+Registro_Trabajador[Id_Trabajador] (muchos) → Trabajador[Id_Trabajador]        (1)
+Calendario[Fecha]                  (1)       → Registro_Trabajador[Fecha_Registro_Trabajador] (muchos)
+Calendario[Fecha]                  (1)       → Produccion[Fecha_Produccion]     (muchos)
+```
+
+Las dos relaciones de `Calendario` a tablas distintas conviven sin problema (es
+una por tabla de hechos).
+
+## Columna calculada (sobre `Trabajador`)
+
+La tarifa por hora se **deriva** del sueldo semanal y las horas base — es la
+misma cuenta que hizo la mejora 10.1 en la app (`sueldo / horas base`), no un
+dato aparte:
+
+```dax
+Tarifa hora = DIVIDE ( 'Trabajador'[Pago_Trabajador], 'Trabajador'[Horas_Base_Trabajador] )
+```
+
+## Medidas DAX
+
+```dax
+Horas trabajadas = SUM ( 'Registro_Trabajador'[Horas_Registro_Trabajador] )
+```
+
+```dax
+Costo mano de obra =
+SUMX (
+    'Registro_Trabajador',
+    'Registro_Trabajador'[Horas_Registro_Trabajador]
+        * RELATED ( 'Trabajador'[Tarifa hora] )
+)
+```
+
+```dax
+Botellas producidas = SUM ( 'Produccion'[Cantidad_Producida_Produccion] )
+```
+
+```dax
+Botellas por hora = DIVIDE ( [Botellas producidas], [Horas trabajadas] )
+```
+
+## Armar los visuales
+
+1. Slicers de `Calendario[Año]` y `Calendario[Nombre Mes]` para acotar el
+   período.
+2. **Horas y costo por trabajador:** gráfico de barras, eje
+   `Trabajador[Nombre_Trabajador]`, valores `[Horas trabajadas]` y
+   `[Costo mano de obra]` (o dos gráficos si preferís no mezclar escalas).
+3. **Costo de mano de obra mes a mes:** gráfico de líneas, eje
+   `Calendario[Año-Mes]`, valor `[Costo mano de obra]` — la tendencia del gasto
+   en sueldos.
+4. **Eficiencia (nivel fábrica):** tarjeta o línea con `[Botellas por hora]`.
+
+⚠️ **`[Botellas por hora]` sólo tiene sentido a nivel fábrica/mes, NO por
+trabajador.** La producción no se atribuye a una persona: el cierre semanal
+(mejora 3.7) reparte las horas entre los productos por botellas equivalentes,
+no al revés. Poner `[Botellas por hora]` con `Trabajador` en el eje daría un
+número sin significado. Dejá esa métrica en una tarjeta global o cortada sólo
+por fecha.
+
+⚠️ **Dato de calidad:** las jornadas migradas del Excel tienen tarifas reales,
+pero si algún trabajador viejo quedó cargado en Bs/hora (en vez de sueldo
+semanal, ver mejora 10.1) su `[Tarifa hora]` va a salir distorsionada hasta que
+se reingrese su sueldo. Revisá la columna `[Tarifa hora]` en una tabla simple
+antes de confiar en el costo.
+
+## Verificación
+
+```sql
+SELECT t."Nombre_Trabajador",
+       to_char(rt."Fecha_Registro_Trabajador", 'YYYY-MM') AS anio_mes,
+       ROUND(SUM(rt."Horas_Registro_Trabajador")::numeric, 1) AS horas,
+       ROUND(SUM(rt."Horas_Registro_Trabajador"
+             * (t."Pago_Trabajador" / NULLIF(t."Horas_Base_Trabajador", 0)))::numeric, 2) AS costo
+FROM "Registro_Trabajador" rt
+JOIN "Trabajador" t ON t."Id_Trabajador" = rt."Id_Trabajador"
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+Filtrá el mismo trabajador y mes en Power BI y comparás `horas` contra
+`[Horas trabajadas]` y `costo` contra `[Costo mano de obra]`.
+
+---
+
+# Dashboard 9 — Deudas: saldo vivo y pagos en el tiempo
+
+*¿A quién se le debe hoy, y cuánto se viene pagando de deuda mes a mes?*
+
+⚠️ **Por qué NO es un "aging" clásico.** Un aging reparte la deuda por
+antigüedad (0-30 días, 30-60…) usando la **fecha de vencimiento**, y `Deuda` no
+la tiene. Además `Movimiento_Deuda` en esta base sólo guarda movimientos tipo
+`PAGO` — los aumentos de deuda no quedaron con fecha en la migración del Excel,
+así que **el saldo histórico no se puede reconstruir** (no se sabe cuánto se
+debía en una fecha pasada). Lo que sí es real y útil son dos cosas: la **foto
+del saldo vivo de hoy** (`Deuda[Saldo_Actual_Deuda]`, cacheado y correcto) y el
+**esfuerzo de pago en el tiempo** (los `PAGO` sí tienen fecha).
+
+## Tablas a cargar
+
+`Deuda`, `Movimiento_Deuda`, más la tabla `Calendario`.
+
+## Relaciones
+
+```
+Movimiento_Deuda[Id_Deuda]         (muchos) → Deuda[Id_Deuda]                    (1)
+Calendario[Fecha]                  (1)       → Movimiento_Deuda[Fecha_Movimiento_Deuda] (muchos)
+```
+
+## Medidas DAX
+
+```dax
+Saldo vivo = SUM ( 'Deuda'[Saldo_Actual_Deuda] )
+```
+
+```dax
+Pagos de deuda =
+CALCULATE (
+    SUM ( 'Movimiento_Deuda'[Monto_Movimiento_Deuda] ),
+    'Movimiento_Deuda'[Tipo_Movimiento_Deuda] = "PAGO"
+)
+```
+
+Deudas que todavía tienen saldo (para una tarjeta):
+
+```dax
+Deudas vivas =
+COUNTROWS ( FILTER ( 'Deuda', 'Deuda'[Saldo_Actual_Deuda] > 0 ) )
+```
+
+## Armar los visuales
+
+1. **A quién se le debe hoy:** gráfico de barras, eje
+   `Deuda[Descripcion_Deuda]`, valor `[Saldo vivo]`, ordenado descendente,
+   filtro visual `Saldo_Actual_Deuda > 0` (las saldadas no aportan). En la base
+   real domina `BANCO UNION` (capital + interés) — el resto son deudas chicas.
+2. **Esfuerzo de pago año contra año:** gráfico de **líneas** con el truco del
+   Dashboard 2 — eje `Calendario[Nombre Mes]`, leyenda `Calendario[Año]`, valor
+   `[Pagos de deuda]`. Deja ver en qué meses se paga más deuda y si hay un
+   patrón anual.
+3. Tarjetas: `[Saldo vivo]` (total que se debe hoy) y `[Deudas vivas]`
+   (cuántas siguen abiertas).
+
+Opcional — agrupar deudas por su origen (todas las `BANCO UNION …` juntas): en
+Power Query, columna nueva que tome la primera palabra o un prefijo de
+`Descripcion_Deuda`. No es imprescindible; el gráfico de barras ya las muestra
+ordenadas.
+
+## Verificación
+
+```sql
+-- Saldo vivo de hoy (comparar contra [Saldo vivo] sin filtros):
+SELECT ROUND(SUM("Saldo_Actual_Deuda")::numeric, 2) AS saldo_vivo,
+       COUNT(*) FILTER (WHERE "Saldo_Actual_Deuda" > 0) AS deudas_vivas
+FROM "Deuda";
+
+-- Pagos de deuda por mes (comparar contra la línea):
+SELECT to_char("Fecha_Movimiento_Deuda", 'YYYY-MM') AS anio_mes,
+       ROUND(SUM("Monto_Movimiento_Deuda")::numeric, 2) AS pagos
+FROM "Movimiento_Deuda"
+WHERE "Tipo_Movimiento_Deuda" = 'PAGO'
+GROUP BY 1 ORDER BY 1;
+```
+
+`saldo_vivo` tiene que dar igual que `[Saldo vivo]` y cada fila de la segunda
+consulta tiene que coincidir con el punto de la línea de ese mes.
+
+---
+
 ## Dashboards pendientes (no documentados todavía)
 
-- **Rentabilidad real por producto con el acumulado de la sección 2** → ese sí
-  usa la lógica de `saldo_producto.py` (recuperación de capital), no el margen
-  de los dashboards 1-2. Tablas: `Produccion`, `Detalle_Venta`,
-  `Movimiento_Inventario` (para el ajuste por reproceso).
-- **Análisis de precios por proveedor** → cuando exista la mejora 5.1
-  (base de datos de proveedores).
+- **Análisis de precios por proveedor** → distinto del Dashboard 7 (que compara
+  el precio de un insumo **en el tiempo**); éste compararía el mismo insumo
+  **entre proveedores**. Bloqueado por **datos, no por código**: la mejora 5.1
+  ya creó las tablas `Proveedor` / `Proveedor_Materia_Prima` y la columna
+  `Compra[Id_Proveedor]`, pero hoy están **vacías** (las 2454 compras migradas
+  del Excel tienen `Id_Proveedor` en NULL). Se puede documentar y armar recién
+  cuando se carguen proveedores reales y las compras nuevas empiecen a quedar
+  atadas a uno.
