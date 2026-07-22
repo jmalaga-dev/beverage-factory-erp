@@ -4,14 +4,12 @@ Levanta el sistema completo (base de datos + API + interfaz) sin instalar
 Python, Node ni PostgreSQL por separado. Pensado para que **otra persona lo
 pruebe**, no para reemplazar el entorno de desarrollo local.
 
-> **Estado: sin probar en ejecución.** Estos archivos se escribieron en una
-> máquina que no tiene Docker instalado, así que el `docker compose up` nunca
-> se corrió. Lo que **sí** está verificado contra PostgreSQL real: el esquema
-> base + las 24 migraciones aplican limpio sobre una base vacía y producen un
-> esquema **idéntico** al de producción (226 columnas, cero diferencias), el
-> seed de demo carga sin errores, y la API responde correctamente contra esa
-> base recién creada. Lo que falta probar es el plumbing de Docker en sí
-> (build de imágenes, red entre contenedores, orden de arranque).
+> **Estado: probado y funcionando.** El `docker compose up --build` levanta los
+> tres contenedores de cero (Docker 29 / Compose v5): la base aplica el esquema
+> base + las migraciones y el seed de demo, el backend responde en `/docs` y el
+> frontend sirve la app con datos de ejemplo. También está verificado contra
+> PostgreSQL real que el esquema + migraciones producen un esquema **idéntico**
+> al de producción (226 columnas, cero diferencias).
 
 ---
 

@@ -32,6 +32,29 @@ Detalles de puertos, modo con datos reales y conexión de Power BI en
 
 ---
 
+## 📸 Capturas
+
+> Todas las capturas usan los **datos ficticios del modo demo** — no hay
+> información de ningún negocio real.
+
+**Balance — tres escenarios de valorización y patrimonio contable**
+
+![Balance](img/Balance-demo.png)
+
+**Producción — costeo en cadena, consumo de insumos por lote y resolución FIFO**
+
+![Producción](img/Produccion-demo.png)
+
+**Ventas — precio real, margen y reparto 70/30 con recuperación de inversión**
+
+![Ventas](img/Ventas-demo.png)
+
+**Cierre de producción — prorrateo de horas standby, con vista previa idempotente**
+
+![Cierre de producción](img/Cierre_Semanal-demo.png)
+
+---
+
 ## Qué resuelve
 
 - **Inventario y compras** de materia prima, con control de stock por lote.
