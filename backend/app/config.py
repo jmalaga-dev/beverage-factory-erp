@@ -10,7 +10,7 @@ from decimal import Decimal
 # quede un resto positivo. El resto no es basura de punto flotante (Decimal
 # ya evita eso) sino un remanente real demasiado chico para usarse. Ajustar
 # este valor segun que tan chico es, en la practica, un resto inutilizable.
-UMBRAL_STOCK_MINIMO = Decimal("0.0001")
+UMBRAL_STOCK_MINIMO = Decimal("0.00001")
 
 # Tasa por defecto para la absorcion de costos indirectos por botella (mejora
 # 1.4): cuantas botellas se estima que absorberan cada boliviano de un costo
