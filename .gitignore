@@ -9,6 +9,9 @@
 .env.local
 *.key
 
+# Datos personales (CV) - se conserva en disco local, no se publica
+/CV.md
+
 # Datos reales (clientes, ventas, deudas reales)
 datos_reales/
 *_reales.*
