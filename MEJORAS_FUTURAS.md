@@ -546,6 +546,42 @@ Verificado con una prueba de integración del ejemplo exacto (20/7/5 con Juan
 10h@20 y Pedro 6h@15 → A=181.25 Bs de trabajo, 19.0625 Bs/botella; suma de
 trabajo = 290 sin fugas; re-cierre sin duplicar) y `vite build`.
 
+**Ampliación (jul 2026) — base del reparto seleccionable (botellas / paquetes
+equivalentes).** El Excel prorrateaba las horas por **paquetes**; esta mejora
+lo hacía solo por **botellas**, así que no había con qué comparar. Se agregó un
+selector **Base del reparto** en la pantalla de Cierre, por defecto en
+*Botellas*, que se puede cambiar a *Paquetes equivalentes* (botellas /
+`Botellas_Por_Paquete`, 3.9). Al cambiarlo, la vista previa recalcula el reparto
+sobre esa base y muestra por producto **cuánto varía** respecto a la otra base
+(diferencia en horas y en Bs de trabajo, coloreada). El reparto por paquetes
+solo difiere del de botellas cuando los productos empacan distinto (bpp
+distinto); con los datos reales el efecto es grande (ej. un producto de 168
+botellas / 21 paquetes pasa de 19,4% del reparto por botellas a 4,2% por
+paquetes).
+
+**Decisión de negocio (jul 2026): al CONFIRMAR se escribe la base
+seleccionada.** El selector no es solo visual — permite elegir el método real
+de cada cierre (volver al criterio del Excel si se quiere), no solo comparar en
+pantalla. El botón de confirmar dice qué base va a escribir.
+
+Detalles de diseño:
+- El peso del reparto cambia (botellas vs botellas/bpp), pero el **costo por
+  botella sigue siendo trabajo / botellas producidas**: la base solo redistribuye
+  las horas entre productos, no cambia sobre cuántas unidades se prorratea el
+  costo de cada lote.
+- El **total de dinero de trabajo y el total de horas repartidas son
+  invariantes** entre bases (todas las horas standby se reparten igual); solo
+  cambia el porcentaje que se lleva cada producto. La última línea de cada
+  jornada sigue absorbiendo el redondeo.
+- Backend: `calcular_cierre(..., base)` y `ejecutar_cierre(..., base)`; el
+  reparto se extrajo a un helper `_repartir(items, jornadas, base)` que se corre
+  para la base elegida (con detalle de asignaciones) y para la otra (solo para la
+  columna comparativa). `base` es query param en `/cierre-semanal/preview` y campo
+  del body en `POST /cierre-semanal` (default `botellas`).
+- Verificado contra la BD real (solo lectura): reparto en ambas bases,
+  invariantes (total trabajo 650,83 Bs y 88 h repartidas idénticos en las dos),
+  el gran desplazamiento entre bases en los productos con bpp>1, y `vite build`.
+
 ### 3.8 Compra dividida en proporción (pliegos de etiquetas) — del Excel
 Un pliego doble oficio cuesta 100 Bs y salen 5 etiquetas de A, 3 de B y 4 de
 C, de tamaños distintos: el costo se reparte por **área** (área de cada

@@ -13,10 +13,18 @@ de trabajo.
 
 Reglas:
 - Cada jornada standby del rango se reparte ENTERA entre los terminados, con el
-  mismo porcentaje por botellas (ej. 20/32, 7/32, 5/32). Asi cada jornada queda
-  totalmente consumida (su standby pasa a 0).
-- El peso es la cantidad PRODUCIDA del lote (no la restante): la mano de obra
-  fue para producir todo el lote, aunque ya se haya vendido parte.
+  mismo porcentaje (ej. 20/32, 7/32, 5/32). Asi cada jornada queda totalmente
+  consumida (su standby pasa a 0).
+- El peso del reparto depende de la BASE elegida:
+    * "botellas" (por defecto, la mejora 3.7): peso = cantidad PRODUCIDA del lote.
+    * "paquetes": peso = cantidad producida / Botellas_Por_Paquete (paquetes
+      equivalentes, como lo hacia el Excel antes). Solo cambia el resultado
+      cuando los productos empacan distinto (bpp distinto entre ellos).
+  El costo por botella sigue siendo trabajo / botellas producidas: la base solo
+  cambia COMO se reparten las horas entre productos, no sobre cuantas unidades
+  se prorratea el costo de cada lote.
+- El peso usa la cantidad PRODUCIDA (no la restante): la mano de obra fue para
+  producir todo el lote, aunque ya se haya vendido parte.
 - Solo entran los terminados del rango que AUN NO tienen trabajo asignado (los
   que ya lo tienen se consideran cerrados; no se duplica).
 - Solo terminados: los intermedios del rango no reciben horas (decision de
@@ -34,16 +42,80 @@ from app.models import (
 from app.servicios.trabajadores import tarifa_hora
 
 
+BASES_VALIDAS = ("botellas", "paquetes")
+
+
 def _redondear(valor, decimales=4):
     return valor.quantize(Decimal(10) ** -decimales)
 
 
-def calcular_cierre(sesion, fecha_desde, fecha_hasta):
+def _peso_item(item, base):
+    """Peso de un lote en el reparto segun la base ('botellas' o 'paquetes')."""
+    if base == "paquetes":
+        bpp = item["bpp"] if item["bpp"] and item["bpp"] > 0 else Decimal(1)
+        return item["cantidad_producida"] / bpp
+    return item["cantidad_producida"]
+
+
+def _repartir(items, jornadas_info, base):
+    """
+    Reparte cada jornada standby entera entre los lotes segun su peso en la base
+    dada. Devuelve un dict id_produccion -> {proporcion, costo_trabajo,
+    costo_unit_nuevo, horas_total, asignaciones}. La ULTIMA linea de cada jornada
+    absorbe el redondeo para que su standby quede en 0 exacto. No toca la base.
+    """
+    pesos = {it["id_produccion"]: _peso_item(it, base) for it in items}
+    total_peso = sum(pesos.values()) if items else Decimal(0)
+
+    res = {}
+    for it in items:
+        prop = pesos[it["id_produccion"]] / total_peso if total_peso > 0 else Decimal(0)
+        res[it["id_produccion"]] = {
+            "proporcion": prop,
+            "costo_trabajo": Decimal(0),
+            "horas_total": Decimal(0),
+            "asignaciones": [],
+        }
+
+    n = len(items)
+    for j in jornadas_info:
+        horas_j = j["horas"]
+        asignado = Decimal(0)
+        for idx, it in enumerate(items):
+            r = res[it["id_produccion"]]
+            if idx == n - 1:
+                horas = horas_j - asignado  # la ultima absorbe el redondeo
+            else:
+                horas = _redondear(horas_j * r["proporcion"], 4)
+                asignado += horas
+            if horas <= 0:
+                continue
+            r["asignaciones"].append({
+                "id_jornada": j["id_jornada"],
+                "nombre_trabajador": j["nombre_trabajador"],
+                "horas": horas,
+            })
+            r["costo_trabajo"] += horas * j["tarifa"]
+            r["horas_total"] += horas
+
+    for it in items:
+        r = res[it["id_produccion"]]
+        r["costo_unit_nuevo"] = it["costo_unit_actual"] + r["costo_trabajo"] / it["cantidad_producida"]
+
+    return res, total_peso
+
+
+def calcular_cierre(sesion, fecha_desde, fecha_hasta, base="botellas"):
     """
     Calcula el reparto de horas standby del rango entre los terminados del
     rango, SIN tocar la base. Devuelve un dict con el plan completo (lo usan
     tanto la vista previa como la ejecucion, para que den los mismos numeros).
+
+    `base` decide el peso del reparto ('botellas' o 'paquetes'); el plan trae
+    ademas los numeros de la OTRA base por producto, para ver cuanto varia.
     """
+    if base not in BASES_VALIDAS:
+        raise ValueError(f"Base de reparto invalida: {base}")
     if fecha_desde > fecha_hasta:
         raise ValueError("La fecha desde no puede ser posterior a la fecha hasta")
 
@@ -102,76 +174,87 @@ def calcular_cierre(sesion, fecha_desde, fecha_hasta):
     total_botellas = sum(p.Cantidad_Producida_Produccion for p in elegibles) if elegibles else Decimal(0)
     if not jornadas_info:
         return {"sin_datos": "No hay jornadas en standby en ese rango.", "jornadas": [],
-                "productos": [], "total_botellas": Decimal(0), "total_horas": Decimal(0),
-                "total_valor_trabajo": Decimal(0), "desde": str(fecha_desde), "hasta": str(fecha_hasta)}
+                "productos": [], "total_botellas": Decimal(0), "total_paquetes": Decimal(0),
+                "total_horas": Decimal(0), "total_valor_trabajo": Decimal(0),
+                "base": base, "desde": str(fecha_desde), "hasta": str(fecha_hasta)}
     if not elegibles or total_botellas <= 0:
         return {"sin_datos": "No hay terminados sin trabajo asignado en ese rango.", "jornadas": jornadas_info,
-                "productos": [], "total_botellas": Decimal(0), "total_horas": total_horas,
-                "total_valor_trabajo": total_valor, "desde": str(fecha_desde), "hasta": str(fecha_hasta)}
+                "productos": [], "total_botellas": Decimal(0), "total_paquetes": Decimal(0),
+                "total_horas": total_horas, "total_valor_trabajo": total_valor,
+                "base": base, "desde": str(fecha_desde), "hasta": str(fecha_hasta)}
 
-    # --- Reparto: cada jornada entera se reparte por botellas entre los lotes ---
-    # Estructura por producto: proporcion, costo de trabajo, y sus asignaciones
-    # (una por jornada). La ULTIMA linea de cada jornada absorbe el redondeo,
-    # para que la suma de horas repartidas sea exactamente las horas de la
-    # jornada (y su standby quede en 0 exacto).
-    productos = []
+    # --- Datos estaticos de cada lote (botellas, paquetes, costo actual) ---
+    items = []
     for p in elegibles:
         prod = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
-        productos.append({
+        bpp = Decimal(prod.Botellas_Por_Paquete) if prod and prod.Botellas_Por_Paquete else Decimal(1)
+        items.append({
             "id_produccion": p.Id_Produccion,
             "nombre": prod.Descripcion_Producto_Terminado if prod else "?",
-            "botellas": p.Cantidad_Producida_Produccion,
-            "proporcion": p.Cantidad_Producida_Produccion / total_botellas,
-            "costo_unit_actual": p.Precio_Unitario_Producto_Terminado or Decimal(0),
             "cantidad_producida": p.Cantidad_Producida_Produccion,
-            "costo_trabajo": Decimal(0),
-            "asignaciones": [],
+            "bpp": bpp,
+            "costo_unit_actual": p.Precio_Unitario_Producto_Terminado or Decimal(0),
         })
 
-    n = len(productos)
-    for j in jornadas_info:
-        horas_j = j["horas"]
-        asignado = Decimal(0)
-        for idx, prod in enumerate(productos):
-            if idx == n - 1:
-                horas = horas_j - asignado  # la ultima absorbe el redondeo
-            else:
-                horas = _redondear(horas_j * prod["proporcion"], 4)
-                asignado += horas
-            if horas <= 0:
-                continue
-            prod["asignaciones"].append({
-                "id_jornada": j["id_jornada"],
-                "nombre_trabajador": j["nombre_trabajador"],
-                "horas": horas,
-            })
-            prod["costo_trabajo"] += horas * j["tarifa"]
+    # Reparto en la base elegida (con detalle de asignaciones) y en la otra
+    # base (solo para mostrar cuanto varia). El total de dinero de trabajo es el
+    # mismo en ambas: solo cambia como se reparte entre productos.
+    otra = "paquetes" if base == "botellas" else "botellas"
+    res_sel, _ = _repartir(items, jornadas_info, base)
+    res_alt, total_paquetes_o_bot = _repartir(items, jornadas_info, otra)
 
-    # Costo unitario nuevo = actual + trabajo/botellas producidas
+    total_paquetes = sum(_peso_item(it, "paquetes") for it in items)
+
+    productos = []
     total_costo_trabajo = Decimal(0)
-    for prod in productos:
-        prod["costo_unit_nuevo"] = prod["costo_unit_actual"] + prod["costo_trabajo"] / prod["cantidad_producida"]
-        total_costo_trabajo += prod["costo_trabajo"]
+    for it in items:
+        sel = res_sel[it["id_produccion"]]
+        alt = res_alt[it["id_produccion"]]
+        total_costo_trabajo += sel["costo_trabajo"]
+        productos.append({
+            "id_produccion": it["id_produccion"],
+            "nombre": it["nombre"],
+            "botellas": it["cantidad_producida"],
+            "paquetes": _peso_item(it, "paquetes"),
+            "cantidad_producida": it["cantidad_producida"],
+            "costo_unit_actual": it["costo_unit_actual"],
+            # Base seleccionada (lo que se confirma):
+            "proporcion": sel["proporcion"],
+            "horas_total": sel["horas_total"],
+            "costo_trabajo": sel["costo_trabajo"],
+            "costo_unit_nuevo": sel["costo_unit_nuevo"],
+            "asignaciones": sel["asignaciones"],
+            # Otra base (solo comparacion):
+            "proporcion_alt": alt["proporcion"],
+            "horas_total_alt": alt["horas_total"],
+            "costo_trabajo_alt": alt["costo_trabajo"],
+            "costo_unit_nuevo_alt": alt["costo_unit_nuevo"],
+        })
 
     return {
         "sin_datos": None,
+        "base": base,
+        "base_alt": otra,
         "desde": str(fecha_desde),
         "hasta": str(fecha_hasta),
         "jornadas": jornadas_info,
         "productos": productos,
         "total_botellas": total_botellas,
+        "total_paquetes": total_paquetes,
         "total_horas": total_horas,
         "total_valor_trabajo": total_costo_trabajo,
     }
 
 
-def ejecutar_cierre(sesion, fecha_desde, fecha_hasta):
+def ejecutar_cierre(sesion, fecha_desde, fecha_hasta, base="botellas"):
     """
     Aplica el cierre: crea los Detalle_Prod_Trabajador del reparto, consume las
     horas standby de las jornadas y actualiza el costo de cada lote. Atomico.
     Recalcula el plan desde la BD (no confia en numeros del cliente).
+
+    `base` ('botellas' o 'paquetes') decide el reparto que se escribe.
     """
-    plan = calcular_cierre(sesion, fecha_desde, fecha_hasta)
+    plan = calcular_cierre(sesion, fecha_desde, fecha_hasta, base)
     if plan["sin_datos"]:
         raise ValueError(plan["sin_datos"])
 

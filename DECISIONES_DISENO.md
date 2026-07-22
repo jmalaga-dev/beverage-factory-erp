@@ -409,11 +409,21 @@ estimadas y restantes). Dos decisiones:
   `trabajo_asignado / botellas_producidas` al costo unitario, sin volver a
   tocar lo anterior. Así no hay riesgo de perder la absorción ni de recomputar
   mal los insumos.
-- **Reparto por botellas PRODUCIDAS, no restantes.** El peso de cada lote es su
+- **Reparto por PRODUCIDAS, no restantes.** El peso de cada lote usa su
   `Cantidad_Producida` (no lo que queda en stock): la mano de obra fue para
   hacer todo el lote, aunque ya se haya vendido parte. Y cada jornada standby
   se reparte ENTERA (queda en 0), con la última línea absorbiendo el redondeo
   para que la suma de horas cierre exacta.
+- **Base del reparto seleccionable: botellas (default) o paquetes equivalentes.**
+  El Excel repartía por paquetes; la mejora nació solo con botellas. Se agregó un
+  selector que cambia el peso (botellas vs botellas/`Botellas_Por_Paquete`) y la
+  vista previa muestra cuánto varía respecto a la otra base, para poder comparar.
+  Decisión de negocio: **al confirmar se escribe la base seleccionada** (no es
+  solo visual — deja elegir el método real de cada cierre). Solo cambia el
+  reparto entre productos: el **total de horas y de dinero de trabajo son
+  invariantes**, y el costo por botella sigue siendo `trabajo / botellas
+  producidas` en cualquier base. El reparto por paquetes difiere del de botellas
+  únicamente cuando los productos empacan distinto (bpp distinto entre ellos).
 - **Solo terminados (decisión de negocio 3.7).** Los intermedios del rango no
   reciben horas; su mano de obra la absorben las botellas de la semana. El
   modelo de horas heredadas en intermedios (1.1) es aparte. Esto puede
