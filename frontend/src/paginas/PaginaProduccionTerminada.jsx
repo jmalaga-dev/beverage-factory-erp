@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiGet, apiPost } from '../api'
+import { apiGet, apiPost, apiDelete } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
 import TablaFiltrable from '../componentes/TablaFiltrable'
@@ -194,6 +194,16 @@ function PaginaProduccionTerminada() {
         setInsumosIntermedio([]); setInsumosMP([]); setInsumosTrabajo([])
         cargar()
       })
+      .catch((e) => setMensaje(e.message))
+  }
+
+  // Eliminar una producción recién creada, solo si está intacta (item 6a): el
+  // backend devuelve el stock de los insumos y revierte la absorción. Para
+  // "editar", se elimina y se vuelve a crear con los datos corregidos.
+  function eliminarProduccion(id) {
+    if (!window.confirm(`¿Eliminar la producción (lote ${id})? Se devolverán los insumos consumidos. Solo se puede si el lote está intacto.`)) return
+    apiDelete(`/producciones-terminadas/${id}`)
+      .then(() => { setMensaje(`Producción ${id} eliminada, insumos devueltos.`); cargar() })
       .catch((e) => setMensaje(e.message))
   }
 
@@ -406,6 +416,11 @@ function PaginaProduccionTerminada() {
           { key: 'costo_unitario', label: 'Costo unitario', formato: (v) => fmtNumero(v, 4) },
           { key: 'horas_acumuladas', label: 'Horas acum.', formato: (v) => fmtNumero(v, 2) },
         ]}
+        acciones={(f) => (
+          f.eliminable
+            ? <button onClick={() => eliminarProduccion(f.id_produccion)}>Eliminar</button>
+            : <span style={{ color: '#999', fontSize: '0.85em' }} title="Ya se usó (venta/merma/etc): corrígelo con devolución, merma o reproceso">— usado</span>
+        )}
       />
     </div>
   )

@@ -6,10 +6,12 @@ import { filasBalance, filasMovimientos } from '../filasBalance'
 import { fmtMoneda, fmtNumero } from '../formato'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 
-// Columnas comunes a los tres detalles: descripcion, cantidad y costo
-// promedio ponderado (los endpoints "general" ya lo calculan por producto).
+// Columnas comunes a los tres detalles: un marcador de destacado (item 14),
+// descripcion, cantidad y costo promedio ponderado (los endpoints "general"
+// ya lo calculan por producto).
 const columnasDetalle = [
   { key: 'descripcion', label: 'Producto' },
+  { key: 'destacado', label: '★', formato: (v) => (v ? '★' : '') },
   { key: 'stock_total', label: 'Cantidad', formato: (v) => fmtNumero(v, 2) },
   { key: 'costo_promedio', label: 'Costo ponderado promedio', formato: (v) => fmtNumero(v, 4) },
 ]
@@ -31,6 +33,10 @@ const columnasActivos = [
 
 function PaginaBalance() {
   const { fechaParaEnviar } = useFechaGlobal()
+  // Filtro del detalle por producto: mostrar solo los marcados como destacados
+  // (item 14). Las tablas de MP/intermedio/terminado son largas; esto las
+  // acota a los que mas se usan, marcados a mano en Catalogos.
+  const [soloDestacados, setSoloDestacados] = useState(false)
   const [actual, setActual] = useState(null)
   const [ultimo, setUltimo] = useState(null)
   const [resumen, setResumen] = useState(null)
@@ -160,22 +166,27 @@ function PaginaBalance() {
       )}
 
       <h2 style={{ marginTop: '2rem' }}>Detalle por producto (estado actual)</h2>
+      <label className="no-imprimir" style={{ display: 'block', marginBottom: '0.5rem' }}>
+        <input type="checkbox" checked={soloDestacados}
+          onChange={(e) => setSoloDestacados(e.target.checked)} />
+        {' '}Mostrar solo los destacados (★, se marcan en Catálogos)
+      </label>
       <TablaFiltrable
         titulo="Producto Terminado"
-        filas={detalleTerminado}
+        filas={soloDestacados ? detalleTerminado.filter((f) => f.destacado) : detalleTerminado}
         columnas={columnasDetalleTerminado}
         claveOrden="descripcion"
         totales={['stock_total', 'paquetes_equivalentes']}
       />
       <TablaFiltrable
         titulo="Producto Intermedio"
-        filas={detalleIntermedio}
+        filas={soloDestacados ? detalleIntermedio.filter((f) => f.destacado) : detalleIntermedio}
         columnas={columnasDetalle}
         claveOrden="descripcion"
       />
       <TablaFiltrable
         titulo="Materia Prima"
-        filas={detalleMateriaPrima}
+        filas={soloDestacados ? detalleMateriaPrima.filter((f) => f.destacado) : detalleMateriaPrima}
         columnas={columnasDetalle}
         claveOrden="descripcion"
       />

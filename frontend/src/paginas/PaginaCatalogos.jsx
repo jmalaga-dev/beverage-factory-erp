@@ -16,6 +16,7 @@ function PaginaCatalogos() {
       <Catalogo
         titulo="Materia Prima"
         abiertoInicial={false}
+        soportaDestacado
         endpoint="materias-primas"
         idKey="id_materia_prima"
         campos={[
@@ -49,6 +50,7 @@ function PaginaCatalogos() {
       <Catalogo
         titulo="Producto Terminado"
         abiertoInicial={false}
+        soportaDestacado
         endpoint="productos-terminados"
         idKey="id_producto_terminado"
         campos={[
@@ -66,6 +68,7 @@ function PaginaCatalogos() {
       <Catalogo
         titulo="Producto Intermedio"
         abiertoInicial={false}
+        soportaDestacado
         endpoint="productos-intermedios"
         idKey="id_producto_intermedio"
         campos={[
