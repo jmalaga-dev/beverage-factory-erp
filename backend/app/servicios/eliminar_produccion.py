@@ -2,7 +2,7 @@
 eliminar_produccion.py
 Eliminar una produccion (intermedia o terminada) recien creada, SOLO si esta
 "intacta" (item 6a). Mismo criterio que las jornadas (mejora 3.4): sirve para
-corregir un error de tipeo apenas hecho (ej. "puse tapa azul y era negra"),
+corregir un error de tipeo apenas hecho (ej. se cargó el insumo equivocado),
 antes de que nada dependa de esa produccion.
 
 "Intacta" = su lote sigue exactamente como se produjo (nada consumido, vendido,
