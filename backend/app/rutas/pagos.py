@@ -10,9 +10,20 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.servicios.pagos import calcular_pago_sugerido, registrar_pago_semanal
+from app.servicios.pagos import (
+    calcular_pago_sugerido, listar_trabajadores_con_deuda, registrar_pago_semanal,
+)
 
 router = APIRouter(tags=["pagos"])
+
+
+@router.get("/trabajadores-con-deuda")
+def ver_trabajadores_con_deuda(sesion: Session = Depends(get_sesion)):
+    """Trabajadores con jornadas sin pagar, para el desplegable de Pagos (item 12)."""
+    return [
+        {**t, "monto_sugerido": float(t["monto_sugerido"])}
+        for t in listar_trabajadores_con_deuda(sesion)
+    ]
 
 
 @router.get("/trabajadores/{id_trabajador}/pago-sugerido")

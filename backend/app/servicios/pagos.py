@@ -35,6 +35,38 @@ def calcular_pago_sugerido(sesion, id_trabajador):
     return sugerido, pendientes
 
 
+def listar_trabajadores_con_deuda(sesion):
+    """
+    Trabajadores (habilitados o no) que tienen jornadas sin pagar, con el monto
+    sugerido y cuántas jornadas pendientes. Pensado para el desplegable de
+    Pagos (item 12): no tiene sentido elegir a alguien a quien no se le debe
+    nada, y los deshabilitados con deuda deben poder verse igual para cerrar
+    su cuenta pendiente (ver mejora 6.5 en DECISIONES_DISENO).
+    """
+    pendientes = (
+        sesion.query(Registro_Trabajador)
+        .filter(Registro_Trabajador.Id_Pago_Trabajador.is_(None))
+        .all()
+    )
+    por_trabajador = {}
+    for jornada in pendientes:
+        por_trabajador.setdefault(jornada.Id_Trabajador, []).append(jornada)
+
+    resultado = []
+    for id_trabajador, jornadas in por_trabajador.items():
+        trabajador = sesion.get(Trabajador, id_trabajador)
+        total_horas = sum(j.Horas_Registro_Trabajador for j in jornadas)
+        sugerido = total_horas * tarifa_hora(trabajador)
+        resultado.append({
+            "id_trabajador": id_trabajador,
+            "nombre": trabajador.Nombre_Trabajador,
+            "habilitado": trabajador.Habilitado_Trabajador,
+            "jornadas_pendientes": len(jornadas),
+            "monto_sugerido": sugerido,
+        })
+    return resultado
+
+
 def registrar_pago_semanal(sesion, id_trabajador, id_cuenta, monto_real, fecha=None):
     """
     Registra el pago semanal a un trabajador.
