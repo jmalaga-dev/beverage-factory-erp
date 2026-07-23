@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 function PaginaGastos() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -39,10 +41,12 @@ function PaginaGastos() {
     if (loteDescripcion.trim() === '' || loteMonto === '') {
       setLoteMensaje('Completa descripción y monto de la línea'); return
     }
+    const montoLinea = evaluar(loteMonto)
+    if (Number.isNaN(montoLinea)) { setLoteMensaje('El monto no es una operación válida'); return }
     const grupo = grupos.find((g) => g.id_grupo === parseInt(loteIdGrupo))
     setLoteLineas([...loteLineas, {
       descripcion: loteDescripcion.trim(),
-      monto: parseFloat(loteMonto),
+      monto: montoLinea,
       id_grupo: loteIdGrupo ? parseInt(loteIdGrupo) : null,
       nombreGrupo: grupo ? grupo.nombre : '',
     }])
@@ -89,15 +93,17 @@ function PaginaGastos() {
       return
     }
 
+    const montoNum = evaluar(monto)
+    if (Number.isNaN(montoNum)) { setMensaje('El monto no es una operación válida'); return }
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
-    if (cuenta && parseFloat(monto) > cuenta.saldo) {
-      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el gasto es de ${monto} Bs`)
+    if (cuenta && montoNum > cuenta.saldo) {
+      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el gasto es de ${montoNum} Bs`)
       return
     }
 
     apiPost('/gastos', {
       id_cuenta: parseInt(idCuenta),
-      monto: parseFloat(monto),
+      monto: montoNum,
       descripcion: descripcion,
       id_grupo: idGrupo ? parseInt(idGrupo) : null,
       fecha: fechaParaEnviar,
@@ -118,8 +124,7 @@ function PaginaGastos() {
       <div>
         <input type="text" placeholder="Descripción (en qué se gastó)"
           value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
-        <input type="number" placeholder="Monto"
-          value={monto} onChange={(e) => setMonto(e.target.value)} />
+        <InputCalculo value={monto} onChange={setMonto} placeholder="Monto" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuenta}
@@ -164,8 +169,7 @@ function PaginaGastos() {
         <div style={{ marginTop: '0.5rem' }}>
           <input type="text" placeholder="Descripción"
             value={loteDescripcion} onChange={(e) => setLoteDescripcion(e.target.value)} />
-          <input type="text" placeholder="Monto"
-            value={loteMonto} onChange={(e) => setLoteMonto(e.target.value)} />
+          <InputCalculo value={loteMonto} onChange={setLoteMonto} placeholder="Monto" decimales={2} />
           <SelectorBuscable
             opciones={grupos.filter((g) => g.habilitado)}
             valor={loteIdGrupo}

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 // Categorias fijas (ligadas a las columnas del Balance: Total_Inmuebles/
 // Total_Equipos/Total_Otros_Activos). Se eligen al crear el tipo de bien,
@@ -68,9 +70,11 @@ function PaginaActivos() {
       setMensaje('Completa descripción, valor y tipo de bien')
       return
     }
+    const valorNum = evaluar(valor)
+    if (Number.isNaN(valorNum)) { setMensaje('El valor no es una operación válida'); return }
     apiPost('/activos', {
       descripcion,
-      valor: parseFloat(valor),
+      valor: valorNum,
       id_tipo_bien: parseInt(idTipo),
     })
       .then(() => {
@@ -89,9 +93,11 @@ function PaginaActivos() {
   }
 
   function guardarEdicion(id) {
+    const editValorNum = evaluar(editValor)
+    if (Number.isNaN(editValorNum)) { setMensaje('El valor no es una operación válida'); return }
     apiPatch(`/activos/${id}`, {
       descripcion: editDescripcion,
-      valor: parseFloat(editValor),
+      valor: editValorNum,
       id_tipo_bien: parseInt(editTipo),
     })
       .then(() => { setMensaje('Activo actualizado'); setEditando(null); cargar() })
@@ -165,8 +171,7 @@ function PaginaActivos() {
       <div>
         <input type="text" placeholder="Descripción"
           value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
-        <input type="number" placeholder="Valor"
-          value={valor} onChange={(e) => setValor(e.target.value)} />
+        <InputCalculo value={valor} onChange={setValor} placeholder="Valor" decimales={2} />
         <SelectorBuscable
           opciones={tipos}
           valor={idTipo}
@@ -204,8 +209,8 @@ function PaginaActivos() {
                   />
                 </td>
                 <td>
-                  <input type="number" style={{ width: '90px' }} value={editValor}
-                    onChange={(e) => setEditValor(e.target.value)} />
+                  <InputCalculo width="90px" value={editValor}
+                    onChange={setEditValor} decimales={2} />
                 </td>
                 <td>
                   <button onClick={() => guardarEdicion(a.id_activo)}>Guardar</button>

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtMoneda, fmtNumero } from '../formato'
+import { evaluar } from '../calculo'
 
 // Simulacion de producto nuevo (mejora 1.5). Pantalla de SOLO LECTURA: arma
 // una receta hipotetica y muestra su costo en 3 escenarios segun el historico
@@ -37,7 +39,8 @@ function PaginaSimulacion() {
     : ((p) => p.id_producto_intermedio)
 
   function agregarInsumo() {
-    if (insId === '' || insCantidad === '' || parseFloat(insCantidad) <= 0) {
+    const cantNum = evaluar(insCantidad)
+    if (insId === '' || insCantidad === '' || Number.isNaN(cantNum) || cantNum <= 0) {
       setMensaje('Elige un insumo y una cantidad mayor a cero')
       return
     }
@@ -45,7 +48,7 @@ function PaginaSimulacion() {
     setInsumos([...insumos, {
       tipo: insTipo,
       id_insumo: parseInt(insId),
-      cantidad: parseFloat(insCantidad),
+      cantidad: cantNum,
       nombre: op ? op.descripcion : `#${insId}`,
     }])
     setInsId(''); setInsCantidad(''); setMensaje('')
@@ -55,12 +58,13 @@ function PaginaSimulacion() {
 
   function simular() {
     if (insumos.length === 0) { setMensaje('Agrega al menos un insumo'); return }
-    if (rendimiento === '' || parseFloat(rendimiento) <= 0) {
+    const rendimientoNum = evaluar(rendimiento)
+    if (rendimiento === '' || Number.isNaN(rendimientoNum) || rendimientoNum <= 0) {
       setMensaje('Indica cuánto rinde la receta'); return
     }
     apiPost('/simulacion', {
       insumos: insumos.map((i) => ({ tipo: i.tipo, id_insumo: i.id_insumo, cantidad: i.cantidad })),
-      rendimiento: parseFloat(rendimiento),
+      rendimiento: rendimientoNum,
       litros_por_botella: litrosPorBotella === '' ? null : parseFloat(litrosPorBotella),
       botellas_por_paquete: parseInt(botellasPorPaquete) || 1,
       meses: parseInt(meses),
@@ -109,8 +113,7 @@ function PaginaSimulacion() {
           obtenerTexto={(o) => o.descripcion}
           placeholder={insTipo === 'MP' ? '-- Materia prima --' : '-- Producto intermedio --'}
         />
-        <input type="number" placeholder="Cantidad"
-          value={insCantidad} onChange={(e) => setInsCantidad(e.target.value)} />
+        <InputCalculo value={insCantidad} onChange={setInsCantidad} placeholder="Cantidad" />
         <button onClick={agregarInsumo}>Agregar insumo</button>
       </div>
 
@@ -134,8 +137,7 @@ function PaginaSimulacion() {
       <h3>2. Cuánto rinde y en qué se envasa</h3>
       <div>
         <label>Rinde:{' '}
-          <input type="number" placeholder="ej. 30" style={{ width: '6rem' }}
-            value={rendimiento} onChange={(e) => setRendimiento(e.target.value)} />
+          <InputCalculo value={rendimiento} onChange={setRendimiento} placeholder="ej. 30" width="6rem" />
         </label>{' '}
         <label>Litros por botella:{' '}
           <input type="number" step="0.01" style={{ width: '5rem' }}

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 // Absorcion de costos indirectos por botella (mejora 1.4). Se registran
 // utensilios/equipos y feriados: sale dinero de una cuenta y su costo se
@@ -30,23 +32,27 @@ function PaginaAbsorcion() {
   useEffect(() => { cargar() }, [])
 
   // Sugerencia de botellas estimadas si el usuario no la escribe
-  const sugerencia = costo !== '' ? parseFloat(costo) * tasa : null
+  const costoNum = evaluar(costo)
+  const sugerencia = costo !== '' && !Number.isNaN(costoNum) ? costoNum * tasa : null
 
   function registrar(endpoint, etiqueta) {
     if (descripcion.trim() === '' || costo === '' || idCuenta === '') {
       setMensaje('Completa descripción, costo y cuenta')
       return
     }
+    if (Number.isNaN(costoNum)) { setMensaje('El costo no es una operación válida'); return }
+    const botellasNum = evaluar(botellas)
+    if (botellas !== '' && Number.isNaN(botellasNum)) { setMensaje('Las botellas estimadas no son una operación válida'); return }
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
-    if (cuenta && parseFloat(costo) > cuenta.saldo) {
+    if (cuenta && costoNum > cuenta.saldo) {
       setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs`)
       return
     }
     apiPost(`/${endpoint}`, {
       descripcion,
-      costo: parseFloat(costo),
+      costo: costoNum,
       id_cuenta: parseInt(idCuenta),
-      botellas_estimadas: botellas !== '' ? parseFloat(botellas) : null,
+      botellas_estimadas: botellas !== '' ? botellasNum : null,
       fecha: fechaParaEnviar,
     })
       .then(() => {
@@ -72,8 +78,7 @@ function PaginaAbsorcion() {
       <div>
         <input type="text" placeholder="Descripción"
           value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
-        <input type="number" placeholder="Costo"
-          value={costo} onChange={(e) => setCosto(e.target.value)} />
+        <InputCalculo value={costo} onChange={setCosto} placeholder="Costo" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuenta}
@@ -82,9 +87,9 @@ function PaginaAbsorcion() {
           obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
           placeholder="-- Cuenta de dónde sale --"
         />
-        <input type="number"
+        <InputCalculo
           placeholder={sugerencia != null ? `Botellas estimadas (sug. ${sugerencia})` : 'Botellas estimadas'}
-          value={botellas} onChange={(e) => setBotellas(e.target.value)} />
+          value={botellas} onChange={setBotellas} />
         <button onClick={() => registrar('utensilios', 'Utensilio')}>Registrar utensilio</button>
         {' '}
         <button onClick={() => registrar('feriados', 'Feriado')}>Registrar feriado</button>

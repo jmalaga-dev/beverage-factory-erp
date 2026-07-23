@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 // Mes actual en formato YYYY-MM (local).
 function mesActual() {
@@ -52,7 +54,9 @@ function PaginaProrrateo() {
 
   function agregarMonto() {
     if (selGasto === '' || monto === '') { setMensaje('Elige el gasto y su monto del mes'); return }
-    apiPost('/gastos-mes', { id_gasto_extra: parseInt(selGasto), anio_mes: anioMes, monto: parseFloat(monto) })
+    const montoNum = evaluar(monto)
+    if (Number.isNaN(montoNum)) { setMensaje('El monto no es una operación válida'); return }
+    apiPost('/gastos-mes', { id_gasto_extra: parseInt(selGasto), anio_mes: anioMes, monto: montoNum })
       .then(() => { setSelGasto(''); setMonto(''); setMensaje(''); cargar(anioMes) })
       .catch((e) => setMensaje(e.message))
   }
@@ -120,7 +124,7 @@ function PaginaProrrateo() {
           obtenerTexto={(g) => `${g.descripcion} (típico ${fmtMoneda(g.precio_mensual)} Bs)`}
           placeholder="-- Gasto recurrente --"
         />
-        <input type="number" placeholder="Monto de este mes" value={monto} onChange={(e) => setMonto(e.target.value)} />
+        <InputCalculo value={monto} onChange={setMonto} placeholder="Monto de este mes" decimales={2} />
         {origenMonto && (
           <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
             sugerido según {origenMonto} — editable
