@@ -3,7 +3,7 @@ import { fmtNumero } from '../formato'
 // Resumen consolidado antes de producir (item 6b): texto plano, mismo espíritu
 // que el "detalle día a día" del Balance. Ayuda a revisar de un vistazo qué se
 // va a consumir (sumado por producto, no por lote) — sirve para cazar un insumo
-// equivocado (ej. tapa azul en vez de negra) sin leer lote por lote.
+// equivocado (ej. un insumo por otro) sin leer lote por lote.
 //
 // Aparece apenas hay algún insumo cargado (manual o por receta). El encabezado
 // "Se está produciendo ..." solo se muestra cuando ya hay producto y cantidad;
