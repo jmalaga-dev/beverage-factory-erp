@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
+import { evaluar } from '../calculo'
 
 // Pre-recetas (mejora 3.6). Una receta produce un producto intermedio O un
 // producto terminado, a partir de un rendimiento base y sus insumos (MP e
@@ -47,9 +49,10 @@ function PaginaRecetas() {
 
   function agregarDetalle() {
     if (idIns === '' || cantIns === '') { setMensaje('Elige insumo y cantidad'); return }
+    const nuevaCant = evaluar(cantIns)
+    if (Number.isNaN(nuevaCant)) { setMensaje('La cantidad no es una operación válida'); return }
     const nuevoTipo = tipoIns
     const nuevoId = parseInt(idIns)
-    const nuevaCant = parseFloat(cantIns)
     // Si el mismo insumo ya está, suma la cantidad en vez de duplicar la fila.
     const existente = detalles.find((d) => d.tipo === nuevoTipo && d.id_insumo === nuevoId)
     if (existente) {
@@ -70,12 +73,14 @@ function PaginaRecetas() {
 
   function guardar() {
     if (idProducto === '' || rendimiento === '') { setMensaje('Elige producto y rendimiento'); return }
+    const rendimientoNum = evaluar(rendimiento)
+    if (Number.isNaN(rendimientoNum)) { setMensaje('El rendimiento no es una operación válida'); return }
     if (detalles.length === 0) { setMensaje('Agrega al menos un insumo'); return }
     const cuerpo = {
       tipo,
       id_producto: parseInt(idProducto),
       nombre: nombre || null,
-      rendimiento: parseFloat(rendimiento),
+      rendimiento: rendimientoNum,
       detalles: detalles.map((d) => ({ tipo: d.tipo, id_insumo: d.id_insumo, cantidad: d.cantidad })),
     }
     const accion = editandoId
@@ -128,7 +133,7 @@ function PaginaRecetas() {
                   ? fmtBotellasYPaquetes(r.rendimiento, r.botellas_por_paquete)
                   : fmtNumero(r.rendimiento)}
               </td>
-              <td>{r.detalles.map((d) => `${d.nombre} (${fmtNumero(d.cantidad)})`).join(', ')}</td>
+              <td>{r.detalles.map((d) => `${d.nombre} (${fmtNumero(d.cantidad, 6)})`).join(', ')}</td>
               <td>
                 <button onClick={() => alternarHabilitado(r)}>
                   {r.habilitado ? 'Habilitada' : 'Deshabilitada'}
@@ -171,7 +176,7 @@ function PaginaRecetas() {
           placeholder={`-- Producto ${tipo === 'TERMINADO' ? 'terminado' : 'intermedio'} que produce --`}
         />
         <input type="text" placeholder="Nombre (opcional)" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-        <input type="number" placeholder="Rendimiento base" value={rendimiento} onChange={(e) => setRendimiento(e.target.value)} />
+        <InputCalculo value={rendimiento} onChange={setRendimiento} placeholder="Rendimiento base" />
       </div>
 
       <h4>Insumos de la receta</h4>
@@ -191,12 +196,12 @@ function PaginaRecetas() {
             obtenerId={(p) => p.id_producto_intermedio} obtenerTexto={(p) => p.descripcion} placeholder="-- Producto intermedio --"
           />
         )}
-        <input type="number" placeholder="Cantidad" value={cantIns} onChange={(e) => setCantIns(e.target.value)} />
+        <InputCalculo value={cantIns} onChange={setCantIns} placeholder="Cantidad" />
         <button onClick={agregarDetalle}>Agregar insumo</button>
       </div>
       <ul>
         {detalles.map((d, i) => (
-          <li key={i}>{d.nombre} — {fmtNumero(d.cantidad)} ({d.tipo === 'MP' ? 'materia prima' : 'intermedio'})
+          <li key={i}>{d.nombre} — {fmtNumero(d.cantidad, 6)} ({d.tipo === 'MP' ? 'materia prima' : 'intermedio'})
             {' '}<button onClick={() => quitarDetalle(i)}>quitar</button></li>
         ))}
       </ul>
