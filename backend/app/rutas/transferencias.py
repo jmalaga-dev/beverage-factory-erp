@@ -10,7 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.servicios.transferencias import registrar_transferencia, registrar_ingreso_externo
+from app.servicios.transferencias import (
+    registrar_transferencia, registrar_ingreso_externo,
+    listar_ingresos_externos, anular_ingreso_externo,
+)
 
 router = APIRouter(tags=["transferencias"])
 
@@ -65,5 +68,22 @@ def crear_ingreso_externo(datos: IngresoExternoEntrada, sesion: Session = Depend
             "mensaje": "Ingreso externo registrado",
             "id_movimiento": mov.Id_Movimiento,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/ingresos-externos")
+def ver_ingresos_externos(sesion: Session = Depends(get_sesion)):
+    """Lista los ingresos externos con su estado (anulado o no), para el
+    historial y poder anular uno mal cargado (item 10a)."""
+    return listar_ingresos_externos(sesion)
+
+
+@router.post("/ingresos-externos/{id_movimiento}/anular")
+def anular_ingreso(id_movimiento: int, sesion: Session = Depends(get_sesion)):
+    """Anula un ingreso externo mal cargado con un movimiento inverso (item 10a)."""
+    try:
+        anulacion = anular_ingreso_externo(sesion, id_movimiento, fecha=date.today())
+        return {"mensaje": "Ingreso externo anulado", "id_movimiento": anulacion.Id_Movimiento}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

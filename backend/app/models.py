@@ -25,6 +25,7 @@ class Materia_Prima(Base):
     Descripcion_Materia_Prima = Column(String, nullable=False)
     Unidad_Materia_Prima = Column(String, nullable=False)
     Habilitado_Materia_Prima = Column(Boolean, nullable=False, server_default="true")
+    Destacado_Materia_Prima = Column(Boolean, nullable=False, server_default="false")
 
     compras = relationship("Compra", back_populates="materia_prima")
 
@@ -73,6 +74,7 @@ class Producto_Intermedio(Base):
     Descripcion_Producto_Intermedio = Column(String, nullable=False)
     Litros_Botella_Final = Column(Numeric)
     Habilitado_Producto_Intermedio = Column(Boolean, nullable=False, server_default="true")
+    Destacado_Producto_Intermedio = Column(Boolean, nullable=False, server_default="false")
     # Etiqueta descriptiva (LITRO/UNIDAD/KG, mejora 6.14). No hay conversion:
     # un intermedio se produce y se consume siempre en la misma unidad.
     Unidad_Producto_Intermedio = Column(String, nullable=False, server_default="LITRO")
@@ -117,6 +119,7 @@ class Producto_Terminado(Base):
     Precio_Venta_Recomendado_Producto_Terminado = Column(Numeric)
     Habilitado_Producto_Terminado = Column(Boolean, nullable=False, server_default="true")
     Botellas_Por_Paquete = Column(Integer, nullable=False, server_default="1")
+    Destacado_Producto_Terminado = Column(Boolean, nullable=False, server_default="false")
 
     producciones = relationship("Produccion", back_populates="producto_terminado")
     horas_mes = relationship("Horas_Producto_Mes", back_populates="producto_terminado")
@@ -221,6 +224,9 @@ class Movimiento(Base):
     Monto_Movimiento = Column(Numeric, nullable=False)
     Descripcion_Movimiento = Column(String)
     Id_Grupo_Movimiento = Column(Integer, ForeignKey("Grupo_Movimiento.Id_Grupo_Movimiento"), nullable=True)
+    # Anulacion de ingreso externo (item 10a): si este movimiento es una
+    # anulacion, apunta al ingreso externo que cancela (self-FK).
+    Id_Movimiento_Anulado = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=True)
 
     # Dos FK a la misma tabla Cuenta: hay que indicar cual usa cada relacion
     cuenta_origen = relationship("Cuenta", foreign_keys=[Id_Cuenta_Origen])

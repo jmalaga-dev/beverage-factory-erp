@@ -17,11 +17,29 @@ from app.models import (
     Produccion_Intermedio,
     Producto_Intermedio,
     Producto_Terminado,
+    Detalle_PI_Intermedio,
+    Detalle_Prod_Intermedio,
+    Detalle_Venta,
+    Movimiento_Inventario,
 )
 from app.servicios.produccion_intermedia import producir_intermedio
 from app.servicios.produccion_terminado import producir_terminado
+from app.servicios.eliminar_produccion import (
+    eliminar_produccion_intermedia, eliminar_produccion_terminada,
+)
 
 router = APIRouter(tags=["produccion"])
+
+
+def _ids_no_nulos(sesion, *columnas):
+    """Union de los valores no nulos de una o mas columnas (para saber que
+    lotes ya estan referenciados aguas abajo y por tanto no son eliminables)."""
+    usados = set()
+    for col in columnas:
+        for (v,) in sesion.query(col).distinct():
+            if v is not None:
+                usados.add(v)
+    return usados
 
 
 # ---------- PRODUCCION INTERMEDIA ----------
@@ -63,17 +81,39 @@ def listar_producciones_intermedias(sesion: Session = Depends(get_sesion)):
     prods = sesion.query(Produccion_Intermedio).filter(
         Produccion_Intermedio.Cantidad_Restante_Producida > UMBRAL_STOCK_MINIMO
     ).all()
+    # Lotes intermedios ya referenciados aguas abajo (consumidos por otra
+    # produccion o mermados): no son eliminables (item 6a).
+    usados = _ids_no_nulos(
+        sesion,
+        Detalle_PI_Intermedio.Id_Produccion_Intermedio_Origen,
+        Detalle_Prod_Intermedio.Id_Produccion_Intermedio,
+        Movimiento_Inventario.Id_Produccion_Intermedio,
+    )
     resultado = []
     for p in prods:
         producto = sesion.get(Producto_Intermedio, p.Id_Producto_Intermedio)
+        intacta = (
+            p.Cantidad_Restante_Producida == p.Cantidad_Producida
+            and p.Id_Produccion_Intermedio not in usados
+        )
         resultado.append({
             "id_produccion_intermedio": p.Id_Produccion_Intermedio,
             "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
             "unidad": producto.Unidad_Producto_Intermedio if producto else None,
             "cantidad_restante": float(p.Cantidad_Restante_Producida),
             "costo_unitario": float(p.Costo_Unitario_Produccion_Intermedio or 0),
+            "eliminable": intacta,
         })
     return resultado
+
+
+@router.delete("/producciones-intermedias/{id_produccion_intermedio}")
+def borrar_produccion_intermedia(id_produccion_intermedio: int, sesion: Session = Depends(get_sesion)):
+    """Elimina una produccion intermedia intacta, devolviendo sus insumos (item 6a)."""
+    try:
+        return eliminar_produccion_intermedia(sesion, id_produccion_intermedio)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/stock-intermedio-general")
@@ -93,6 +133,7 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
             resumen[pid] = {
                 "descripcion": producto.Descripcion_Producto_Intermedio if producto else "?",
                 "unidad": producto.Unidad_Producto_Intermedio if producto else None,
+                "destacado": producto.Destacado_Producto_Intermedio if producto else False,
                 "stock_total": 0,
                 "valor_total": 0,   # para el promedio ponderado
             }
@@ -110,6 +151,7 @@ def stock_intermedio_general(sesion: Session = Depends(get_sesion)):
             "id_producto_intermedio": pid,
             "descripcion": datos["descripcion"],
             "unidad": datos["unidad"],
+            "destacado": datos["destacado"],
             "stock_total": stock,
             "costo_promedio": round(costo_prom, 4),
         })
@@ -155,17 +197,39 @@ def listar_producciones_terminadas(sesion: Session = Depends(get_sesion)):
     prods = sesion.query(Produccion).filter(
         Produccion.Cantidad_Restante_Produccion > UMBRAL_STOCK_MINIMO
     ).all()
+    # Lotes terminados ya referenciados aguas abajo (vendidos, mermados,
+    # devueltos o reprocesados): no son eliminables (item 6a).
+    usados = _ids_no_nulos(
+        sesion,
+        Detalle_Venta.Id_Produccion,
+        Movimiento_Inventario.Id_Produccion,
+        Movimiento_Inventario.Ref_Reproceso,
+    )
     resultado = []
     for p in prods:
         producto = sesion.get(Producto_Terminado, p.Id_Producto_Terminado)
+        intacta = (
+            p.Cantidad_Restante_Produccion == p.Cantidad_Producida_Produccion
+            and p.Id_Produccion not in usados
+        )
         resultado.append({
             "id_produccion": p.Id_Produccion,
             "descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
             "cantidad_restante": float(p.Cantidad_Restante_Produccion),
             "costo_unitario": float(p.Precio_Unitario_Producto_Terminado or 0),
             "horas_acumuladas": float(p.Horas_Acumuladas or 0),
+            "eliminable": intacta,
         })
     return resultado
+
+
+@router.delete("/producciones-terminadas/{id_produccion}")
+def borrar_produccion_terminada(id_produccion: int, sesion: Session = Depends(get_sesion)):
+    """Elimina una produccion terminada intacta, devolviendo insumos y absorcion (item 6a)."""
+    try:
+        return eliminar_produccion_terminada(sesion, id_produccion)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/lotes-producto-terminado")
@@ -207,6 +271,7 @@ def stock_terminado_general(sesion: Session = Depends(get_sesion)):
             resumen[pid] = {
                 "descripcion": producto.Descripcion_Producto_Terminado if producto else "?",
                 "botellas_por_paquete": producto.Botellas_Por_Paquete if producto else 1,
+                "destacado": producto.Destacado_Producto_Terminado if producto else False,
                 "stock_total": 0, "valor_total": 0,
             }
         cant = float(p.Cantidad_Restante_Produccion)
@@ -220,6 +285,7 @@ def stock_terminado_general(sesion: Session = Depends(get_sesion)):
         resultado.append({
             "id_producto_terminado": pid,
             "descripcion": d["descripcion"],
+            "destacado": d["destacado"],
             "stock_total": stock,
             "costo_promedio": round(d["valor_total"] / stock, 4) if stock > 0 else 0,
             "botellas_por_paquete": botellas_paquete,
