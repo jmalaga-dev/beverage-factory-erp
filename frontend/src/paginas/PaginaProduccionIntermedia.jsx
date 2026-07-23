@@ -4,8 +4,12 @@ import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
 import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
+import ResumenProduccion from '../componentes/ResumenProduccion'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtNumero } from '../formato'
 import { fusionar } from '../insumos'
+import { resumenMateriaPrima, resumenIntermedios, resumenTrabajo } from '../resumenProduccion'
+import { evaluar } from '../calculo'
 
 function PaginaProduccionIntermedia() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -65,7 +69,9 @@ function PaginaProduccionIntermedia() {
   // pre-llenando producto, cantidad e insumos (MP e intermedios). Editable.
   function aplicarReceta() {
     if (recetaSel === '' || recetaCantidad === '') { setMensaje('Elige receta y cantidad a producir'); return }
-    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${parseFloat(recetaCantidad)}`)
+    const cantReceta = evaluar(recetaCantidad)
+    if (Number.isNaN(cantReceta) || cantReceta <= 0) { setMensaje('La cantidad a producir no es válida'); return }
+    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${cantReceta}`)
       .then((d) => {
         setIdProducto(String(d.id_producto))
         setCantidad(String(d.cantidad_producir))
@@ -87,15 +93,17 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige lote y cantidad de materia prima')
       return
     }
+    const cant = evaluar(mpCantidad)
+    if (Number.isNaN(cant)) { setMensaje('La cantidad no es una operación válida'); return }
     const lote = lotes.find((l) => l.id_compra === parseInt(mpLote))
     const yaUsado = insumosMP
       .filter((x) => x.id_compra === parseInt(mpLote))
       .reduce((s, x) => s + x.cantidad, 0)
-    if (lote && yaUsado + parseFloat(mpCantidad) > lote.cantidad_restante) {
+    if (lote && yaUsado + cant > lote.cantidad_restante) {
       setMensaje(`Ese lote solo tiene ${lote.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosMP(fusionar(insumosMP, [{ id_compra: parseInt(mpLote), cantidad: parseFloat(mpCantidad) }], 'id_compra'))
+    setInsumosMP(fusionar(insumosMP, [{ id_compra: parseInt(mpLote), cantidad: cant }], 'id_compra'))
     setMpLote('')
     setMpCantidad('')
     setMensaje('')
@@ -128,15 +136,17 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige jornada y horas')
       return
     }
+    const hs = evaluar(trabHoras)
+    if (Number.isNaN(hs)) { setMensaje('Las horas no son una operación válida'); return }
     const jornada = jornadas.find((j) => j.id_jornada === parseInt(trabJornada))
     const yaUsado = insumosTrabajo
       .filter((x) => x.id_registro === parseInt(trabJornada))
       .reduce((s, x) => s + x.horas, 0)
-    if (jornada && yaUsado + parseFloat(trabHoras) > jornada.horas_restantes) {
+    if (jornada && yaUsado + hs > jornada.horas_restantes) {
       setMensaje(`Esa jornada solo tiene ${jornada.horas_restantes}h disponibles${yaUsado > 0 ? ` (ya usaste ${yaUsado}h)` : ''}`)
       return
     }
-    setInsumosTrabajo([...insumosTrabajo, { id_registro: parseInt(trabJornada), horas: parseFloat(trabHoras) }])
+    setInsumosTrabajo([...insumosTrabajo, { id_registro: parseInt(trabJornada), horas: hs }])
     setTrabJornada('')
     setTrabHoras('')
     setMensaje('')
@@ -151,15 +161,17 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige producción intermedia y cantidad')
       return
     }
+    const cant = evaluar(intCantidad)
+    if (Number.isNaN(cant)) { setMensaje('La cantidad no es una operación válida'); return }
     const prod = producciones.find((p) => p.id_produccion_intermedio === parseInt(intLote))
     const yaUsado = insumosIntermedio
       .filter((x) => x.id_prod === parseInt(intLote))
       .reduce((s, x) => s + x.cantidad, 0)
-    if (prod && yaUsado + parseFloat(intCantidad) > prod.cantidad_restante) {
+    if (prod && yaUsado + cant > prod.cantidad_restante) {
       setMensaje(`Ese lote solo tiene ${prod.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosIntermedio(fusionar(insumosIntermedio, [{ id_prod: parseInt(intLote), cantidad: parseFloat(intCantidad) }], 'id_prod'))
+    setInsumosIntermedio(fusionar(insumosIntermedio, [{ id_prod: parseInt(intLote), cantidad: cant }], 'id_prod'))
     setIntLote('')
     setIntCantidad('')
     setMensaje('')
@@ -175,6 +187,11 @@ function PaginaProduccionIntermedia() {
       setMensaje('Elige el producto y la cantidad a producir')
       return
     }
+    const cantProducir = evaluar(cantidad)
+    if (Number.isNaN(cantProducir) || cantProducir <= 0) {
+      setMensaje('La cantidad a producir no es válida')
+      return
+    }
     if (insumosMP.length === 0 && insumosTrabajo.length === 0) {
       setMensaje('Agrega al menos un insumo')
       return
@@ -187,7 +204,7 @@ function PaginaProduccionIntermedia() {
 
     apiPost('/producciones-intermedias', {
       id_producto_intermedio: parseInt(idProducto),
-      cantidad_producida: parseFloat(cantidad),
+      cantidad_producida: cantProducir,
       insumos_mp: mp,
       insumos_trabajo: trabajo,
       insumos_intermedio: intermedio,
@@ -232,12 +249,30 @@ function PaginaProduccionIntermedia() {
   const costoTrabajo = insumosTrabajo.reduce((suma, x) => {
     const jornada = jornadas.find((j) => j.id_jornada === x.id_registro)
     const trabajador = jornada ? trabajadores.find((t) => t.id_trabajador === jornada.id_trabajador) : null
-    return suma + x.horas * (trabajador ? trabajador.pago : 0)
+    // `pago` es el SUELDO del periodo, no Bs/hora. La tarifa/hora la deriva el
+    // backend (sueldo / horas_base) y la expone como `tarifa`; usarla acá para
+    // que el indicador visual coincida con el costo real que calcula el backend.
+    return suma + x.horas * (trabajador ? trabajador.tarifa || 0 : 0)
   }, 0)
   const costoTotalParcial = costoMP + costoIntermedio + costoTrabajo
   const horasInvertidas = insumosTrabajo.reduce((suma, x) => suma + x.horas, 0)
-  const costoUnitarioParcial = cantidad !== '' && parseFloat(cantidad) > 0
-    ? costoTotalParcial / parseFloat(cantidad)
+  // La cantidad a producir también acepta operaciones (item 11): se evalúa.
+  const cantidadNum = evaluar(cantidad)
+  const costoUnitarioParcial = !Number.isNaN(cantidadNum) && cantidadNum > 0
+    ? costoTotalParcial / cantidadNum
+    : null
+
+  // Resumen consolidado pre-producción (item 6b), con los helpers compartidos
+  // con Producción Terminada. Los intermedios usados como insumo salen de la
+  // lista de producciones con stock (`producciones`).
+  const resumenMP = resumenMateriaPrima(insumosMP, lotes)
+  const resumenInt = resumenIntermedios(insumosIntermedio, producciones)
+  const resumenTrab = resumenTrabajo(insumosTrabajo, jornadas)
+  const productoElegido = idProducto !== ''
+    ? productos.find((p) => p.id_producto_intermedio === parseInt(idProducto))
+    : null
+  const encabezadoResumen = productoElegido && !Number.isNaN(cantidadNum) && cantidadNum > 0
+    ? <><strong>{fmtNumero(cantidadNum)}{productoElegido.unidad ? ' ' + productoElegido.unidad : ''}</strong> de <strong>{productoElegido.descripcion}</strong></>
     : null
 
   return (
@@ -256,8 +291,7 @@ function PaginaProduccionIntermedia() {
             obtenerTexto={(r) => `${r.nombre || r.producto} (rinde ${r.rendimiento})`}
             placeholder="-- Receta --"
           />
-          <input type="number" placeholder="Cantidad a producir"
-            value={recetaCantidad} onChange={(e) => setRecetaCantidad(e.target.value)} />
+          <InputCalculo value={recetaCantidad} onChange={setRecetaCantidad} placeholder="Cantidad a producir" />
           <button onClick={aplicarReceta}>Aplicar receta</button>
         </div>
       )}
@@ -272,8 +306,7 @@ function PaginaProduccionIntermedia() {
           obtenerTexto={(p) => p.descripcion}
           placeholder="-- Producto intermedio a producir --"
         />
-        <input type="number" placeholder="Cantidad a producir"
-          value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        <InputCalculo value={cantidad} onChange={setCantidad} placeholder="Cantidad a producir" />
       </div>
 
       {/* Agregar materia prima */}
@@ -295,8 +328,7 @@ function PaginaProduccionIntermedia() {
           obtenerTexto={(l) => `${l.nombre_materia} - Lote ${l.id_compra} (restante: ${l.cantidad_restante})`}
           placeholder="-- Lote (manual) --"
         />
-        <input type="number" placeholder="Cantidad"
-          value={mpCantidad} onChange={(e) => setMpCantidad(e.target.value)} />
+        <InputCalculo value={mpCantidad} onChange={setMpCantidad} placeholder="Cantidad" />
         <button onClick={agregarMP}>Agregar MP</button>
       </div>
       <ul>
@@ -319,8 +351,7 @@ function PaginaProduccionIntermedia() {
           obtenerTexto={(j) => `${j.nombre_trabajador} - ${j.fecha} (quedan ${j.horas_restantes}h)`}
           placeholder="-- Jornada --"
         />
-        <input type="number" placeholder="Horas a usar"
-          value={trabHoras} onChange={(e) => setTrabHoras(e.target.value)} />
+        <InputCalculo value={trabHoras} onChange={setTrabHoras} placeholder="Horas a usar" />
         <button onClick={agregarTrabajo}>Agregar trabajo</button>
       </div>
       <ul>
@@ -351,8 +382,7 @@ function PaginaProduccionIntermedia() {
           obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}${p.unidad ? ' ' + p.unidad : ''}, costo ${p.costo_unitario})`}
           placeholder="-- Producción intermedia (manual) --"
         />
-        <input type="number" placeholder="Cantidad"
-          value={intCantidad} onChange={(e) => setIntCantidad(e.target.value)} />
+        <InputCalculo value={intCantidad} onChange={setIntCantidad} placeholder="Cantidad" />
         <button onClick={agregarIntermedio}>Agregar intermedio</button>
       </div>
       <ul>
@@ -377,11 +407,17 @@ function PaginaProduccionIntermedia() {
       <button onClick={producir}>PRODUCIR</button>
       {mensaje && <p>{mensaje}</p>}
 
+      <ResumenProduccion
+        encabezado={encabezadoResumen}
+        mp={resumenMP}
+        intermedio={resumenInt}
+        trabajo={resumenTrab}
+      />
+
       <TablaFiltrable
         titulo="Stock general por producto (consolidado)"
         filas={stockGeneral}
         claveOrden="descripcion"
-        abiertoInicial={true}
         columnas={[
           { key: 'descripcion', label: 'Producto' },
           { key: 'stock_total', label: 'Stock total', formato: (v) => fmtNumero(v) },
@@ -390,25 +426,19 @@ function PaginaProduccionIntermedia() {
         ]}
       />
 
-      <h2>Stock de producciones intermedias</h2>
-      <table border="1">
-        <thead>
-          <tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Unidad</th><th>Costo unitario</th></tr>
-        </thead>
-        <tbody>
-          {producciones.map((p) => (
-            <tr key={p.id_produccion_intermedio}>
-              <td>{p.id_produccion_intermedio}</td>
-              <td>{p.descripcion}</td>
-              <td>{fmtNumero(p.cantidad_restante)}</td>
-              <td>{p.unidad || '—'}</td>
-              <td>{fmtNumero(p.costo_unitario, 4)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TablaFiltrable
+        titulo="Stock de producciones intermedias (por lote)"
+        filas={producciones}
+        claveOrden="descripcion"
+        columnas={[
+          { key: 'id_produccion_intermedio', label: 'Lote' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'cantidad_restante', label: 'Stock restante', formato: (v) => fmtNumero(v) },
+          { key: 'unidad', label: 'Unidad' },
+          { key: 'costo_unitario', label: 'Costo unitario', formato: (v) => fmtNumero(v, 4) },
+        ]}
+      />
     </div>
-    
   )
 }
 

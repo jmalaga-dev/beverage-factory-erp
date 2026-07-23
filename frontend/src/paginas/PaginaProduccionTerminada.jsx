@@ -5,8 +5,12 @@ import SelectorFifo from '../componentes/SelectorFifo'
 import TablaFiltrable from '../componentes/TablaFiltrable'
 import CantidadPaquetes, { totalBotellas } from '../componentes/CantidadPaquetes'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
+import ResumenProduccion from '../componentes/ResumenProduccion'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
 import { fusionar } from '../insumos'
+import { resumenMateriaPrima, resumenIntermedios, resumenTrabajo } from '../resumenProduccion'
+import { evaluar } from '../calculo'
 
 function PaginaProduccionTerminada() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -79,15 +83,17 @@ function PaginaProduccionTerminada() {
   // Agregar/quitar intermedio
   function agregarIntermedio() {
     if (intLote === '' || intCantidad === '') { setMensaje('Elige intermedio y cantidad'); return }
+    const cant = evaluar(intCantidad)
+    if (Number.isNaN(cant)) { setMensaje('La cantidad no es una operación válida'); return }
     const prod = intermedios.find((p) => p.id_produccion_intermedio === parseInt(intLote))
     const yaUsado = insumosIntermedio
       .filter((x) => x.id_prod === parseInt(intLote))
       .reduce((s, x) => s + x.cantidad, 0)
-    if (prod && yaUsado + parseFloat(intCantidad) > prod.cantidad_restante) {
+    if (prod && yaUsado + cant > prod.cantidad_restante) {
       setMensaje(`Ese lote solo tiene ${prod.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosIntermedio(fusionar(insumosIntermedio, [{ id_prod: parseInt(intLote), cantidad: parseFloat(intCantidad) }], 'id_prod'))
+    setInsumosIntermedio(fusionar(insumosIntermedio, [{ id_prod: parseInt(intLote), cantidad: cant }], 'id_prod'))
     setIntLote(''); setIntCantidad(''); setMensaje('')
   }
   function quitarIntermedio(i) { setInsumosIntermedio(insumosIntermedio.filter((_, idx) => idx !== i)) }
@@ -100,15 +106,17 @@ function PaginaProduccionTerminada() {
   // Agregar/quitar materia prima
   function agregarMP() {
     if (mpLote === '' || mpCantidad === '') { setMensaje('Elige lote y cantidad'); return }
+    const cant = evaluar(mpCantidad)
+    if (Number.isNaN(cant)) { setMensaje('La cantidad no es una operación válida'); return }
     const lote = lotes.find((l) => l.id_compra === parseInt(mpLote))
     const yaUsado = insumosMP
       .filter((x) => x.id_compra === parseInt(mpLote))
       .reduce((s, x) => s + x.cantidad, 0)
-    if (lote && yaUsado + parseFloat(mpCantidad) > lote.cantidad_restante) {
+    if (lote && yaUsado + cant > lote.cantidad_restante) {
       setMensaje(`Ese lote solo tiene ${lote.cantidad_restante} disponible${yaUsado > 0 ? ` (ya usaste ${yaUsado})` : ''}`)
       return
     }
-    setInsumosMP(fusionar(insumosMP, [{ id_compra: parseInt(mpLote), cantidad: parseFloat(mpCantidad) }], 'id_compra'))
+    setInsumosMP(fusionar(insumosMP, [{ id_compra: parseInt(mpLote), cantidad: cant }], 'id_compra'))
     setMpLote(''); setMpCantidad(''); setMensaje('')
   }
   function quitarMP(i) { setInsumosMP(insumosMP.filter((_, idx) => idx !== i)) }
@@ -121,15 +129,17 @@ function PaginaProduccionTerminada() {
   // Agregar/quitar trabajo
   function agregarTrabajo() {
     if (trabJornada === '' || trabHoras === '') { setMensaje('Elige jornada y horas'); return }
+    const hs = evaluar(trabHoras)
+    if (Number.isNaN(hs)) { setMensaje('Las horas no son una operación válida'); return }
     const jornada = jornadas.find((j) => j.id_jornada === parseInt(trabJornada))
     const yaUsado = insumosTrabajo
       .filter((x) => x.id_registro === parseInt(trabJornada))
       .reduce((s, x) => s + x.horas, 0)
-    if (jornada && yaUsado + parseFloat(trabHoras) > jornada.horas_restantes) {
+    if (jornada && yaUsado + hs > jornada.horas_restantes) {
       setMensaje(`Esa jornada solo tiene ${jornada.horas_restantes}h disponibles${yaUsado > 0 ? ` (ya usaste ${yaUsado}h)` : ''}`)
       return
     }
-    setInsumosTrabajo([...insumosTrabajo, { id_registro: parseInt(trabJornada), horas: parseFloat(trabHoras) }])
+    setInsumosTrabajo([...insumosTrabajo, { id_registro: parseInt(trabJornada), horas: hs }])
     setTrabJornada(''); setTrabHoras(''); setMensaje('')
   }
   function quitarTrabajo(i) { setInsumosTrabajo(insumosTrabajo.filter((_, idx) => idx !== i)) }
@@ -137,7 +147,9 @@ function PaginaProduccionTerminada() {
   // Aplicar pre-receta de terminado (3.6): escala + FIFO y pre-llena
   function aplicarReceta() {
     if (recetaSel === '' || recetaCantidad === '') { setMensaje('Elige receta y cantidad a producir'); return }
-    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${parseFloat(recetaCantidad)}`)
+    const cantReceta = evaluar(recetaCantidad)
+    if (Number.isNaN(cantReceta) || cantReceta <= 0) { setMensaje('La cantidad a producir no es válida'); return }
+    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${cantReceta}`)
       .then((d) => {
         setIdProducto(String(d.id_producto))
         // La receta escala en botellas: se vuelca al campo de botellas y se
@@ -210,12 +222,26 @@ function PaginaProduccionTerminada() {
   const costoTrabajo = insumosTrabajo.reduce((suma, x) => {
     const jornada = jornadas.find((j) => j.id_jornada === x.id_registro)
     const trabajador = jornada ? trabajadores.find((t) => t.id_trabajador === jornada.id_trabajador) : null
-    return suma + x.horas * (trabajador ? trabajador.pago : 0)
+    // `pago` es el SUELDO del periodo, no Bs/hora. La tarifa/hora la deriva el
+    // backend (sueldo / horas_base) y la expone como `tarifa`; usarla acá para
+    // que el indicador visual coincida con el costo real que calcula el backend.
+    return suma + x.horas * (trabajador ? trabajador.tarifa || 0 : 0)
   }, 0)
   const costoTotalParcial = costoIntermedio + costoMP + costoTrabajo
   const horasInvertidas = insumosTrabajo.reduce((suma, x) => suma + x.horas, 0)
   const costoUnitarioParcial = cantidadTotal > 0
     ? costoTotalParcial / cantidadTotal
+    : null
+
+  // Resumen consolidado pre-producción (item 6b), armado con helpers
+  // compartidos con Producción Intermedia. El encabezado se muestra solo cuando
+  // ya hay producto y cantidad; las líneas de insumos, apenas hay algo cargado
+  // (por eso aparece también en producción manual, no solo al aplicar receta).
+  const resumenMP = resumenMateriaPrima(insumosMP, lotes)
+  const resumenIntermedio = resumenIntermedios(insumosIntermedio, intermedios)
+  const resumenTrab = resumenTrabajo(insumosTrabajo, jornadas)
+  const encabezadoResumen = idProducto !== '' && cantidadTotal > 0
+    ? <><strong>{fmtBotellasYPaquetes(cantidadTotal, bppElegido)}</strong>{productoElegido ? <> de <strong>{productoElegido.descripcion}</strong></> : null}</>
     : null
 
   return (
@@ -236,8 +262,7 @@ function PaginaProduccionTerminada() {
             }
             placeholder="-- Receta --"
           />
-          <input type="number" placeholder="Cantidad a producir"
-            value={recetaCantidad} onChange={(e) => setRecetaCantidad(e.target.value)} />
+          <InputCalculo value={recetaCantidad} onChange={setRecetaCantidad} placeholder="Cantidad a producir" />
           <button onClick={aplicarReceta}>Aplicar receta</button>
         </div>
       )}
@@ -280,8 +305,7 @@ function PaginaProduccionTerminada() {
           obtenerTexto={(p) => `${p.descripcion} - Lote ${p.id_produccion_intermedio} (quedan ${p.cantidad_restante}${p.unidad ? ' ' + p.unidad : ''}, costo ${p.costo_unitario})`}
           placeholder="-- Producción intermedia (manual) --"
         />
-        <input type="number" placeholder="Cantidad"
-          value={intCantidad} onChange={(e) => setIntCantidad(e.target.value)} />
+        <InputCalculo value={intCantidad} onChange={setIntCantidad} placeholder="Cantidad" />
         <button onClick={agregarIntermedio}>Agregar intermedio</button>
       </div>
       <ul>
@@ -309,8 +333,7 @@ function PaginaProduccionTerminada() {
           obtenerTexto={(l) => `${l.nombre_materia} - Lote ${l.id_compra} (restante: ${l.cantidad_restante})`}
           placeholder="-- Lote (manual) --"
         />
-        <input type="number" placeholder="Cantidad"
-          value={mpCantidad} onChange={(e) => setMpCantidad(e.target.value)} />
+        <InputCalculo value={mpCantidad} onChange={setMpCantidad} placeholder="Cantidad" />
         <button onClick={agregarMP}>Agregar MP</button>
       </div>
       <ul>
@@ -330,8 +353,7 @@ function PaginaProduccionTerminada() {
           obtenerTexto={(j) => `${j.nombre_trabajador} - ${j.fecha} (quedan ${j.horas_restantes}h)`}
           placeholder="-- Jornada --"
         />
-        <input type="number" placeholder="Horas a usar"
-          value={trabHoras} onChange={(e) => setTrabHoras(e.target.value)} />
+        <InputCalculo value={trabHoras} onChange={setTrabHoras} placeholder="Horas a usar" />
         <button onClick={agregarTrabajo}>Agregar trabajo</button>
       </div>
       <ul>
@@ -353,11 +375,18 @@ function PaginaProduccionTerminada() {
       <button onClick={producir}>PRODUCIR</button>
       {mensaje && <p>{mensaje}</p>}
 
+      <ResumenProduccion
+        encabezado={encabezadoResumen}
+        mp={resumenMP}
+        intermedio={resumenIntermedio}
+        trabajo={resumenTrab}
+      />
+
       <TablaFiltrable
         titulo="Stock general por producto (consolidado)"
         filas={stockGeneral}
         claveOrden="descripcion"
-        abiertoInicial={true}
+        totales={['stock_total', 'paquetes_equivalentes']}
         columnas={[
           { key: 'descripcion', label: 'Producto' },
           { key: 'stock_total', label: 'Stock total', formato: (v) => fmtNumero(v) },
@@ -366,17 +395,18 @@ function PaginaProduccionTerminada() {
         ]}
       />
 
-      <h2>Stock por lote</h2>
-      <table border="1">
-        <thead><tr><th>Lote</th><th>Producto</th><th>Stock restante</th><th>Costo unitario</th><th>Horas acum.</th></tr></thead>
-        <tbody>
-          {porLote.map((p) => (
-            <tr key={p.id_produccion}>
-              <td>{p.id_produccion}</td><td>{p.descripcion}</td><td>{fmtNumero(p.cantidad_restante)}</td><td>{fmtNumero(p.costo_unitario, 4)}</td><td>{fmtNumero(p.horas_acumuladas, 2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TablaFiltrable
+        titulo="Stock por lote"
+        filas={porLote}
+        claveOrden="descripcion"
+        columnas={[
+          { key: 'id_produccion', label: 'Lote' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'cantidad_restante', label: 'Stock restante', formato: (v) => fmtNumero(v) },
+          { key: 'costo_unitario', label: 'Costo unitario', formato: (v) => fmtNumero(v, 4) },
+          { key: 'horas_acumuladas', label: 'Horas acum.', formato: (v) => fmtNumero(v, 2) },
+        ]}
+      />
     </div>
   )
 }

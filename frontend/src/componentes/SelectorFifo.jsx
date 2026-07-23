@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { apiGet } from '../api'
 import SelectorBuscable from './SelectorBuscable'
 import CantidadPaquetes, { totalBotellas } from './CantidadPaquetes'
+import InputCalculo from './InputCalculo'
 
 // "Resolver por FIFO" (mejora 3.1): eliges un producto (materia prima,
 // intermedio o terminado) y una cantidad total, y llama al resolver FIFO del
@@ -65,8 +66,7 @@ function SelectorFifo({ origen, opciones, obtenerId, obtenerTexto, placeholder, 
           onCambiarBotellas={setCantidad}
         />
       ) : (
-        <input type="number" placeholder="Cantidad total"
-          value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        <InputCalculo value={cantidad} onChange={setCantidad} placeholder="Cantidad total" />
       )}
       <button onClick={resolver}>Resolver FIFO</button>
       {mensaje && <span style={{ marginLeft: '0.5rem', color: '#a06000' }}>{mensaje}</span>}
