@@ -4,6 +4,7 @@ import FilaBalance from '../componentes/FilaBalance'
 import TablaFiltrable from '../componentes/TablaFiltrable'
 import { filasBalance, filasMovimientos } from '../filasBalance'
 import { fmtMoneda, fmtNumero } from '../formato'
+import { useFechaGlobal } from '../componentes/FechaGlobal'
 
 // Columnas comunes a los tres detalles: descripcion, cantidad y costo
 // promedio ponderado (los endpoints "general" ya lo calculan por producto).
@@ -29,6 +30,7 @@ const columnasActivos = [
 ]
 
 function PaginaBalance() {
+  const { fechaParaEnviar } = useFechaGlobal()
   const [actual, setActual] = useState(null)
   const [ultimo, setUltimo] = useState(null)
   const [resumen, setResumen] = useState(null)
@@ -53,8 +55,13 @@ function PaginaBalance() {
   useEffect(() => { cargar() }, [])
 
   function tomarBalance() {
-    const hoy = new Date().toISOString().slice(0, 10)
-    apiPost('/balances', { fecha_balance: hoy, dias_semana: 7 })
+    // Prioridad: la fecha global fijada (mejora 6.10). Si no hay, "hoy" LOCAL:
+    // `toISOString()` a secas devuelve UTC, y a las 11pm de Bolivia (UTC-4) eso
+    // ya es el día siguiente. Se compensa el offset como en Cierre/Prorrateo.
+    const d = new Date()
+    const hoyLocal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+    const fecha = fechaParaEnviar || hoyLocal
+    apiPost('/balances', { fecha_balance: fecha, dias_semana: 7 })
       .then(() => {
         setMensaje('Foto tomada. Ahora esta es la última foto.')
         cargar()   // recargar para que la nueva foto sea la "última"
@@ -158,6 +165,7 @@ function PaginaBalance() {
         filas={detalleTerminado}
         columnas={columnasDetalleTerminado}
         claveOrden="descripcion"
+        totales={['stock_total', 'paquetes_equivalentes']}
       />
       <TablaFiltrable
         titulo="Producto Intermedio"

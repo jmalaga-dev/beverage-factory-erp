@@ -6,7 +6,12 @@ import { useState } from 'react'
 //
 // estiloFila: opcional, (fila) => objeto de estilo. Para marcar visualmente
 // filas segun su estado (ej. una deuda ya saldada, atenuada).
-function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false, estiloFila }) {
+// totales: opcional, array de `key` de columnas a sumar (ej. ['stock_total',
+// 'paquetes_equivalentes']). Agrega una fila "Total" al pie, calculada sobre
+// las filas FILTRADAS (respeta la busqueda). Pensado para sumatorias donde una
+// sola unidad no alcanza (item 13): stock en botellas Y su equivalente en
+// paquetes a la vez, sin tener que elegir una.
+function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false, estiloFila, totales }) {
   const [filtro, setFiltro] = useState('')
   const [abierto, setAbierto] = useState(abiertoInicial)
 
@@ -15,6 +20,10 @@ function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = 
       columnas.some((c) => String(f[c.key] ?? '').toLowerCase().includes(filtro.toLowerCase()))
     )
     .sort((a, b) => String(a[claveOrden]).localeCompare(String(b[claveOrden]), 'es'))
+
+  const sumas = totales && filtradas.length > 0
+    ? Object.fromEntries(totales.map((key) => [key, filtradas.reduce((s, f) => s + (Number(f[key]) || 0), 0)]))
+    : null
 
   return (
     <div style={{ marginBottom: '1rem' }}>
@@ -45,6 +54,17 @@ function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = 
                   ))}
                 </tr>
               ))}
+              {sumas && (
+                <tr style={{ fontWeight: 'bold' }}>
+                  {columnas.map((c, i) => (
+                    <td key={c.key}>
+                      {c.key in sumas
+                        ? (c.formato ? c.formato(sumas[c.key]) : sumas[c.key])
+                        : (i === 0 ? 'Total' : '')}
+                    </td>
+                  ))}
+                </tr>
+              )}
             </tbody>
           </table>
         </>
