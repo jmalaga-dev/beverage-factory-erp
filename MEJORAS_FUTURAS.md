@@ -2125,3 +2125,69 @@ suma: promediar promedios entre productos distintos no significa nada, la
 columna queda en blanco en la fila de totales). Verificado en el navegador
 contra datos reales: fila Total mostrando el total en botellas y su
 equivalente en paquetes, coherente con las filas individuales.
+
+### 10.19 Marcador "destacado" en productos + filtro en Balance — Opus
+El detalle por producto del Balance (materia prima, intermedio, terminado)
+se veía largo porque lista todo el catálogo con stock, aunque solo un puñado
+de productos son los que realmente importa vigilar seguido.
+
+**Estado: implementado.** Migración 025: columna `Destacado_*` (default
+`FALSE`) en los 3 catálogos de producto, mismo patrón que `Habilitado_*`
+(6.1) pero para otra cosa (destacar no es lo mismo que deshabilitar: un
+producto destacado sigue operando normal). `Catalogo.jsx` ganó un prop
+`soportaDestacado` que agrega una columna ★/☆ con toggle
+(`PATCH /endpoint/{id}/destacado`); Balance ganó un checkbox "Mostrar solo
+los destacados" que filtra las 3 tablas de detalle y una columna ★ en las
+filas. Verificado en el navegador con datos reales: marcar 3 productos por
+catálogo hace que el filtro pase las tablas de 58/58/251 filas a 3/3/3,
+manteniendo la fila de totales (10.18) funcionando sobre lo filtrado; se
+probó también que alternar el destacado de un producto no afecta a otros
+(aislamiento del toggle).
+
+### 10.20 Eliminar una producción reciente, solo si está intacta — Opus
+Pedido explícito: si te equivocás al producir (ej. un insumo por otro) y te
+das cuenta al toque, no había forma de corregirlo — solo merma/reproceso,
+pensados para el caso de "ya se usó parte del lote", no para un error de
+tipeo recién hecho.
+
+**Estado: implementado.** Ver DECISIONES_DISENO 3.16 para el criterio
+("intacta" = nada de la cantidad producida se consumió/vendió/mermó, mismo
+principio que ya usaban las jornadas en 3.4). Nuevo servicio
+`eliminar_produccion.py` con una función por tipo (intermedia/terminada):
+revierte insumos consumidos (MP, horas, intermedios) y, en terminado,
+también la absorción (las botellas vuelven a `Item_Absorcion`). Las listas
+por lote exponen `eliminable`; el frontend solo ofrece el botón Eliminar
+ahí, y en el resto muestra "— usado" con el motivo. "Editar" = eliminar +
+volver a crear con el formulario ya cargado (reutiliza toda la lógica de
+producir, no duplica el cálculo de costo).
+
+Verificado con pruebas de punta a punta contra la BD real: crear una
+producción consumiendo 1 unidad de un lote real → stock baja exacto →
+eliminar → **stock vuelve exacto** al valor original, tanto en intermedia
+como en terminada (en terminada, además se confirmó que las botellas
+absorbidas vuelven exactas a los items de absorción). Test negativo:
+intentar eliminar un lote ya vendido/usado se bloquea con el mensaje
+correcto. Sin residuos de prueba (todo lo creado para probar se eliminó
+como parte del propio test).
+
+### 10.21 Anular un ingreso externo mal cargado — Opus
+Pedido explícito: un ingreso externo cargado dos veces por error (ej. un
+aporte que se tipeó dos veces) no se podía deshacer — había que inventar un
+gasto falso para compensarlo, ensuciando el historial de gastos con un dato
+que nunca fue real.
+
+**Estado: implementado.** Ver DECISIONES_DISENO 4 ("Anular con movimiento
+inverso, no con DELETE") para el criterio. Migración 026: nuevo
+`Tipo_Movimiento = 'ANULACION_INGRESO_EXTERNO'` y columna
+`Id_Movimiento_Anulado` (self-FK en `Movimiento`) que enlaza la anulación
+con el ingreso que cancela. `anular_ingreso_externo()` valida que no esté ya
+anulado y que la cuenta conserve el saldo (si el dinero ya se movió/gastó,
+no se puede anular limpio); crea el movimiento inverso, que queda junto al
+original en el historial. Nueva tabla en Transferencias ("Ingresos externos
+registrados") con botón Anular por fila.
+
+Verificado con una prueba de punta a punta contra la BD real: registrar un
+ingreso de prueba → saldo sube exacto → anular → **saldo vuelve exacto** al
+valor original, movimiento marcado "anulado", segundo intento de anular
+correctamente rechazado. Las 2 filas de prueba se borraron después de
+verificar (su efecto neto en el saldo era cero).
