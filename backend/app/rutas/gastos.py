@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.servicios.gastos import registrar_gasto
+from app.servicios.gastos import registrar_gasto, registrar_gasto_cubierto_externo
 from app.servicios.gastos_lote import previsualizar_gastos_lote, registrar_gastos_lote
 
 router = APIRouter(tags=["gastos"])
@@ -22,20 +22,35 @@ class GastoEntrada(BaseModel):
     descripcion: str
     id_grupo: int | None = None
     fecha: date | None = None
+    # Gasto cubierto por un aporte externo (item 10b): lo pagó alguien de fuera
+    # (ej. la cónyuge). Se registra el gasto pero no reduce las cuentas.
+    pagado_externo: bool = False
+    quien_pago: str | None = None
 
 
 @router.post("/gastos")
 def crear_gasto(datos: GastoEntrada, sesion: Session = Depends(get_sesion)):
-    """Registra un gasto que sale de una cuenta."""
+    """Registra un gasto que sale de una cuenta (o cubierto por aporte externo)."""
     try:
-        mov = registrar_gasto(
-            sesion,
-            id_cuenta=datos.id_cuenta,
-            monto=datos.monto,
-            descripcion=datos.descripcion,
-            id_grupo=datos.id_grupo,
-            fecha=datos.fecha or date.today(),
-        )
+        if datos.pagado_externo:
+            mov = registrar_gasto_cubierto_externo(
+                sesion,
+                id_cuenta=datos.id_cuenta,
+                monto=datos.monto,
+                descripcion=datos.descripcion,
+                quien_pago=datos.quien_pago,
+                id_grupo=datos.id_grupo,
+                fecha=datos.fecha or date.today(),
+            )
+        else:
+            mov = registrar_gasto(
+                sesion,
+                id_cuenta=datos.id_cuenta,
+                monto=datos.monto,
+                descripcion=datos.descripcion,
+                id_grupo=datos.id_grupo,
+                fecha=datos.fecha or date.today(),
+            )
         return {
             "mensaje": "Gasto registrado",
             "id_movimiento": mov.Id_Movimiento,
