@@ -41,7 +41,7 @@ def _cuentas_reparto(sesion):
     return unica("FABRICA"), unica("CASA")
 
 
-def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True):
+def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True, taxi=0):
     """
     Registra una venta con varias lineas de producto.
 
@@ -49,6 +49,10 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True):
     reparto=False) id_cuenta.
     reparto: True = reparto 70/30 automatico Fabrica/Casa (mejora 2.C);
              False = una cuenta explicita por linea (modo clasico).
+    taxi: costo de taxi/delivery de la venta (item 8). Se prorratea uniforme
+          por botella y BAJA el ingreso: lo que entra (y se reparte) es el
+          neto = bruto - taxi. No es una salida aparte. El precio por linea que
+          se guarda sigue siendo el BRUTO (lo que pago el cliente).
 
     Devuelve el objeto Venta creado. Lanza ValueError si algo no es valido.
     """
@@ -62,9 +66,15 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True):
     if not lineas:
         raise ValueError("La venta debe tener al menos un producto")
 
+    if taxi < 0:
+        raise ValueError("El taxi no puede ser negativo")
+
     cuenta_fabrica = cuenta_casa = None
     if reparto:
         cuenta_fabrica, cuenta_casa = _cuentas_reparto(sesion)
+
+    total_botellas = sum(linea["cantidad"] for linea in lineas)
+    taxi_por_botella = taxi / total_botellas if total_botellas > 0 else 0
 
     pedido_por_lote = {}
     for linea in lineas:
@@ -77,6 +87,16 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True):
 
         if linea["precio_real"] <= 0:
             raise ValueError("El precio real de venta debe ser mayor a cero")
+
+        # El taxi por botella no puede superar el precio de una linea: eso
+        # dejaria esa botella con ingreso neto negativo (vender por debajo del
+        # costo del delivery). Se avisa en vez de dejar pasar un neto negativo.
+        if linea["precio_real"] < taxi_por_botella:
+            raise ValueError(
+                f"El taxi por botella ({round(float(taxi_por_botella), 2)} Bs) supera el precio "
+                f"de un producto de la venta ({linea['precio_real']} Bs): esa venta perdería dinero. "
+                "Bajá el taxi o revisá el precio."
+            )
 
         if not reparto:
             if sesion.get(Cuenta, linea.get("id_cuenta")) is None:
@@ -105,22 +125,25 @@ def registrar_venta(sesion, id_cliente, lineas, fecha=None, reparto=True):
     # ----- 2. EJECUTAR (todo o nada) -----
 
     try:
-        venta = Venta(Id_Cliente=id_cliente, Fecha_Venta=fecha)
+        venta = Venta(Id_Cliente=id_cliente, Fecha_Venta=fecha, Taxi_Venta=taxi)
         sesion.add(venta)
         sesion.flush()
 
         for linea in lineas:
             produccion = sesion.get(Produccion, linea["id_produccion"])
-            total_linea = linea["cantidad"] * linea["precio_real"]
+            # El dinero que ENTRA y se reparte es el NETO: precio bruto menos la
+            # parte de taxi de esas botellas (item 8). El precio bruto se guarda
+            # igual en Detalle_Venta (más abajo), para poder analizar el margen.
+            neto_linea = linea["cantidad"] * (linea["precio_real"] - taxi_por_botella)
 
             # Determinar a qué cuenta(s) entra el dinero
             if reparto:
                 pid = produccion.Id_Producto_Terminado
-                a_fabrica, a_casa = dividir_ingreso(saldo_por_producto[pid], total_linea)
-                saldo_por_producto[pid] = saldo_por_producto[pid] + total_linea
+                a_fabrica, a_casa = dividir_ingreso(saldo_por_producto[pid], neto_linea)
+                saldo_por_producto[pid] = saldo_por_producto[pid] + neto_linea
                 destinos = [(cuenta_fabrica, a_fabrica), (cuenta_casa, a_casa)]
             else:
-                destinos = [(sesion.get(Cuenta, linea["id_cuenta"]), total_linea)]
+                destinos = [(sesion.get(Cuenta, linea["id_cuenta"]), neto_linea)]
 
             # Una ENTRADA por destino con monto > 0 (Fabrica y/o Casa)
             mov_principal = None
