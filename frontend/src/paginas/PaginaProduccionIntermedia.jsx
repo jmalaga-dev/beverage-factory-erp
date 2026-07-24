@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiGet, apiPost } from '../api'
+import { apiGet, apiPost, apiDelete } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
 import TablaFiltrable from '../componentes/TablaFiltrable'
@@ -223,6 +223,16 @@ function PaginaProduccionIntermedia() {
       .catch((e) => setMensaje(e.message))
   }
 
+  // Eliminar una producción intermedia recién creada, solo si está intacta
+  // (item 6a): el backend devuelve MP, horas e intermedios consumidos. Para
+  // "editar", se elimina y se vuelve a crear con los datos corregidos.
+  function eliminarProduccion(id) {
+    if (!window.confirm(`¿Eliminar la producción intermedia (lote ${id})? Se devolverán los insumos consumidos. Solo se puede si el lote está intacto.`)) return
+    apiDelete(`/producciones-intermedias/${id}`)
+      .then(() => { setMensaje(`Producción ${id} eliminada, insumos devueltos.`); cargar() })
+      .catch((e) => setMensaje(e.message))
+  }
+
   // Helpers para mostrar nombres en las listas
   function nombreLote(id) {
     const l = lotes.find((x) => x.id_compra === id)
@@ -437,6 +447,11 @@ function PaginaProduccionIntermedia() {
           { key: 'unidad', label: 'Unidad' },
           { key: 'costo_unitario', label: 'Costo unitario', formato: (v) => fmtNumero(v, 4) },
         ]}
+        acciones={(f) => (
+          f.eliminable
+            ? <button onClick={() => eliminarProduccion(f.id_produccion_intermedio)}>Eliminar</button>
+            : <span style={{ color: '#999', fontSize: '0.85em' }} title="Ya se usó en otra producción o merma: corrígelo por esos flujos">— usado</span>
+        )}
       />
     </div>
   )

@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import InputCalculo from '../componentes/InputCalculo'
+import TablaFiltrable from '../componentes/TablaFiltrable'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { evaluar } from '../calculo'
+import { fmtMoneda } from '../formato'
 
 function PaginaTransferencias() {
   const { fechaParaEnviar } = useFechaGlobal()
   const [cuentas, setCuentas] = useState([])
+  const [ingresos, setIngresos] = useState([])   // historial de ingresos externos (item 10a)
 
   // Transferencia entre cuentas propias
   const [idOrigen, setIdOrigen] = useState('')
@@ -24,9 +27,19 @@ function PaginaTransferencias() {
 
   function cargar() {
     apiGet('/cuentas').then(setCuentas).catch(console.error)
+    apiGet('/ingresos-externos').then(setIngresos).catch(console.error)
   }
 
   useEffect(() => { cargar() }, [])
+
+  // Anular un ingreso externo mal cargado (item 10a): crea un movimiento
+  // inverso que devuelve el dinero. No borra el original (queda el rastro).
+  function anularIngreso(id) {
+    if (!window.confirm(`¿Anular el ingreso externo #${id}? Se registrará un movimiento inverso que baja el saldo de la cuenta por el mismo monto.`)) return
+    apiPost(`/ingresos-externos/${id}/anular`, {})
+      .then(() => { setMensajeIngreso(`Ingreso externo #${id} anulado`); cargar() })
+      .catch((e) => setMensajeIngreso(e.message))
+  }
 
   function registrarTransferencia() {
     if (idOrigen === '' || idDestino === '' || montoTransferencia === '' || descripcionTransferencia.trim() === '') {
@@ -130,6 +143,28 @@ function PaginaTransferencias() {
         <button onClick={registrarIngresoExterno}>Registrar ingreso</button>
       </div>
       {mensajeIngreso && <p>{mensajeIngreso}</p>}
+
+      {/* Historial de ingresos externos, con opcion de anular uno mal cargado
+          (item 10a). Anular no borra: registra un movimiento inverso. */}
+      <TablaFiltrable
+        titulo="Ingresos externos registrados"
+        filas={ingresos}
+        claveOrden="fecha"
+        columnas={[
+          { key: 'id_movimiento', label: '#' },
+          { key: 'fecha', label: 'Fecha' },
+          { key: 'cuenta', label: 'Cuenta' },
+          { key: 'monto', label: 'Monto', formato: (v) => fmtMoneda(v) },
+          { key: 'descripcion', label: 'Descripción' },
+          { key: 'anulado', label: 'Estado', formato: (v) => (v ? 'Anulado' : '') },
+        ]}
+        estiloFila={(f) => (f.anulado ? { opacity: 0.5 } : undefined)}
+        acciones={(f) => (
+          f.anulado
+            ? <span style={{ color: '#999', fontSize: '0.85em' }}>anulado</span>
+            : <button onClick={() => anularIngreso(f.id_movimiento)}>Anular</button>
+        )}
+      />
     </div>
   )
 }

@@ -56,6 +56,10 @@ class HabilitadoEntrada(BaseModel):
     habilitado: bool
 
 
+class DestacadoEntrada(BaseModel):
+    destacado: bool
+
+
 def _ids_referenciados(sesion: Session, *columnas) -> set:
     """Union de los Ids que aparecen en una o mas columnas FK. De una sola
     pasada nos dice que items de un catalogo ya tienen historial encima (y
@@ -78,6 +82,18 @@ def _toggle_habilitado(sesion, modelo, campo, id_valor, habilitado, etiqueta):
     setattr(obj, campo, habilitado)
     sesion.commit()
     return {"mensaje": f"{etiqueta} actualizado", "habilitado": habilitado}
+
+
+def _toggle_destacado(sesion, modelo, campo, id_valor, destacado, etiqueta):
+    """Marca/desmarca un producto como destacado (item 14). No cambia nada de
+    su operacion: solo sirve para resaltarlo y filtrarlo en el detalle del
+    Balance. Independiente de habilitado."""
+    obj = sesion.get(modelo, id_valor)
+    if obj is None:
+        raise HTTPException(status_code=404, detail=f"No existe {etiqueta} con Id {id_valor}")
+    setattr(obj, campo, destacado)
+    sesion.commit()
+    return {"mensaje": f"{etiqueta} actualizado", "destacado": destacado}
 
 
 def _borrar(sesion, modelo, id_valor, etiqueta, en_uso, detalle_uso):
@@ -225,6 +241,7 @@ def listar_materias_primas(sesion: Session = Depends(get_sesion)):
             "descripcion": m.Descripcion_Materia_Prima,
             "unidad": m.Unidad_Materia_Prima,
             "habilitado": m.Habilitado_Materia_Prima,
+            "destacado": m.Destacado_Materia_Prima,
             "en_uso": m.Id_Materia_Prima in usados,
         }
         for m in materias
@@ -271,6 +288,11 @@ def actualizar_materia_prima(id_materia_prima: int, datos: MateriaPrimaEdicion, 
 @router.patch("/materias-primas/{id_materia_prima}/habilitado")
 def cambiar_habilitado_materia_prima(id_materia_prima: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
     return _toggle_habilitado(sesion, Materia_Prima, "Habilitado_Materia_Prima", id_materia_prima, datos.habilitado, "materia prima")
+
+
+@router.patch("/materias-primas/{id_materia_prima}/destacado")
+def cambiar_destacado_materia_prima(id_materia_prima: int, datos: DestacadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_destacado(sesion, Materia_Prima, "Destacado_Materia_Prima", id_materia_prima, datos.destacado, "materia prima")
 
 
 @router.delete("/materias-primas/{id_materia_prima}")
@@ -383,6 +405,7 @@ def listar_productos_terminados(sesion: Session = Depends(get_sesion)):
             "precio_recomendado": float(p.Precio_Venta_Recomendado_Producto_Terminado or 0),
             "botellas_por_paquete": p.Botellas_Por_Paquete,
             "habilitado": p.Habilitado_Producto_Terminado,
+            "destacado": p.Destacado_Producto_Terminado,
             "en_uso": p.Id_Producto_Terminado in usados,
         }
         for p in ps
@@ -449,6 +472,11 @@ def cambiar_habilitado_producto_terminado(id_producto: int, datos: HabilitadoEnt
     return _toggle_habilitado(sesion, Producto_Terminado, "Habilitado_Producto_Terminado", id_producto, datos.habilitado, "producto terminado")
 
 
+@router.patch("/productos-terminados/{id_producto}/destacado")
+def cambiar_destacado_producto_terminado(id_producto: int, datos: DestacadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_destacado(sesion, Producto_Terminado, "Destacado_Producto_Terminado", id_producto, datos.destacado, "producto terminado")
+
+
 @router.delete("/productos-terminados/{id_producto}")
 def borrar_producto_terminado(id_producto: int, sesion: Session = Depends(get_sesion)):
     en_uso = sesion.query(Produccion).filter(Produccion.Id_Producto_Terminado == id_producto).first() is not None
@@ -468,6 +496,7 @@ def listar_productos_intermedios(sesion: Session = Depends(get_sesion)):
             "litros": float(p.Litros_Botella_Final or 0),
             "unidad": p.Unidad_Producto_Intermedio,
             "habilitado": p.Habilitado_Producto_Intermedio,
+            "destacado": p.Destacado_Producto_Intermedio,
             "en_uso": p.Id_Producto_Intermedio in usados,
         }
         for p in ps
@@ -532,6 +561,11 @@ def actualizar_producto_intermedio(id_producto: int, datos: ProductoIntermedioEd
 @router.patch("/productos-intermedios/{id_producto}/habilitado")
 def cambiar_habilitado_producto_intermedio(id_producto: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
     return _toggle_habilitado(sesion, Producto_Intermedio, "Habilitado_Producto_Intermedio", id_producto, datos.habilitado, "producto intermedio")
+
+
+@router.patch("/productos-intermedios/{id_producto}/destacado")
+def cambiar_destacado_producto_intermedio(id_producto: int, datos: DestacadoEntrada, sesion: Session = Depends(get_sesion)):
+    return _toggle_destacado(sesion, Producto_Intermedio, "Destacado_Producto_Intermedio", id_producto, datos.destacado, "producto intermedio")
 
 
 @router.delete("/productos-intermedios/{id_producto}")

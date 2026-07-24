@@ -303,6 +303,7 @@ def stock_materia_prima(sesion: Session = Depends(get_sesion)):
             resumen[mid] = {
                 "descripcion": materia.Descripcion_Materia_Prima if materia else "?",
                 "unidad": materia.Unidad_Materia_Prima if materia else "",
+                "destacado": materia.Destacado_Materia_Prima if materia else False,
                 "stock_total": 0.0,
                 "valor_total": 0.0,
             }
@@ -319,6 +320,7 @@ def stock_materia_prima(sesion: Session = Depends(get_sesion)):
             "id_materia_prima": mid,
             "descripcion": datos["descripcion"],
             "unidad": datos["unidad"],
+            "destacado": datos["destacado"],
             "stock_total": stock,
             "costo_promedio": round(costo_prom, 4),
         })

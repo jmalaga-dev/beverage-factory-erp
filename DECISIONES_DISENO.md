@@ -437,6 +437,31 @@ estimadas y restantes). Dos decisiones:
   desde la BD y lo aplica (no confía en números del cliente), así lo que se ve
   es exactamente lo que se confirma. Rango libre de dos fechas, no semana fija.
 
+### 3.16 Eliminar una producción reciente, solo si está intacta (mejora 6a)
+- **Extiende a producciones el criterio "intacta" que ya usaban las jornadas
+  (3.4), en vez de crear una regla nueva.** Intacta = el lote sigue exactamente
+  como se produjo: nada de su cantidad se consumió, vendió, mermó ni
+  reprocesó. Corregir un error de tipeo recién hecho (el ejemplo real: cargar
+  una producción con la tapa equivocada y darse cuenta al toque) no debería
+  exigir un evento de merma/reproceso — pero apenas algo dependió del lote, sí
+  (ahí se respeta la inmutabilidad estricta: se corrige con esos flujos, no
+  editando ni borrando).
+- **Eliminar = deshacer todo lo que la producción había hecho, no un DELETE
+  suelto.** Devuelve la materia prima y las horas de trabajo consumidas, los
+  intermedios que haya consumido, y —en terminado— revierte la absorción
+  (`Absorcion_Produccion` se borra y sus botellas vuelven a
+  `Item_Absorcion.Botellas_Restantes`). Todo en la misma transacción que borra
+  la cabecera y sus detalles.
+- **"Editar" no es una operación aparte.** El frontend reutiliza el mismo
+  formulario de producción: eliminar + volver a crear con los datos
+  corregidos. Evita duplicar la lógica de armado de costo/absorción que ya
+  vive en `producir_intermedio`/`producir_terminado`.
+- **El guard se calcula en el propio listado (`eliminable`), no solo al
+  intentar borrar.** Las listas por lote (`/producciones-intermedias`,
+  `/producciones-terminadas`) exponen `eliminable` para que el frontend
+  muestre el botón Eliminar únicamente donde tiene sentido, en vez de
+  ofrecerlo siempre y fallar al hacer clic.
+
 ---
 
 ## 4. FLUJO DE OPERACIONES (patrón de los servicios)
@@ -486,6 +511,10 @@ Operaciones construidas (con backend, API y pantalla):
   intermedia y terminada (mejora 3.6): sugerencias que pre-llenan las listas
   de insumos; los servicios de producción/venta siguen recibiendo lotes
   explícitos, así que FIFO/recetas no cambian su lógica ni su validación.
+- Eliminar una producción intacta (mejora 6a, ver 3.16): devuelve insumos y
+  absorción, solo si nada consumió ese lote todavía.
+- Anular un ingreso externo mal cargado (mejora 10a): movimiento inverso
+  enlazado al original, nunca un DELETE.
 
 **Agrupar lotes repetidos antes de descontar (correctitud):** los servicios
 que consumen lotes (producción intermedia/terminada, venta) validan el stock
@@ -522,6 +551,19 @@ El balance ya resta `Total_Deudas`, así que registrar/pagar una deuda se
 refleja solo en patrimonio y escenarios (una deuda simple baja el
 patrimonio; un préstamo lo deja igual porque el efectivo que entra y el
 pasivo que sube se cancelan).
+
+**Anular con movimiento inverso, no con DELETE (mejora 10a):** un ingreso
+externo mal cargado (ej. duplicado por error) no se borra — el libro de
+movimientos es inmutable. Se registra un movimiento nuevo tipo
+`ANULACION_INGRESO_EXTERNO` (agregado al CHECK de `Tipo_Movimiento`, migración
+026) que baja el saldo de la cuenta por el mismo monto, enlazado al original
+por `Id_Movimiento_Anulado` (self-FK en `Movimiento`). Quedan las dos filas en
+el historial: el error y su anulación, igual que una devolución (3.10) deja
+el rastro de "entró y después se desechó" en vez de borrar. Necesita su
+propio tipo (no `SALIDA`) por el mismo motivo que `INGRESO_EXTERNO`/
+`PAGO_DEUDA`: si fuera `SALIDA`, el balance la contaría como gasto de la
+semana. Bloqueado si la cuenta ya no tiene ese saldo (el dinero se movió o se
+gastó) y si el ingreso ya estaba anulado (no se puede anular dos veces).
 
 **Clasificar sin adivinar por texto (mismo principio, aplicado a activos):**
 la clasificación Inmueble/Equipo/Otro de los activos fijos en el balance

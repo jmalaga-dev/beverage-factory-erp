@@ -11,7 +11,9 @@ import { useState } from 'react'
 // las filas FILTRADAS (respeta la busqueda). Pensado para sumatorias donde una
 // sola unidad no alcanza (item 13): stock en botellas Y su equivalente en
 // paquetes a la vez, sin tener que elegir una.
-function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false, estiloFila, totales }) {
+// acciones: opcional, (fila) => nodo JSX. Si se pasa, agrega una columna
+// "Acciones" al final con lo que devuelva (ej. un boton Eliminar por fila).
+function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = false, estiloFila, totales, acciones }) {
   const [filtro, setFiltro] = useState('')
   const [abierto, setAbierto] = useState(abiertoInicial)
 
@@ -41,17 +43,21 @@ function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = 
           />
           <table border="1">
             <thead>
-              <tr>{columnas.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
+              <tr>
+                {columnas.map((c) => <th key={c.key}>{c.label}</th>)}
+                {acciones && <th>Acciones</th>}
+              </tr>
             </thead>
             <tbody>
               {filtradas.length === 0 && (
-                <tr><td colSpan={columnas.length}>Sin resultados</td></tr>
+                <tr><td colSpan={columnas.length + (acciones ? 1 : 0)}>Sin resultados</td></tr>
               )}
               {filtradas.map((f, i) => (
                 <tr key={i} style={estiloFila ? estiloFila(f) : undefined}>
                   {columnas.map((c) => (
                     <td key={c.key}>{c.formato ? c.formato(f[c.key]) : f[c.key]}</td>
                   ))}
+                  {acciones && <td>{acciones(f)}</td>}
                 </tr>
               ))}
               {sumas && (
@@ -63,6 +69,7 @@ function TablaFiltrable({ titulo, filas, columnas, claveOrden, abiertoInicial = 
                         : (i === 0 ? 'Total' : '')}
                     </td>
                   ))}
+                  {acciones && <td></td>}
                 </tr>
               )}
             </tbody>
