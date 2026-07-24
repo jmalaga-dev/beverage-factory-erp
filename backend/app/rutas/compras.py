@@ -334,7 +334,7 @@ def ultimo_precio_materia(id_materia_prima: int, sesion: Session = Depends(get_s
     (mejora 6.7). Sirve para predeterminar el precio al cargar una compra
     nueva, que es el dato que mas se repite entre compras seguidas.
 
-    Es por MATERIA, no por proveedor: hoy las 2454 compras migradas del excel
+    Es por MATERIA, no por proveedor: hoy las compras migradas del excel
     tienen Id_Proveedor en NULL, asi que filtrar por proveedor devolveria
     vacio para casi todo el catalogo. Cuando haya historial con proveedor,
     afinarlo es un WHERE mas (ver 5.1).

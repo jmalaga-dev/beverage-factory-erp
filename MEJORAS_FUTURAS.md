@@ -183,11 +183,11 @@ string (mismo criterio que `/ventas/preview-reparto`).
 
 **Decisión de negocio 1 — ventana de tiempo configurable (12 meses por
 defecto), no todo el histórico.** Al medirlo contra los datos reales, la
-diferencia era decisiva: en el insumo más comprado, todo el histórico da un
-rango de 1,00 a 17,33 (17x) mientras que los últimos 12 meses dan 16,00 a
-17,33 (1,1x). Con el histórico completo, el "escenario más barato" quedaba
-anclado a un precio de hace 5 años que ya no se consigue, y hacía ver
-rentable un producto por un costo imposible. Se eligió **configurable en
+diferencia era decisiva: en el insumo más comprado, todo el histórico daba un
+rango de más de 15x entre el precio más barato y el más caro, mientras que los
+últimos 12 meses daban un rango de apenas ~1,1x. Con el histórico completo, el
+"escenario más barato" quedaba anclado a un precio de varios años atrás que ya
+no se consigue, y hacía ver rentable un producto por un costo imposible. Se eligió **configurable en
 pantalla** (y no fijo en 12) porque además sirve para detectar datos
 sospechosos: si al ampliar la ventana aparece un precio muy por debajo del
 actual, es candidato a revisar (ver 5.2). `0 = todo el historial`.
@@ -1119,7 +1119,7 @@ dato a cargar es predecible desde el historial, y salieron tres:
 
 - **Compras** → cantidad y precio de la **última compra de esa materia**.
   Ya existía un autocompletado con `/ultima-compra/{materia}/{proveedor}`,
-  pero exigía **ambos**, y como las 2454 compras migradas del excel tienen
+  pero exigía **ambos**, y como las compras migradas del excel tienen
   `Id_Proveedor` en NULL, no disparaba nunca para esas materias. Ahora se
   dispara con la materia sola (nuevo `GET /ultimo-precio-materia/{id}`) y se
   afina al par materia+proveedor si hay proveedor elegido.
@@ -1523,12 +1523,14 @@ visual ya se montó.
   6. **Rentabilidad acumulada por producto** (recuperación de inversión, el
      `saldo` de 2.C — distinto del Pareto; verificado contra la BD real).
   7. **Evolución de precio por materia prima + detección de outliers** (cara
-     visual de 5.2; `ALCOHOL CAIMAN` va de 1,00 a 17,33 en el histórico).
+     visual de 5.2; algún insumo con un rango de varios múltiplos en el histórico).
   8. **Mano de obra por trabajador y mes** (horas, costo derivado de la tarifa
      de 10.1, y botellas/hora a nivel fábrica).
   9. **Deudas: saldo vivo + pagos en el tiempo** (no es aging clásico: `Deuda`
      no tiene vencimiento y `Movimiento_Deuda` sólo guarda `PAGO`, así que el
      saldo histórico no se reconstruye — sí la foto de hoy y los pagos).
+  10. **Gastos por grupo y año** (mejora 10.24): `SALIDA` que no es compra ni
+     pago (misma definición de gasto que el balance), por grupo y por tiempo.
 - **Pendiente (1):** análisis de precios **por proveedor** — bloqueado por
   datos, no por código: 5.1 ya creó las tablas pero `Proveedor` está vacía y
   las compras migradas tienen `Id_Proveedor` en NULL.
@@ -2191,3 +2193,64 @@ ingreso de prueba → saldo sube exacto → anular → **saldo vuelve exacto** a
 valor original, movimiento marcado "anulado", segundo intento de anular
 correctamente rechazado. Las 2 filas de prueba se borraron después de
 verificar (su efecto neto en el saldo era cero).
+
+### 10.22 Taxi de la venta baja el ingreso neto (antes era solo visual) — Opus
+Pedido explícito, cambia una decisión previa (3.9). El taxi/delivery era solo
+cálculo en pantalla: la venta entraba entera (ej. 900) y el taxi (ej. 50) había
+que registrarlo aparte como gasto. Ahora el taxi **no es una salida extra**:
+sale de esas mismas botellas, así que lo que entra y se reparte 70/30 es el
+**neto** (850). El objetivo del usuario: ver el margen real por botella y
+detectar cuándo un cliente lejano deja de ser rentable.
+
+**Estado: implementado.** Ver DECISIONES_DISENO 3.9 (revisado) para el
+criterio. Migración 027: `Venta.Taxi_Venta` (default 0, las ventas históricas
+no cambian). El taxi se prorratea uniforme por botella; el reparto (`ventas.py`
+`registrar_venta` y el `preview-reparto`) opera sobre el neto por línea. El
+precio por línea sigue guardándose bruto (`Detalle_Venta.Precio_Venta_Real`),
+para analizar margen y para que una devolución reembolse lo que el cliente
+pagó. `saldo_producto._ingresos_por_producto` pasa a contar el neto (resta la
+parte de taxi de cada venta) para que la recuperación de inversión y el 70/30
+sean coherentes. Guard: si el taxi por botella supera el precio de una línea,
+se bloquea (esa venta perdería plata). Frontend: el taxi se envía al backend
+(antes no); las etiquetas aclaran que ahora baja lo que entra.
+
+Verificado: `preview-reparto` con las mismas líneas da bruto con taxi=0 y
+bruto−taxi con taxi>0 (diferencia exacta = taxi); el guard bloquea con mensaje
+claro; una venta real con taxi persiste `Taxi_Venta`, hace entrar el neto (no
+el bruto) a las cuentas y descuenta el stock, todo verificado y con cleanup
+completo por SQL; en el navegador, el reparto de una venta con taxi 60 baja de
+823,80 a 763,80 exacto.
+
+### 10.23 Gasto pagado por otra persona (aporte externo cubre el gasto) — Opus
+Pedido explícito, replica el "gasto de otro lado que dio ingreso" del Excel:
+algunos gastos los paga alguien de afuera (ej. la cónyuge), y no había forma de
+registrarlos sin que descontaran de las cuentas propias.
+
+**Estado: implementado.** Ver DECISIONES_DISENO 4 ("Gasto cubierto por aporte
+externo") para el criterio. Sin migración: `registrar_gasto_cubierto_externo()`
+crea, en una transacción, un `INGRESO_EXTERNO` que entra a la cuenta y la
+`SALIDA` del gasto, mismo monto → el saldo queda igual (neto cero), el gasto
+cuenta como gasto y queda quién lo pagó. `POST /gastos` acepta
+`pagado_externo` + `quien_pago`. Frontend: checkbox "Lo pagó otra persona" +
+campo de quién, en el formulario de gastos (cuando está marcado, no se valida
+saldo porque no sale plata propia).
+
+Verificado contra la BD real: registrar un gasto cubierto por externo deja el
+saldo de la cuenta **igual** (neto cero) y crea los dos movimientos
+(`INGRESO_EXTERNO` + `SALIDA`); las filas de prueba se borraron después.
+
+### 10.24 Dashboard de gastos por grupo y año (Power BI) — Sonnet
+Pedido explícito: un dashboard de gastos por grupo, con los meses en el eje,
+filtro por grupo, y que mire las salidas.
+
+**Estado: documentado** (el diseño del reporte, no un `.pbix`; ver
+`reportes-powerbi/README.md`, Dashboard 10). Se eligió Power BI, consistente
+con la arquitectura de reportería (8.1), en vez de una pantalla en la app. La
+medida define "gasto" igual que el balance: `SALIDA` que **no** es compra ni
+pago a trabajador (excluye esos vínculos, criterio "categorizar sin adivinar").
+Visuales: evolución mes a mes año contra año (líneas), ranking por grupo
+(barras) y composición año a año (columnas apiladas), con slicer de grupo. La
+consulta SQL de verificación se corrió contra la BD real (corre OK, la
+definición cuadra: de las SALIDA, excluye correctamente las pocas ligadas a
+compra/pago). Un gasto cubierto por aporte externo (10.23) aparece acá como
+gasto y su aporte en el Dashboard 5, como corresponde.

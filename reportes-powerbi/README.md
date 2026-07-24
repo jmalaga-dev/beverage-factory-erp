@@ -776,10 +776,11 @@ parecen errores de carga del Excel?*
 
 Este dashboard es la cara visual de la mejora **5.2**: hay materias primas cuyo
 precio unitario mínimo histórico está muy por debajo de cualquier compra
-reciente (en la base real, `ALCOHOL CAIMAN` va de 1,00 a 17,33 — 17x; varios
-envases de 200 a más de 1000). Parte es inflación de 5 años, parte son
-probables errores de tipeo arrastrados del Excel. Verlos en una línea temporal
-es lo que permite distinguir una cosa de la otra.
+reciente (algún insumo puede ir de un precio muy bajo a varios múltiplos más a
+lo largo de los años; algunos envases muestran saltos parecidos). Parte es
+inflación de varios años, parte son probables errores de tipeo arrastrados del
+Excel. Verlos en una línea temporal es lo que permite distinguir una cosa de la
+otra.
 
 ## Tablas a cargar
 
@@ -1023,8 +1024,9 @@ COUNTROWS ( FILTER ( 'Deuda', 'Deuda'[Saldo_Actual_Deuda] > 0 ) )
 
 1. **A quién se le debe hoy:** gráfico de barras, eje
    `Deuda[Descripcion_Deuda]`, valor `[Saldo vivo]`, ordenado descendente,
-   filtro visual `Saldo_Actual_Deuda > 0` (las saldadas no aportan). En la base
-   real domina `BANCO UNION` (capital + interés) — el resto son deudas chicas.
+   filtro visual `Saldo_Actual_Deuda > 0` (las saldadas no aportan). Es común que
+   una deuda grande (capital + interés de un préstamo) domine y el resto sean
+   deudas chicas.
 2. **Esfuerzo de pago año contra año:** gráfico de **líneas** con el truco del
    Dashboard 2 — eje `Calendario[Nombre Mes]`, leyenda `Calendario[Año]`, valor
    `[Pagos de deuda]`. Deja ver en qué meses se paga más deuda y si hay un
@@ -1032,8 +1034,8 @@ COUNTROWS ( FILTER ( 'Deuda', 'Deuda'[Saldo_Actual_Deuda] > 0 ) )
 3. Tarjetas: `[Saldo vivo]` (total que se debe hoy) y `[Deudas vivas]`
    (cuántas siguen abiertas).
 
-Opcional — agrupar deudas por su origen (todas las `BANCO UNION …` juntas): en
-Power Query, columna nueva que tome la primera palabra o un prefijo de
+Opcional — agrupar deudas por su origen (todas las de un mismo acreedor juntas):
+en Power Query, columna nueva que tome la primera palabra o un prefijo de
 `Descripcion_Deuda`. No es imprescindible; el gráfico de barras ya las muestra
 ordenadas.
 
@@ -1058,13 +1060,135 @@ consulta tiene que coincidir con el punto de la línea de ese mes.
 
 ---
 
+# Dashboard 10 — Gastos por grupo, mes a mes y año contra año
+
+*¿En qué grupo (comida, mantenimiento, limpieza…) se gasta más, y cómo
+evoluciona mes a mes y de un año a otro?*
+
+Es el dashboard analítico del pedido "ver los gastos por grupos por año". La app
+registra cada gasto con un **grupo** (etiqueta validada) desde la pantalla de
+Gastos; acá se agregan por grupo y por tiempo para ver dónde se va la plata.
+
+## Qué cuenta como "gasto" (y qué NO)
+
+Un gasto es un `Movimiento` con `Tipo_Movimiento = 'SALIDA'` **que no es ni una
+compra ni un pago a trabajador**. Esas dos también son SALIDA, pero se
+identifican por su vínculo (`Compra[Id_Movimiento]`, `Pago_Trabajador[Id_Movimiento]`),
+no adivinando por texto — es el mismo criterio "categorizar sin adivinar" que
+usa el balance de la app (DECISIONES_DISENO 4, mejora 4.1). Por eso la medida de
+abajo excluye esos dos vínculos: si no, el gráfico sumaría toda la materia prima
+y los sueldos como si fueran gastos operativos.
+
+Nota: un gasto **cubierto por un aporte externo** (item 10b — lo pagó otra
+persona) igual aparece acá, y está bien: es un gasto real de la fábrica/casa. El
+aporte que lo financió se ve por separado en el Dashboard 5 (ingreso externo).
+
+## Tablas a cargar
+
+`Movimiento`, `Grupo_Movimiento`, `Compra` y `Pago_Trabajador` (estas dos solo
+para excluir sus movimientos), más la tabla `Calendario` ya armada para los
+dashboards 2 a 5 (reusarla, no crear otra).
+
+## Relaciones
+
+```
+Movimiento[Id_Grupo_Movimiento] (muchos) → Grupo_Movimiento[Id_Grupo_Movimiento] (1)
+Calendario[Fecha]               (1)       → Movimiento[Fecha_Movimiento]          (muchos)
+```
+
+La relación `Calendario → Movimiento` ya existe si armaste el Dashboard 5. Las de
+`Compra`/`Pago_Trabajador` a `Movimiento` por `Id_Movimiento` **no hacen falta**
+como relación del modelo (la exclusión de abajo usa `VALUES`, no el filtro que
+viaja por relación); si Power BI las detecta solas, dejalas en *inactivas* para
+que no cambien el sentido de los filtros.
+
+## Medida DAX
+
+```dax
+Gastos =
+CALCULATE (
+    SUM ( 'Movimiento'[Monto_Movimiento] ),
+    'Movimiento'[Tipo_Movimiento] = "SALIDA",
+    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Compra'[Id_Movimiento] ) ),
+    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Pago_Trabajador'[Id_Movimiento] ) )
+)
+```
+
+Las compras y los pagos tienen su `Id_Movimiento` en esas tablas; los gastos no
+(su vínculo no existe), así que quedan afuera de la exclusión y sí se suman. Un
+gasto sin grupo asignado cae en el bucket **(en blanco)** del eje — es un gasto
+real, solo que sin etiquetar; conviene irles poniendo grupo en la app.
+
+Opcional, para una tarjeta de "gasto del período":
+
+```dax
+Cantidad de gastos =
+CALCULATE (
+    COUNTROWS ( 'Movimiento' ),
+    'Movimiento'[Tipo_Movimiento] = "SALIDA",
+    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Compra'[Id_Movimiento] ) ),
+    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Pago_Trabajador'[Id_Movimiento] ) )
+)
+```
+
+## Armar los visuales
+
+1. **Slicers:** `Calendario[Año]` y `Grupo_Movimiento[Nombre_Grupo_Movimiento]`.
+   El slicer de grupo es el "filtro de grupo" del pedido — permite mirar un grupo
+   puntual, o dejarlo abierto para verlos todos. Poné **dos** slicers de grupo
+   (uno al lado del otro) si querés comparar dos grupos rápido, o usá uno solo con
+   selección múltiple.
+2. **Evolución mes a mes, año contra año** (el visual principal, mismo truco del
+   Dashboard 2/5):
+   - **Eje X** → `Calendario[Nombre Mes]` (los 12 meses)
+   - **Leyenda** → `Calendario[Año]` (cada año, una línea)
+   - **Valores** → `[Gastos]`
+   Gráfico de **líneas**. Responde "¿qué mes gasta más y se repite el patrón año
+   a año?". ⚠️ Depende del fix de orden de `Nombre Mes` (Ordenar por → `Mes`, ver
+   la sección de la tabla Calendario); sin eso el eje sale alfabético.
+3. **Ranking por grupo:** gráfico de **barras**, eje
+   `Grupo_Movimiento[Nombre_Grupo_Movimiento]`, valor `[Gastos]`, ordenado
+   descendente. Responde "¿en qué grupo se va más plata?" en el período filtrado.
+4. **Composición año contra año:** gráfico de **columnas apiladas**, eje
+   `Calendario[Año]`, leyenda `Grupo_Movimiento[Nombre_Grupo_Movimiento]`, valor
+   `[Gastos]` — cada año una columna, partida por grupo. Deja ver si cambió el
+   mix de gastos entre años.
+5. Tarjetas: `[Gastos]` (total del período) y `[Cantidad de gastos]`.
+
+**Recordatorio operativo:** el reporte está en modo *Importar*, así que hay que
+tocar **Actualizar** en Power BI Desktop para que tome los gastos nuevos.
+
+## Verificación
+
+```sql
+-- Gastos por grupo y mes (SALIDA que no es compra ni pago), comparar contra el visual:
+SELECT to_char(m."Fecha_Movimiento", 'YYYY') AS anio,
+       to_char(m."Fecha_Movimiento", 'MM') AS mes,
+       COALESCE(g."Nombre_Grupo_Movimiento", '(sin grupo)') AS grupo,
+       ROUND(SUM(m."Monto_Movimiento")::numeric, 2) AS gastos
+FROM "Movimiento" m
+LEFT JOIN "Grupo_Movimiento" g ON g."Id_Grupo_Movimiento" = m."Id_Grupo_Movimiento"
+WHERE m."Tipo_Movimiento" = 'SALIDA'
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Compra" WHERE "Id_Movimiento" IS NOT NULL)
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Pago_Trabajador" WHERE "Id_Movimiento" IS NOT NULL)
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, gastos DESC;
+```
+
+Cada fila (año-mes-grupo) tiene que coincidir con el punto/segmento de ese grupo
+en Power BI. El total sin filtros tiene que dar igual que `[Gastos]` y que la
+fila "Gastos" del balance de la app para el mismo período (misma definición de
+gasto).
+
+---
+
 ## Dashboards pendientes (no documentados todavía)
 
 - **Análisis de precios por proveedor** → distinto del Dashboard 7 (que compara
   el precio de un insumo **en el tiempo**); éste compararía el mismo insumo
   **entre proveedores**. Bloqueado por **datos, no por código**: la mejora 5.1
   ya creó las tablas `Proveedor` / `Proveedor_Materia_Prima` y la columna
-  `Compra[Id_Proveedor]`, pero hoy están **vacías** (las 2454 compras migradas
+  `Compra[Id_Proveedor]`, pero hoy están **vacías** (las compras migradas
   del Excel tienen `Id_Proveedor` en NULL). Se puede documentar y armar recién
   cuando se carguen proveedores reales y las compras nuevas empiecen a quedar
   atadas a uno.

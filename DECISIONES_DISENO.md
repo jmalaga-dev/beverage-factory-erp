@@ -238,13 +238,25 @@ estimadas y restantes). Dos decisiones:
   el mismo producto dos veces no vuelve a meter lotes agotados ni pasa del
   stock. El backend igual lo valida al registrar (suma por lote), pero se
   evita en pantalla para no descubrir el error recién al confirmar.
-- **Taxi/delivery = solo cálculo en pantalla.** Se prorratea de forma uniforme
-  entre todas las botellas de la venta (`taxi / total_botellas`) para ver el
-  neto real por línea y el % ponderado. **No mueve caja ni crea un
-  `Movimiento`**, y no se envía al backend al registrar la venta. Motivo: el
-  taxi es un dato de análisis para decidir precios/descuentos, no un hecho
-  contable atado a la venta; si se pagó de verdad, se registra aparte como un
-  Gasto normal. Por eso `ventas.py` y la tabla `Venta` no cambiaron.
+- **Taxi/delivery = baja el ingreso neto (mejora 8, revisado).** *Decisión
+  original (3.9):* el taxi era solo cálculo en pantalla, no movía caja, y si se
+  pagaba se registraba como un Gasto aparte. *Decisión revisada:* el taxi **no
+  es una salida extra** — sale de esas mismas botellas, así que lo que entra y
+  se reparte 70/30 es el **neto** (bruto − taxi), no el bruto. Se prorratea
+  uniforme por botella (`taxi / total_botellas`) y se persiste en la venta
+  (`Venta.Taxi_Venta`, migración 027, default 0 → las ventas históricas no
+  cambian). El **precio por línea (`Detalle_Venta.Precio_Venta_Real`) sigue
+  siendo el bruto** que pagó el cliente: así se puede analizar el margen real
+  (precio cobrado vs taxi vs neto) y una devolución reembolsa lo que el cliente
+  pagó. El motivo del cambio: el usuario quiere ver cuándo un cliente lejano
+  deja de ser rentable, y para eso el ingreso registrado por botella tiene que
+  ser el neto real. Consecuencias: `saldo_producto._ingresos_por_producto`
+  cuenta el **neto** (resta la parte de taxi de cada venta) para que la
+  recuperación de inversión y el 70/30 sean coherentes con lo que entró; el
+  balance semanal (ventas = ENTRADA) ya refleja el neto sin registrar un gasto
+  de taxi aparte. Guard: si el taxi por botella supera el precio de una línea
+  (esa botella perdería plata), se bloquea con aviso en vez de dejar un neto
+  negativo.
 
 ### 3.10 Devolución y reproceso (mejora 3.3)
 - **La devolución es una sola operación atómica que compone tres cosas:** el
@@ -564,6 +576,18 @@ propio tipo (no `SALIDA`) por el mismo motivo que `INGRESO_EXTERNO`/
 `PAGO_DEUDA`: si fuera `SALIDA`, el balance la contaría como gasto de la
 semana. Bloqueado si la cuenta ya no tiene ese saldo (el dinero se movió o se
 gastó) y si el ingreso ya estaba anulado (no se puede anular dos veces).
+
+**Gasto cubierto por aporte externo (mejora 10b):** cuando un gasto lo paga
+alguien de afuera (ej. la cónyuge), se registra igual —para que cuente en los
+reportes de gastos— pero **no reduce las cuentas propias**. Se modela como el
+"gasto de otro lado que dio ingreso" del Excel: en la misma transacción, un
+`INGRESO_EXTERNO` que entra a la cuenta (+monto) y la `SALIDA` del gasto
+(−monto). El saldo de la cuenta queda **igual** (neto cero); el gasto es una
+`SALIDA` normal (cuenta como gasto en el balance, aparece en el dashboard de
+gastos por grupo, 8.1/Dashboard 10) y el aporte que lo cubrió queda registrado
+con quién lo pagó (y se ve en el Dashboard 5 de ingresos externos). No hace
+falta migración: reutiliza el tipo `INGRESO_EXTERNO` (7.5). No se valida saldo
+suficiente porque el aporte entra antes de que salga el gasto.
 
 **Clasificar sin adivinar por texto (mismo principio, aplicado a activos):**
 la clasificación Inmueble/Equipo/Otro de los activos fijos en el balance
