@@ -2003,3 +2003,125 @@ correcto al intentar una segunda cuenta FABRICA (mensaje cita la existente,
 Verificado en el navegador: el formulario "Agregar" ya aparece en el catálogo
 Cuenta con Nombre + Rol, y la cuenta creada apareció en la tabla con saldo 0 y
 botón Eliminar habilitado. La cuenta de prueba se borró después de verificar.
+
+### 10.11 Costo unitario parcial en producción usaba el sueldo como Bs/hora — Sonnet
+El indicador en vivo "Costo unitario parcial" (mejora 6.11) sumaba
+`horas × trabajador.pago`, pero `pago` es el sueldo del periodo, no Bs/hora
+(ver 3.2): el número salía muy inflado apenas se agregaba trabajo. El backend
+sí calculaba bien (usa `tarifa_hora()`), era solo un indicador visual.
+
+**Estado: implementado.** El backend ya exponía `tarifa` (sueldo / horas
+base) en `/trabajadores`; se cambió `trabajador.pago` por `trabajador.tarifa`
+en los dos cálculos en vivo (Producción Intermedia y Terminada). Verificado
+en el navegador: el indicador ya coincide con el costo real que confirma el
+backend al crear la producción.
+
+### 10.12 Foto de Balance en UTC e ignoraba la fecha global — Sonnet
+"Tomar foto" armaba la fecha con `new Date().toISOString()`, que es UTC: a
+las 11 pm en Bolivia (UTC-4) ya es el día siguiente en UTC, así que la foto
+se guardaba con la fecha de mañana. Además no miraba la fecha global (mejora
+6.10) que las demás pantallas sí respetan.
+
+**Estado: implementado.** Se agregó `useFechaGlobal()` a `PaginaBalance.jsx`:
+si hay fecha global fijada, se usa esa; si no, "hoy" se calcula compensando
+el `getTimezoneOffset()` (mismo idiom que ya usaban Cierre semanal y
+Prorrateo, solo que Balance no lo tenía). Verificado en el navegador
+fijando la fecha global y tomando una foto: guardó la fecha correcta.
+
+### 10.13 Recetas mostraba cantidades chicas como "0" — Sonnet
+Un insumo con cantidad muy pequeña (ej. algo del orden de 0.001) se veía como
+"0" en la lista de una receta, por el formato por defecto de 2 decimales
+(`fmtNumero`). El dato en la BD siempre estuvo correcto (columna `numeric`
+sin escala, y FIFO redondea a 6 decimales): era puramente un problema de
+presentación en esa pantalla puntual.
+
+**Estado: implementado.** Las dos líneas de `PaginaRecetas.jsx` que listan
+insumos pasan a `fmtNumero(cantidad, 6)`. Se descartó que fuera un problema
+de guardado o de aplicar la receta: en Producción (donde se aplica una
+receta) la cantidad ya se mostraba cruda, sin redondeo.
+
+### 10.14 Ventas registradas — tabla plegable con buscador — Sonnet
+La tabla de historial de ventas crecía mucho (miles de filas) y se
+renderizaba entera al cargar la pantalla, aunque casi nunca se la mira
+completa.
+
+**Estado: implementado.** Se reemplazó la tabla fija por `TablaFiltrable`
+(mismo componente que ya usaban Mermas, Deudas, etc.), colapsada por
+defecto, con buscador.
+
+### 10.15 Resumen antes de producir, sumado por producto — Sonnet
+Pedido explícito: antes de dar clic en PRODUCIR, ver un resumen tipo texto
+(similar al "detalle día a día" de Balance) de qué se va a consumir —
+sumado por producto, no lote por lote — para cazar un error (ej. un insumo
+equivocado) antes de confirmar. Debía aparecer tanto al aplicar una receta
+como al cargar todo a mano.
+
+**Estado: implementado.** Helpers compartidos `resumenProduccion.js`
+(agrupa insumos por nombre) y componente `ResumenProduccion.jsx`, usados en
+Producción Intermedia y Terminada. Aparece apenas hay algún insumo cargado
+(no solo al aplicar receta); el encabezado "Se está produciendo X de Y" solo
+cuando ya hay producto y cantidad. De paso, las tablas de stock (general y
+por lote) de ambas pantallas pasaron a plegables con buscador. Verificado en
+el navegador cargando insumos a mano (sin receta): el resumen aparece
+correctamente sumado.
+
+### 10.16 Cálculo en cajas de cantidad/precio/monto (todo el frontend) — Sonnet
+Pedido explícito, inspirado en Excel: poder escribir una operación
+(`45*3`, `500*0.25`, `100/12`) directo en una caja de cantidad, precio o
+monto, en vez de calcularla aparte y pegar el resultado.
+
+**Estado: implementado.** Módulo `calculo.js` (`evaluar()`: whitelist de
+dígitos/operadores/paréntesis antes de evaluar — no acepta letras, así que
+no hay forma de referenciar nada del entorno) + componente `InputCalculo.jsx`
+(caja de texto + "= resultado" en vivo si hay algún operador). Reemplazó los
+`<input type="number">` de cantidad/precio/monto/horas en prácticamente
+todos los formularios: Compras (simple, lote de varias compras, compra
+dividida), Producción Intermedia/Terminada (incluido `SelectorFifo` y
+`CantidadPaquetes`, compartidos), Recetas, Ventas (precio de venta, precio
+por línea, taxi), Transferencias, Gastos, Deudas, Jornadas, Prorrateo,
+Devoluciones/reproceso, Absorción, Mermas, Activos y Simulación.
+
+**Detalle importante — el precio por línea en Ventas.** Ahí el estado
+guardaba directamente el número, así que escribir "/" en la caja lo perdía
+al instante (el input controlado se reformateaba a "100" en cada tecla,
+nunca dejaba llegar a "100/12"). Se cambió a guardar el texto crudo
+(`precio_texto`) en la línea y derivar el número donde se necesita calcular
+(`precioNum()`), mismo patrón para cualquier campo editado carácter por
+carácter en una tabla. Verificado en el navegador reproduciendo el caso
+exacto: tipear "100/12" en el precio de una línea de venta ya conserva el
+texto completo y muestra "= 8,33" en vivo.
+
+Quedan sin este tratamiento a propósito 4 campos que son parámetros/ajustes,
+no montos que alguien calcularía con una fórmula: Margen sugerido (%) en
+Ventas, y Litros por botella / Botellas por paquete / Últimos N meses en
+Simulación.
+
+### 10.17 Pagos — el desplegable solo muestra trabajadores con deuda pendiente — Sonnet
+El selector de trabajador en Pagos listaba a todos, sin distinguir a quién
+se le debe algo. Con varios trabajadores, elegir "el que corresponde pagar
+esta semana" a ojo era molesto.
+
+**Estado: implementado.** Nuevo servicio `listar_trabajadores_con_deuda()` y
+endpoint `GET /trabajadores-con-deuda`: una sola consulta a
+`Registro_Trabajador` con `Id_Pago_Trabajador IS NULL`, agrupada en memoria
+por trabajador (evita N+1). El texto del selector ahora dice cuánto se le
+debe. Se conserva la excepción ya decidida (6.5) de mostrar deshabilitados:
+si tienen deuda pendiente, tienen que poder verse para cerrar su cuenta.
+Verificado contra la BD real, cruzado con `/jornadas` filtrando no pagadas
+(coincide exacto, 0 pendientes al momento de probar).
+
+### 10.18 Sumatoria de Producto Terminado en botellas y en paquetes equivalentes — Sonnet
+El detalle de stock de Producto Terminado (Balance y Producción Terminada)
+mostraba cada producto con su equivalente en paquetes (mejora 4.7), pero no
+había un TOTAL — y sumar sin más las botellas no sirve cuando cada producto
+empaca distinto.
+
+**Estado: implementado.** `TablaFiltrable` ganó un prop opcional `totales`
+(array de `key`s a sumar): agrega una fila "Total" al pie, calculada sobre
+las filas ya filtradas por el buscador (se recalcula solo). Conectado en el
+stock consolidado de Producción Terminada y en el detalle de Balance, sumando
+`stock_total` y `paquetes_equivalentes` (el costo promedio ponderado NO se
+suma: promediar promedios entre productos distintos no significa nada, la
+columna queda en blanco en la fila de totales). Verificado en el navegador
+contra datos reales: fila Total mostrando el total en botellas y su
+equivalente en paquetes, coherente con las filas individuales.

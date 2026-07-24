@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 // Deudas y amortizacion (mejoras 7.0 y 7.3). Tres acciones:
 //   - Deuda simple: sube el pasivo sin mover caja (interes, gasto que pago un tercero).
@@ -43,7 +45,9 @@ function PaginaDeudas() {
       setMensaje('Completa descripción y monto de la deuda')
       return
     }
-    apiPost('/deudas/simple', { descripcion: descSimple, monto: parseFloat(montoSimple), fecha: fechaParaEnviar })
+    const montoSimpleNum = evaluar(montoSimple)
+    if (Number.isNaN(montoSimpleNum)) { setMensaje('El monto no es una operación válida'); return }
+    apiPost('/deudas/simple', { descripcion: descSimple, monto: montoSimpleNum, fecha: fechaParaEnviar })
       .then(() => { setMensaje('Deuda registrada'); setDescSimple(''); setMontoSimple(''); cargar() })
       .catch((e) => setMensaje(e.message))
   }
@@ -53,9 +57,11 @@ function PaginaDeudas() {
       setMensaje('Completa descripción, monto y cuenta destino del préstamo')
       return
     }
+    const montoPrestamoNum = evaluar(montoPrestamo)
+    if (Number.isNaN(montoPrestamoNum)) { setMensaje('El monto no es una operación válida'); return }
     apiPost('/deudas/prestamo', {
       descripcion: descPrestamo,
-      monto: parseFloat(montoPrestamo),
+      monto: montoPrestamoNum,
       id_cuenta_destino: parseInt(idCuentaPrestamo),
       fecha: fechaParaEnviar,
     })
@@ -72,19 +78,21 @@ function PaginaDeudas() {
       setMensaje('Completa deuda, monto y cuenta del pago')
       return
     }
+    const montoPagoNum = evaluar(montoPago)
+    if (Number.isNaN(montoPagoNum)) { setMensaje('El monto no es una operación válida'); return }
     const deuda = deudas.find((d) => d.id_deuda === parseInt(idDeudaPago))
-    if (deuda && parseFloat(montoPago) > deuda.saldo) {
+    if (deuda && montoPagoNum > deuda.saldo) {
       setMensaje(`El pago supera el saldo de la deuda (${deuda.saldo} Bs)`)
       return
     }
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuentaPago))
-    if (cuenta && parseFloat(montoPago) > cuenta.saldo) {
+    if (cuenta && montoPagoNum > cuenta.saldo) {
       setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs`)
       return
     }
     apiPost('/deudas/pago', {
       id_deuda: parseInt(idDeudaPago),
-      monto: parseFloat(montoPago),
+      monto: montoPagoNum,
       id_cuenta: parseInt(idCuentaPago),
       fecha: fechaParaEnviar,
     })
@@ -110,8 +118,7 @@ function PaginaDeudas() {
       <div>
         <input type="text" placeholder="Descripción (a quién / por qué)"
           value={descSimple} onChange={(e) => setDescSimple(e.target.value)} />
-        <input type="number" placeholder="Monto"
-          value={montoSimple} onChange={(e) => setMontoSimple(e.target.value)} />
+        <InputCalculo value={montoSimple} onChange={setMontoSimple} placeholder="Monto" decimales={2} />
         <button onClick={registrarSimple}>Registrar deuda</button>
       </div>
 
@@ -123,8 +130,7 @@ function PaginaDeudas() {
       <div>
         <input type="text" placeholder="Descripción (quién presta)"
           value={descPrestamo} onChange={(e) => setDescPrestamo(e.target.value)} />
-        <input type="number" placeholder="Monto"
-          value={montoPrestamo} onChange={(e) => setMontoPrestamo(e.target.value)} />
+        <InputCalculo value={montoPrestamo} onChange={setMontoPrestamo} placeholder="Monto" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuentaPrestamo}
@@ -146,8 +152,7 @@ function PaginaDeudas() {
           obtenerTexto={(d) => `${d.descripcion} (saldo: ${d.saldo})`}
           placeholder="-- Deuda a pagar --"
         />
-        <input type="number" placeholder="Monto"
-          value={montoPago} onChange={(e) => setMontoPago(e.target.value)} />
+        <InputCalculo value={montoPago} onChange={setMontoPago} placeholder="Monto" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuentaPago}

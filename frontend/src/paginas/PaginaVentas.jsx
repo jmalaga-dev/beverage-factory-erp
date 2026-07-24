@@ -4,7 +4,20 @@ import SelectorBuscable from '../componentes/SelectorBuscable'
 import SelectorFifo from '../componentes/SelectorFifo'
 import CantidadPaquetes, { totalBotellas } from '../componentes/CantidadPaquetes'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
+import TablaFiltrable from '../componentes/TablaFiltrable'
+import InputCalculo from '../componentes/InputCalculo'
 import { fmtMoneda, fmtNumero } from '../formato'
+import { evaluar } from '../calculo'
+
+// Columnas del historial de ventas (tabla plegable con buscador, mejora item 7:
+// la lista crece mucho y solo se consulta puntualmente, no en cada carga).
+const columnasVentas = [
+  { key: 'id_venta', label: 'Venta' },
+  { key: 'cliente', label: 'Cliente' },
+  { key: 'fecha', label: 'Fecha' },
+  { key: 'lineas', label: 'Líneas' },
+  { key: 'total', label: 'Total', formato: (v) => fmtMoneda(v) },
+]
 
 function PaginaVentas() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -85,9 +98,16 @@ function PaginaVentas() {
   useEffect(() => {
     if (lineas.length === 0) { setReparto(null); return }
     apiPost('/ventas/preview-reparto', lineas.map((l) => ({
-      id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: l.precio_real,
+      id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: precioNum(l),
     }))).then(setReparto).catch(() => setReparto(null))
   }, [lineas])
+
+  // El precio por línea se guarda como TEXTO crudo (precio_texto), no como
+  // número: la caja acepta operaciones (ej. "100/12", item 11) y si el estado
+  // fuera el número evaluado, tipear "/" lo perdía al instante (el controlled
+  // input se reformateaba a "100" en cada tecla). `precioNum` deriva el valor
+  // numérico donde se necesite calcular; NaN (expresión a medias) cuenta 0.
+  const precioNum = (l) => { const v = evaluar(l.precio_texto); return Number.isNaN(v) ? 0 : v }
 
   const productos = []
   const vistos = new Set()
@@ -111,6 +131,7 @@ function PaginaVentas() {
       setMensaje('Completa lote, cantidad y precio')
       return
     }
+    if (Number.isNaN(evaluar(linPrecio))) { setMensaje('El precio no es una operación válida'); return }
     const lote = lotes.find((l) => l.id_produccion === parseInt(linProd))
     const yaUsado = yaUsadoDeLote(parseInt(linProd))
     if (lote && yaUsado + linCantidadTotal > lote.stock) {
@@ -120,7 +141,7 @@ function PaginaVentas() {
     setLineas([...lineas, {
       id_produccion: parseInt(linProd),
       cantidad: linCantidadTotal,
-      precio_real: parseFloat(linPrecio),
+      precio_texto: linPrecio,
     }])
     setLinProd(''); setLinCantidadPaquetes(''); setLinCantidad(''); setLinPrecio('')
     setMensaje('')
@@ -138,7 +159,7 @@ function PaginaVentas() {
       const disponible = lote.stock - yaUsadoDeLote(a.id_lote)
       const usar = Math.round(Math.min(pendiente, disponible) * 1e6) / 1e6
       if (usar <= 0) continue
-      nuevas.push({ id_produccion: a.id_lote, cantidad: usar, precio_real: precioDefault(lote) })
+      nuevas.push({ id_produccion: a.id_lote, cantidad: usar, precio_texto: String(precioDefault(lote)) })
       pendiente -= usar
     }
     if (nuevas.length === 0) {
@@ -154,7 +175,7 @@ function PaginaVentas() {
   function quitarLinea(i) { setLineas(lineas.filter((_, idx) => idx !== i)) }
 
   function cambiarPrecioLinea(i, valor) {
-    setLineas(lineas.map((l, idx) => (idx === i ? { ...l, precio_real: parseFloat(valor) || 0 } : l)))
+    setLineas(lineas.map((l, idx) => (idx === i ? { ...l, precio_texto: valor } : l)))
   }
 
   function elegirProducto(id) {
@@ -169,10 +190,14 @@ function PaginaVentas() {
   function registrarVenta() {
     if (idCliente === '') { setMensaje('Elige un cliente'); return }
     if (lineas.length === 0) { setMensaje('Agrega al menos una línea'); return }
+    if (lineas.some((l) => Number.isNaN(evaluar(l.precio_texto)))) {
+      setMensaje('Hay un precio de línea con una operación inválida'); return
+    }
 
     apiPost('/ventas', {
       id_cliente: parseInt(idCliente),
-      lineas: lineas,   // el taxi NO se envía; reparto 70/30 = default en el backend
+      // el taxi NO se envía; reparto 70/30 = default en el backend
+      lineas: lineas.map((l) => ({ id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: evaluar(l.precio_texto) })),
       fecha: fechaParaEnviar,
     })
       .then(() => {
@@ -195,13 +220,15 @@ function PaginaVentas() {
   }
 
   const loteEnCurso = linProd !== '' ? lotes.find((x) => x.id_produccion === parseInt(linProd)) : null
-  const precioBajoCosto = loteEnCurso && linPrecio !== '' && parseFloat(linPrecio) < loteEnCurso.costo_unitario
+  const precioBajoCosto = loteEnCurso && linPrecio !== '' && !Number.isNaN(evaluar(linPrecio)) && evaluar(linPrecio) < loteEnCurso.costo_unitario
   // Total en botellas de la línea en curso (6.13): derivado, nunca estado.
   const bppEnCurso = loteEnCurso ? loteEnCurso.botellas_por_paquete : 1
   const linCantidadTotal = totalBotellas(linCantidadPaquetes, linCantidad, bppEnCurso)
 
   // ----- Cálculos de la venta (ganancia + prorrateo de taxi) -----
-  const taxiNum = parseFloat(taxi) || 0
+  // El taxi acepta operaciones (item 11): NaN (vacío o expresión a medias) cuenta 0.
+  const taxiEval = evaluar(taxi)
+  const taxiNum = Number.isNaN(taxiEval) ? 0 : taxiEval
   // Botellas de TODA la venta (para prorratear el taxi). Nombre explicito
   // para no chocar con el helper importado totalBotellas() de 6.13.
   const totalBotellasVenta = lineas.reduce((s, l) => s + l.cantidad, 0)
@@ -210,17 +237,18 @@ function PaginaVentas() {
 
   const filas = lineas.map((l) => {
     const lote = lotes.find((x) => x.id_produccion === l.id_produccion)
+    const precioReal = precioNum(l)
     const costo = costoDeLote(l.id_produccion) ?? 0
     const sugerido = lote ? precioSugerido(lote) : costo
-    const ingreso = l.cantidad * l.precio_real
-    const gananciaBruta = (l.precio_real - costo) * l.cantidad
+    const ingreso = l.cantidad * precioReal
+    const gananciaBruta = (precioReal - costo) * l.cantidad
     const taxiLinea = l.cantidad * taxiPorBotella
     const gananciaNeta = gananciaBruta - taxiLinea
     const pct = ingreso > 0 ? (gananciaBruta / ingreso) * 100 : 0
     return {
-      ...l, costo, sugerido, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct,
+      ...l, precio_real: precioReal, costo, sugerido, ingreso, gananciaBruta, taxiLinea, gananciaNeta, pct,
       bpp: lote ? lote.botellas_por_paquete : 1,
-      bajoCosto: l.precio_real < costo,
+      bajoCosto: precioReal < costo,
     }
   })
 
@@ -275,8 +303,7 @@ function PaginaVentas() {
           onCambiarPaquetes={setLinCantidadPaquetes}
           onCambiarBotellas={setLinCantidad}
         />
-        <input type="number" placeholder="Precio de venta"
-          value={linPrecio} onChange={(e) => setLinPrecio(e.target.value)} />
+        <InputCalculo value={linPrecio} onChange={setLinPrecio} placeholder="Precio de venta" decimales={2} />
         <button onClick={agregarLinea}>Agregar línea</button>
       </div>
 
@@ -329,9 +356,8 @@ function PaginaVentas() {
                 <td style={{ textAlign: 'right' }}>{fmtMoneda(f.costo)}</td>
                 <td style={{ textAlign: 'right', color: '#557' }}>{fmtMoneda(f.sugerido)}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <input type="number" value={f.precio_real}
-                    onChange={(e) => cambiarPrecioLinea(i, e.target.value)}
-                    style={{ width: '5.5rem', textAlign: 'right' }} />
+                  <InputCalculo value={f.precio_texto} onChange={(v) => cambiarPrecioLinea(i, v)}
+                    width="5.5rem" style={{ textAlign: 'right' }} decimales={2} />
                 </td>
                 <td style={{ textAlign: 'right' }}>{fmtMoneda(f.gananciaBruta)}</td>
                 <td style={{ textAlign: 'right' }}>{fmtNumero(f.pct, 1)}%</td>
@@ -349,8 +375,7 @@ function PaginaVentas() {
         <div style={{ margin: '0.5rem 0' }}>
           <label>
             Taxi/delivery (solo cálculo, no mueve caja):{' '}
-            <input type="number" placeholder="0.00"
-              value={taxi} onChange={(e) => setTaxi(e.target.value)} style={{ width: '7rem' }} />
+            <InputCalculo value={taxi} onChange={setTaxi} placeholder="0.00" decimales={2} />
           </label>
           {hayTaxi && (
             <span style={{ marginLeft: '0.5rem', color: '#557' }}>
@@ -386,19 +411,12 @@ function PaginaVentas() {
       <button onClick={registrarVenta}>REGISTRAR VENTA</button>
       {mensaje && <p>{mensaje}</p>}
 
-      <h2>Ventas registradas</h2>
-      <table border="1">
-        <thead>
-          <tr><th>Venta</th><th>Cliente</th><th>Fecha</th><th>Líneas</th><th>Total</th></tr>
-        </thead>
-        <tbody>
-          {ventas.map((v) => (
-            <tr key={v.id_venta}>
-              <td>{v.id_venta}</td><td>{v.cliente}</td><td>{v.fecha}</td><td>{v.lineas}</td><td>{fmtMoneda(v.total)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TablaFiltrable
+        titulo="Ventas registradas"
+        filas={ventas}
+        columnas={columnasVentas}
+        claveOrden="fecha"
+      />
     </div>
   )
 }

@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero } from '../formato'
+import { evaluar } from '../calculo'
 
 function PaginaMermas() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -91,8 +93,9 @@ function PaginaMermas() {
 
   // Costo que se absorbera = cantidad a mermar x costo unitario del lote
   const esMerma = tipo === 'MERMA'
-  const costoAbsorber = (esMerma && idLote !== '' && cantidad !== '')
-    ? parseFloat(cantidad) * costoUnitarioLote()
+  const cantidadNum = evaluar(cantidad)
+  const costoAbsorber = (esMerma && idLote !== '' && cantidad !== '' && !Number.isNaN(cantidadNum))
+    ? cantidadNum * costoUnitarioLote()
     : 0
   const botellasSugeridas = costoAbsorber > 0 ? costoAbsorber * tasa : null
 
@@ -129,11 +132,16 @@ function PaginaMermas() {
       setMensaje('Elige lote y cantidad')
       return
     }
+    if (Number.isNaN(cantidadNum)) { setMensaje('La cantidad no es una operación válida'); return }
+    const botellasAbsorcionNum = evaluar(botellasAbsorcion)
+    if (botellasAbsorcion !== '' && Number.isNaN(botellasAbsorcionNum)) {
+      setMensaje('Las botellas estimadas no son una operación válida'); return
+    }
 
     // Solo cuando el movimiento resta stock tiene sentido validar contra el restante
     if (calcularSentido() === 'SALIDA') {
       const restante = restanteDelLote()
-      if (restante !== undefined && parseFloat(cantidad) > restante) {
+      if (restante !== undefined && cantidadNum > restante) {
         setMensaje(`Ese lote solo tiene ${restante} disponible`)
         return
       }
@@ -144,7 +152,7 @@ function PaginaMermas() {
       tipo: tipo,
       sentido: calcularSentido(),
       origen_lote: origen,
-      cantidad: parseFloat(cantidad),
+      cantidad: cantidadNum,
       motivo: motivo || null,
       id_compra: origen === 'COMPRA' ? parseInt(idLote) : null,
       id_prod_intermedio: origen === 'PRODUCCION_INTERMEDIO' ? parseInt(idLote) : null,
@@ -152,7 +160,7 @@ function PaginaMermas() {
       // Absorcion (solo se usa en el backend cuando es MERMA)
       absorber_costo: esMerma ? absorberMerma : false,
       botellas_estimadas_absorcion:
-        esMerma && absorberMerma && botellasAbsorcion !== '' ? parseFloat(botellasAbsorcion) : null,
+        esMerma && absorberMerma && botellasAbsorcion !== '' ? botellasAbsorcionNum : null,
       fecha: fechaParaEnviar,
     }
 
@@ -201,8 +209,7 @@ function PaginaMermas() {
           placeholder="-- Lote --"
         />
 
-        <input type="number" placeholder="Cantidad"
-          value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        <InputCalculo value={cantidad} onChange={setCantidad} placeholder="Cantidad" />
         <input type="text" placeholder="Motivo"
           value={motivo} onChange={(e) => setMotivo(e.target.value)} />
         <button onClick={registrar}>Registrar</button>
@@ -230,9 +237,9 @@ function PaginaMermas() {
                 )}
               </span>
               <div style={{ marginTop: '0.3rem' }}>
-                <input type="number"
+                <InputCalculo
                   placeholder={botellasSugeridas != null ? `Botellas estimadas (sug. ${botellasSugeridas})` : 'Botellas estimadas'}
-                  value={botellasAbsorcion} onChange={(e) => setBotellasAbsorcion(e.target.value)} />
+                  value={botellasAbsorcion} onChange={setBotellasAbsorcion} />
                 <span style={{ color: '#888', fontSize: '0.85em' }}>
                   {' '}vacío = costo × {tasa}
                 </span>

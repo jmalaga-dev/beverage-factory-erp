@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero } from '../formato'
+import { evaluar } from '../calculo'
 
 function PaginaJornadas() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -61,9 +63,11 @@ function PaginaJornadas() {
       setMensaje('Elige trabajador y horas')
       return
     }
+    const horasNum = evaluar(horas)
+    if (Number.isNaN(horasNum)) { setMensaje('Las horas no son una operación válida'); return }
     apiPost('/jornadas', {
       id_trabajador: parseInt(idTrabajador),
-      horas: parseFloat(horas),
+      horas: horasNum,
       fecha: fechaParaEnviar,
     })
       .then(() => {
@@ -90,9 +94,11 @@ function PaginaJornadas() {
       setMensaje('Elige trabajador y horas')
       return
     }
+    const editHorasNum = evaluar(editHoras)
+    if (Number.isNaN(editHorasNum)) { setMensaje('Las horas no son una operación válida'); return }
     apiPatch(`/jornadas/${id}`, {
       id_trabajador: parseInt(editTrabajador),
-      horas: parseFloat(editHoras),
+      horas: editHorasNum,
     })
       .then(() => {
         setMensaje('Jornada actualizada')
@@ -118,10 +124,10 @@ function PaginaJornadas() {
 
   function registrarLote() {
     const trabajadoresHabilitados = trabajadores.filter((t) => t.habilitado)
-    const lineas = trabajadoresHabilitados.map((t) => ({
-      id_trabajador: t.id_trabajador,
-      horas: horasLote[t.id_trabajador] ? parseFloat(horasLote[t.id_trabajador]) : null,
-    }))
+    const lineas = trabajadoresHabilitados.map((t) => {
+      const v = horasLote[t.id_trabajador] ? evaluar(horasLote[t.id_trabajador]) : NaN
+      return { id_trabajador: t.id_trabajador, horas: Number.isNaN(v) ? null : v }
+    })
     if (!lineas.some((l) => l.horas > 0)) {
       setLoteMensaje('Ingresa horas para al menos un trabajador')
       return
@@ -147,8 +153,7 @@ function PaginaJornadas() {
           obtenerTexto={(t) => `${t.nombre} (${t.tarifa} Bs/hora)`}
           placeholder="-- Trabajador --"
         />
-        <input type="number" placeholder="Horas trabajadas"
-          value={horas} onChange={(e) => setHoras(e.target.value)} />
+        <InputCalculo value={horas} onChange={setHoras} placeholder="Horas trabajadas" />
         {horasSugeridas && (
           <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
             sugerido: su última jornada ({horasSugeridas.fecha}) — editable
@@ -178,9 +183,9 @@ function PaginaJornadas() {
                 <td>{t.nombre}</td>
                 <td style={{ textAlign: 'right' }}>{fmtNumero(t.tarifa)}</td>
                 <td>
-                  <input type="number" placeholder="0" style={{ width: '70px' }}
+                  <InputCalculo placeholder="0" width="70px"
                     value={horasLote[t.id_trabajador] ?? ''}
-                    onChange={(e) => cambiarHorasLote(t.id_trabajador, e.target.value)} />
+                    onChange={(v) => cambiarHorasLote(t.id_trabajador, v)} />
                 </td>
               </tr>
             ))}
@@ -239,8 +244,8 @@ function PaginaJornadas() {
                     </td>
                     <td>{j.fecha}</td>
                     <td>
-                      <input type="number" style={{ width: '70px' }}
-                        value={editHoras} onChange={(e) => setEditHoras(e.target.value)} />
+                      <InputCalculo width="70px"
+                        value={editHoras} onChange={setEditHoras} />
                     </td>
                     <td>{fmtNumero(j.horas_restantes)}</td>
                     <td>{j.pagada ? 'Sí' : 'No'}</td>

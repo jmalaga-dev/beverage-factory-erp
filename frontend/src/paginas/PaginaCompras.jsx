@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import TablaFiltrable from '../componentes/TablaFiltrable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
+import { evaluar } from '../calculo'
 
 function PaginaCompras() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -127,9 +129,17 @@ function PaginaCompras() {
       .catch(console.error)
   }, [idMateria, idProveedor])
 
+  // Las cajas de cantidad/precio aceptan operaciones (ej. "500*0.25"): se
+  // evalúan con evaluar() en vez de parseFloat, que se cortaba en el operador.
+  // `n0` convierte un NaN (caja vacía o expresión a medias) en 0 para los
+  // cálculos en vivo; el envío valida el NaN aparte.
+  const n0 = (t) => { const v = evaluar(t); return Number.isNaN(v) ? 0 : v }
+  const cantidadNum = evaluar(cantidad)
+  const precioTotalNum = evaluar(precioTotal)
+
   // Cuánto se paga ahora: si es a crédito, el monto pagado; si no, el total.
-  const pagoAhora = aCredito ? parseFloat(montoPagado || '0') : parseFloat(precioTotal || '0')
-  const faltante = (parseFloat(precioTotal || '0') - pagoAhora)
+  const pagoAhora = aCredito ? n0(montoPagado) : n0(precioTotal)
+  const faltante = n0(precioTotal) - pagoAhora
   const nombreProveedorSel = proveedores.find((p) => p.id_proveedor === parseInt(idProveedor))?.nombre
 
   // Unidad de la materia elegida (Kg, L...), para rotular el campo cantidad.
@@ -143,9 +153,9 @@ function PaginaCompras() {
   // compara si una compra salió cara o barata (el total solo no dice nada:
   // depende de cuánto se compró). Derivado, nunca estado.
   const precioUnitarioCalculado = (() => {
-    const c = parseFloat(cantidad)
-    const p = parseFloat(precioTotal)
-    if (!c || !p || c <= 0) return null
+    const c = cantidadNum
+    const p = precioTotalNum
+    if (!c || !p || c <= 0 || Number.isNaN(c) || Number.isNaN(p)) return null
     return (p / c).toFixed(2)
   })()
 
@@ -188,13 +198,18 @@ function PaginaCompras() {
     if (loteIdProveedor === '') {
       setLoteMensaje('Elige de qué proveedor se compró esta línea'); return
     }
+    const cantLinea = evaluar(loteCantidad)
+    const precioLinea = evaluar(lotePrecioTotal)
+    if (Number.isNaN(cantLinea) || Number.isNaN(precioLinea)) {
+      setLoteMensaje('Revisa la cantidad y el precio: la operación no es válida'); return
+    }
     const materia = materias.find((m) => m.id_materia_prima === parseInt(loteMateria))
     const proveedor = loteProveedores.find((p) => p.id_proveedor === parseInt(loteIdProveedor))
     setLoteLineas([...loteLineas, {
       id_materia_prima: parseInt(loteMateria),
       nombreMateria: materia ? materia.descripcion : loteMateria,
-      cantidad: parseFloat(loteCantidad),
-      precioTotal: parseFloat(lotePrecioTotal),
+      cantidad: cantLinea,
+      precioTotal: precioLinea,
       id_proveedor: parseInt(loteIdProveedor),
       nombreProveedor: proveedor ? proveedor.nombre : '',
     }])
@@ -273,10 +288,15 @@ function PaginaCompras() {
     if (divLineas.some((l) => l.id_materia_prima === parseInt(divMateria))) {
       setDivMensaje('Esa materia prima ya está en la lista'); return
     }
+    const cantDiv = evaluar(divCantidad)
+    const factorDiv = evaluar(divFactor)
+    if (Number.isNaN(cantDiv) || Number.isNaN(factorDiv)) {
+      setDivMensaje('Revisa la cantidad y el factor: la operación no es válida'); return
+    }
     setDivLineas([...divLineas, {
       id_materia_prima: parseInt(divMateria),
-      cantidad: parseFloat(divCantidad),
-      factor: parseFloat(divFactor),
+      cantidad: cantDiv,
+      factor: factorDiv,
     }])
     setDivMateria(''); setDivCantidad(''); setDivFactor(''); setDivMensaje('')
   }
@@ -285,15 +305,16 @@ function PaginaCompras() {
   // Reparto en vivo: SOLO por factor (proporción = factor/factor_total). La
   // cantidad no pesa en el reparto, solo sirve para el precio unitario y
   // para registrar el lote correctamente.
+  const divPrecioTotalNum = evaluar(divPrecioTotal)
   const divFactorTotal = divLineas.reduce((s, l) => s + l.factor, 0)
   const divPreview = divLineas.map((l) => {
     const proporcion = divFactorTotal > 0 ? l.factor / divFactorTotal : 0
-    const precioAsignado = divPrecioTotal !== '' ? proporcion * parseFloat(divPrecioTotal) : 0
+    const precioAsignado = divPrecioTotal !== '' ? proporcion * n0(divPrecioTotal) : 0
     const precioUnitario = l.cantidad > 0 ? precioAsignado / l.cantidad : 0
     return { ...l, proporcion, precioAsignado, precioUnitario }
   })
-  const divPagoAhora = divACredito ? parseFloat(divMontoPagado || '0') : parseFloat(divPrecioTotal || '0')
-  const divFaltante = parseFloat(divPrecioTotal || '0') - divPagoAhora
+  const divPagoAhora = divACredito ? n0(divMontoPagado) : n0(divPrecioTotal)
+  const divFaltante = n0(divPrecioTotal) - divPagoAhora
   const divNombreProveedorSel = divProveedores.find((p) => p.id_proveedor === parseInt(divIdProveedor))?.nombre
 
   function nombreMateriaDiv(id) {
@@ -304,13 +325,14 @@ function PaginaCompras() {
   function registrarCompraDividida() {
     if (divLineas.length === 0) { setDivMensaje('Agrega al menos una línea'); return }
     if (divIdCuenta === '' || divPrecioTotal === '') { setDivMensaje('Completa cuenta y precio total'); return }
+    if (Number.isNaN(divPrecioTotalNum)) { setDivMensaje('El precio total del pliego no es una operación válida'); return }
     if (divProveedores.length === 0) {
       setDivMensaje('Ningún proveedor vende TODAS estas materias primas. Revisa Proveedores.'); return
     }
     if (divIdProveedor === '') { setDivMensaje('Elige de qué proveedor se compró el pliego'); return }
     if (divACredito) {
       if (divMontoPagado === '' || divPagoAhora < 0) { setDivMensaje('Indica cuánto se paga ahora (0 o más)'); return }
-      if (divPagoAhora > parseFloat(divPrecioTotal)) { setDivMensaje('El monto pagado no puede superar el precio total'); return }
+      if (divPagoAhora > divPrecioTotalNum) { setDivMensaje('El monto pagado no puede superar el precio total'); return }
     }
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(divIdCuenta))
     if (cuenta && divPagoAhora > cuenta.saldo) {
@@ -319,7 +341,7 @@ function PaginaCompras() {
 
     apiPost('/compras-divididas', {
       id_cuenta: parseInt(divIdCuenta),
-      precio_total: parseFloat(divPrecioTotal),
+      precio_total: divPrecioTotalNum,
       lineas: divLineas,
       id_proveedor: parseInt(divIdProveedor),
       monto_pagado: divACredito ? divPagoAhora : null,
@@ -338,6 +360,10 @@ function PaginaCompras() {
   function registrarCompra() {
     if (idMateria === '' || idCuenta === '' || cantidad === '' || precioTotal === '') {
       setMensaje('Completa todos los campos')
+      return
+    }
+    if (Number.isNaN(cantidadNum) || Number.isNaN(precioTotalNum)) {
+      setMensaje('Revisa la cantidad y el precio: la operación no es válida')
       return
     }
 
@@ -372,8 +398,8 @@ function PaginaCompras() {
     apiPost('/compras', {
       id_materia_prima: parseInt(idMateria),
       id_cuenta: parseInt(idCuenta),
-      cantidad: parseFloat(cantidad),
-      precio_total: parseFloat(precioTotal),
+      cantidad: cantidadNum,
+      precio_total: precioTotalNum,
       id_proveedor: parseInt(idProveedor),
       // Solo se manda monto_pagado cuando es a credito; si no, el backend paga total
       monto_pagado: aCredito ? pagoAhora : null,
@@ -458,13 +484,11 @@ function PaginaCompras() {
             del catálogo, para no tener que adivinar en qué se mide. */}
         <label style={{ marginLeft: '0.4rem' }}>
           Cantidad{unidadMateria ? ` (${unidadMateria})` : ''}:{' '}
-          <input type="text" placeholder="Cantidad" style={{ width: '7rem' }}
-            value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+          <InputCalculo value={cantidad} onChange={setCantidad} placeholder="Cantidad" />
         </label>
         <label style={{ marginLeft: '0.4rem' }}>
           Precio total (Bs):{' '}
-          <input type="text" placeholder="Precio total" style={{ width: '7rem' }}
-            value={precioTotal} onChange={(e) => setPrecioTotal(e.target.value)} />
+          <InputCalculo value={precioTotal} onChange={setPrecioTotal} placeholder="Precio total" />
         </label>
         {precioUnitarioCalculado && (
           <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
@@ -486,8 +510,7 @@ function PaginaCompras() {
           </label>
           {aCredito && (
             <span style={{ marginLeft: '0.5rem' }}>
-              <input type="text" placeholder="Monto pagado ahora"
-                value={montoPagado} onChange={(e) => setMontoPagado(e.target.value)} />
+              <InputCalculo value={montoPagado} onChange={setMontoPagado} placeholder="Monto pagado ahora" />
               {precioTotal !== '' && faltante > 0 && (
                 <span style={{ color: '#a06000' }}>
                   {' '}Se creará deuda de {faltante.toFixed(2)} Bs
@@ -534,13 +557,11 @@ function PaginaCompras() {
           />
           <label style={{ marginLeft: '0.4rem' }}>
             Cantidad{unidadLoteMateria ? ` (${unidadLoteMateria})` : ''}:{' '}
-            <input type="text" placeholder="Cantidad" style={{ width: '7rem' }}
-              value={loteCantidad} onChange={(e) => setLoteCantidad(e.target.value)} />
+            <InputCalculo value={loteCantidad} onChange={setLoteCantidad} placeholder="Cantidad" />
           </label>
           <label style={{ marginLeft: '0.4rem' }}>
             Precio total (Bs):{' '}
-            <input type="text" placeholder="Precio total" style={{ width: '7rem' }}
-              value={lotePrecioTotal} onChange={(e) => setLotePrecioTotal(e.target.value)} />
+            <InputCalculo value={lotePrecioTotal} onChange={setLotePrecioTotal} placeholder="Precio total" />
           </label>
 
           {loteMateria !== '' && loteProveedores.length === 0 && (
@@ -625,8 +646,7 @@ function PaginaCompras() {
             obtenerTexto={(c) => `${c.nombre} (saldo: ${c.saldo})`}
             placeholder="-- Cuenta --"
           />
-          <input type="text" placeholder="Precio total del pliego"
-            value={divPrecioTotal} onChange={(e) => setDivPrecioTotal(e.target.value)} />
+          <InputCalculo value={divPrecioTotal} onChange={setDivPrecioTotal} placeholder="Precio total del pliego" width="12rem" />
         </div>
 
         {/* Agregar línea */}
@@ -641,13 +661,11 @@ function PaginaCompras() {
           />
           <label style={{ marginLeft: '0.4rem' }}>
             Cantidad{unidadDivMateria ? ` (${unidadDivMateria})` : ''}:{' '}
-            <input type="text" placeholder="Cantidad" style={{ width: '6rem' }}
-              value={divCantidad} onChange={(e) => setDivCantidad(e.target.value)} />
+            <InputCalculo value={divCantidad} onChange={setDivCantidad} placeholder="Cantidad" width="6rem" />
           </label>
           <label style={{ marginLeft: '0.4rem' }}>
             Factor (ej. área):{' '}
-            <input type="text" placeholder="Factor" style={{ width: '6rem' }}
-              value={divFactor} onChange={(e) => setDivFactor(e.target.value)} />
+            <InputCalculo value={divFactor} onChange={setDivFactor} placeholder="Factor" width="6rem" />
           </label>
           <button onClick={agregarLineaDividida}>Agregar línea</button>
         </div>
@@ -712,8 +730,7 @@ function PaginaCompras() {
           </label>
           {divACredito && (
             <span style={{ marginLeft: '0.5rem' }}>
-              <input type="text" placeholder="Monto pagado ahora"
-                value={divMontoPagado} onChange={(e) => setDivMontoPagado(e.target.value)} />
+              <InputCalculo value={divMontoPagado} onChange={setDivMontoPagado} placeholder="Monto pagado ahora" />
               {divPrecioTotal !== '' && divFaltante > 0 && (
                 <span style={{ color: '#a06000' }}>
                   {' '}Se creará deuda de {divFaltante.toFixed(2)} Bs

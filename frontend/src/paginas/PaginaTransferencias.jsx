@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { evaluar } from '../calculo'
 
 function PaginaTransferencias() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -35,17 +37,19 @@ function PaginaTransferencias() {
       setMensajeTransferencia('La cuenta de origen y destino no pueden ser la misma')
       return
     }
+    const montoNum = evaluar(montoTransferencia)
+    if (Number.isNaN(montoNum)) { setMensajeTransferencia('El monto no es una operación válida'); return }
 
     const origen = cuentas.find((c) => c.id_cuenta === parseInt(idOrigen))
-    if (origen && parseFloat(montoTransferencia) > origen.saldo) {
-      setMensajeTransferencia(`Saldo insuficiente: la cuenta tiene ${origen.saldo} Bs y la transferencia es de ${montoTransferencia} Bs`)
+    if (origen && montoNum > origen.saldo) {
+      setMensajeTransferencia(`Saldo insuficiente: la cuenta tiene ${origen.saldo} Bs y la transferencia es de ${montoNum} Bs`)
       return
     }
 
     apiPost('/transferencias', {
       id_cuenta_origen: parseInt(idOrigen),
       id_cuenta_destino: parseInt(idDestino),
-      monto: parseFloat(montoTransferencia),
+      monto: montoNum,
       descripcion: descripcionTransferencia,
       fecha: fechaParaEnviar,
     })
@@ -64,9 +68,11 @@ function PaginaTransferencias() {
       return
     }
 
+    const montoIngresoNum = evaluar(montoIngreso)
+    if (Number.isNaN(montoIngresoNum)) { setMensajeIngreso('El monto no es una operación válida'); return }
     apiPost('/ingresos-externos', {
       id_cuenta_destino: parseInt(idCuentaIngreso),
-      monto: parseFloat(montoIngreso),
+      monto: montoIngresoNum,
       descripcion: descripcionIngreso,
       fecha: fechaParaEnviar,
     })
@@ -87,8 +93,7 @@ function PaginaTransferencias() {
       <div>
         <input type="text" placeholder="Descripción"
           value={descripcionTransferencia} onChange={(e) => setDescripcionTransferencia(e.target.value)} />
-        <input type="number" placeholder="Monto"
-          value={montoTransferencia} onChange={(e) => setMontoTransferencia(e.target.value)} />
+        <InputCalculo value={montoTransferencia} onChange={setMontoTransferencia} placeholder="Monto" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idOrigen}
@@ -113,8 +118,7 @@ function PaginaTransferencias() {
       <div>
         <input type="text" placeholder="Descripción (de dónde viene)"
           value={descripcionIngreso} onChange={(e) => setDescripcionIngreso(e.target.value)} />
-        <input type="number" placeholder="Monto"
-          value={montoIngreso} onChange={(e) => setMontoIngreso(e.target.value)} />
+        <InputCalculo value={montoIngreso} onChange={setMontoIngreso} placeholder="Monto" decimales={2} />
         <SelectorBuscable
           opciones={cuentas.filter((c) => c.habilitado)}
           valor={idCuentaIngreso}

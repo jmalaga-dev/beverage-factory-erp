@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
 import { fusionar } from '../insumos'
+import { evaluar } from '../calculo'
 
 // Editor de insumos NUEVOS del reproceso (materia prima + trabajo): las tapas,
 // etiquetas y horas que se agregan al re-procesar. Controlado por el padre:
@@ -16,12 +18,16 @@ function InsumosNuevos({ lotesCompra, jornadas, value, onChange }) {
 
   function agregarMP() {
     if (mpLote === '' || mpCant === '') return
-    onChange({ ...value, mp: fusionar(value.mp, [{ id_compra: parseInt(mpLote), cantidad: parseFloat(mpCant) }], 'id_compra') })
+    const cant = evaluar(mpCant)
+    if (Number.isNaN(cant)) return
+    onChange({ ...value, mp: fusionar(value.mp, [{ id_compra: parseInt(mpLote), cantidad: cant }], 'id_compra') })
     setMpLote(''); setMpCant('')
   }
   function agregarTrab() {
     if (trabJor === '' || trabHoras === '') return
-    onChange({ ...value, trabajo: [...value.trabajo, { id_registro: parseInt(trabJor), horas: parseFloat(trabHoras) }] })
+    const hs = evaluar(trabHoras)
+    if (Number.isNaN(hs)) return
+    onChange({ ...value, trabajo: [...value.trabajo, { id_registro: parseInt(trabJor), horas: hs }] })
     setTrabJor(''); setTrabHoras('')
   }
   const nombreLote = (id) => { const l = lotesCompra.find((x) => x.id_compra === id); return l ? `${l.nombre_materia} - Lote ${id}` : `Lote ${id}` }
@@ -36,7 +42,7 @@ function InsumosNuevos({ lotesCompra, jornadas, value, onChange }) {
           obtenerId={(l) => l.id_compra}
           obtenerTexto={(l) => `${l.nombre_materia} - Lote ${l.id_compra} (rest: ${l.cantidad_restante})`}
           placeholder="-- Lote MP --" />
-        <input type="number" placeholder="Cantidad" value={mpCant} onChange={(e) => setMpCant(e.target.value)} style={{ width: '6rem' }} />
+        <InputCalculo value={mpCant} onChange={setMpCant} placeholder="Cantidad" width="6rem" />
         <button onClick={agregarMP}>+ MP</button>
       </div>
       <ul style={{ margin: '0.2rem 0' }}>
@@ -51,7 +57,7 @@ function InsumosNuevos({ lotesCompra, jornadas, value, onChange }) {
           obtenerId={(j) => j.id_jornada}
           obtenerTexto={(j) => `${j.nombre_trabajador} - ${j.fecha} (quedan ${j.horas_restantes}h)`}
           placeholder="-- Jornada --" />
-        <input type="number" placeholder="Horas" value={trabHoras} onChange={(e) => setTrabHoras(e.target.value)} style={{ width: '6rem' }} />
+        <InputCalculo value={trabHoras} onChange={setTrabHoras} placeholder="Horas" width="6rem" />
         <button onClick={agregarTrab}>+ Trabajo</button>
       </div>
       <ul style={{ margin: '0.2rem 0' }}>
@@ -122,12 +128,14 @@ function PaginaDevoluciones() {
   function elegirLinea(idProd) {
     setLineaSel(idProd); setDevLote(idProd)
     const l = detalleVenta?.lineas.find((x) => x.id_produccion === parseInt(idProd))
-    if (l && devCantidad !== '') setDevMonto((l.precio_real * parseFloat(devCantidad)).toFixed(2))
+    const cantEval = evaluar(devCantidad)
+    if (l && devCantidad !== '' && !Number.isNaN(cantEval)) setDevMonto((l.precio_real * cantEval).toFixed(2))
   }
   // Al cambiar la cantidad, si está vinculada, autocompletar el reembolso sugerido
   function cambiarCantidad(v) {
     setDevCantidad(v)
-    if (lineaVenta && v !== '') setDevMonto((lineaVenta.precio_real * parseFloat(v)).toFixed(2))
+    const vEval = evaluar(v)
+    if (lineaVenta && v !== '' && !Number.isNaN(vEval)) setDevMonto((lineaVenta.precio_real * vEval).toFixed(2))
   }
 
   // Costo unitario del lote de devolución (para estimar merma / arrastre)
@@ -135,31 +143,35 @@ function PaginaDevoluciones() {
 
   function registrarDevolucion() {
     if (devLote === '') { setMsgDev('Elige el lote devuelto (por la venta o directo)'); return }
-    if (devCantidad === '' || parseFloat(devCantidad) <= 0) { setMsgDev('Indica la cantidad devuelta'); return }
+    const cantNum = evaluar(devCantidad)
+    if (devCantidad === '' || Number.isNaN(cantNum) || cantNum <= 0) { setMsgDev('Indica la cantidad devuelta'); return }
     if (devCuenta === '') { setMsgDev('Elige la cuenta del reembolso'); return }
-    if (devMonto === '' || parseFloat(devMonto) < 0) { setMsgDev('Indica el monto del reembolso (0 si no devuelves dinero)'); return }
-    if (lineaVenta && parseFloat(devCantidad) > lineaVenta.cantidad) {
+    const montoNum = evaluar(devMonto)
+    if (devMonto === '' || Number.isNaN(montoNum) || montoNum < 0) { setMsgDev('Indica el monto del reembolso (0 si no devuelves dinero)'); return }
+    if (lineaVenta && cantNum > lineaVenta.cantidad) {
       setMsgDev(`En esa venta se vendieron ${lineaVenta.cantidad} de ese lote; no puedes devolver más`); return
+    }
+    const botellasNum = evaluar(devBotellas)
+    const repProducidaNum = evaluar(devRepProducida)
+    if (devDestino === 'REPROCESO' && (devRepProducida === '' || Number.isNaN(repProducidaNum) || repProducidaNum <= 0)) {
+      setMsgDev('Indica cuántas botellas produce el reproceso'); return
     }
     const body = {
       id_produccion: parseInt(devLote),
-      cantidad: parseFloat(devCantidad),
+      cantidad: cantNum,
       id_cuenta: parseInt(devCuenta),
-      monto_reembolso: parseFloat(devMonto),
+      monto_reembolso: montoNum,
       destino: devDestino,
       id_venta: vincular && idVenta !== '' ? parseInt(idVenta) : null,
       motivo: devMotivo || null,
       fecha: fechaParaEnviar,
       absorber_costo: devDestino === 'MERMA' ? devAbsorber : false,
-      botellas_estimadas_absorcion: devDestino === 'MERMA' && devAbsorber && devBotellas !== '' ? parseFloat(devBotellas) : null,
+      botellas_estimadas_absorcion: devDestino === 'MERMA' && devAbsorber && devBotellas !== '' && !Number.isNaN(botellasNum) ? botellasNum : null,
       reproceso: devDestino === 'REPROCESO' ? {
-        cantidad_producida: parseFloat(devRepProducida),
+        cantidad_producida: repProducidaNum,
         insumos_mp: devRepInsumos.mp.map((x) => [x.id_compra, x.cantidad]),
         insumos_trabajo: devRepInsumos.trabajo.map((x) => [x.id_registro, x.horas]),
       } : null,
-    }
-    if (devDestino === 'REPROCESO' && (devRepProducida === '' || parseFloat(devRepProducida) <= 0)) {
-      setMsgDev('Indica cuántas botellas produce el reproceso'); return
     }
     apiPost('/devoluciones', body)
       .then((d) => {
@@ -173,15 +185,17 @@ function PaginaDevoluciones() {
 
   function registrarReprocesoDirecto() {
     if (dirLote === '') { setMsgDir('Elige el lote a reprocesar'); return }
-    if (dirCantidad === '' || parseFloat(dirCantidad) <= 0) { setMsgDir('Indica cuánto reprocesar'); return }
-    if (dirProducida === '' || parseFloat(dirProducida) <= 0) { setMsgDir('Indica cuántas botellas produce'); return }
-    if (parseFloat(dirProducida) > parseFloat(dirCantidad)) { setMsgDir('El reproceso no puede producir más de lo que consume'); return }
+    const dirCantNum = evaluar(dirCantidad)
+    const dirProdNum = evaluar(dirProducida)
+    if (dirCantidad === '' || Number.isNaN(dirCantNum) || dirCantNum <= 0) { setMsgDir('Indica cuánto reprocesar'); return }
+    if (dirProducida === '' || Number.isNaN(dirProdNum) || dirProdNum <= 0) { setMsgDir('Indica cuántas botellas produce'); return }
+    if (dirProdNum > dirCantNum) { setMsgDir('El reproceso no puede producir más de lo que consume'); return }
     const origen = lotesTerm.find((l) => l.id_produccion === parseInt(dirLote))
-    if (origen && parseFloat(dirCantidad) > origen.cantidad_restante) { setMsgDir(`Ese lote solo tiene ${origen.cantidad_restante}`); return }
+    if (origen && dirCantNum > origen.cantidad_restante) { setMsgDir(`Ese lote solo tiene ${origen.cantidad_restante}`); return }
     apiPost('/reprocesos', {
       id_produccion_origen: parseInt(dirLote),
-      cantidad: parseFloat(dirCantidad),
-      cantidad_producida: parseFloat(dirProducida),
+      cantidad: dirCantNum,
+      cantidad_producida: dirProdNum,
       insumos_mp: dirInsumos.mp.map((x) => [x.id_compra, x.cantidad]),
       insumos_trabajo: dirInsumos.trabajo.map((x) => [x.id_registro, x.horas]),
       fecha: fechaParaEnviar,
@@ -237,11 +251,11 @@ function PaginaDevoluciones() {
         )}
 
         <div style={{ margin: '0.4rem 0' }}>
-          <input type="number" placeholder="Cantidad devuelta" value={devCantidad} onChange={(e) => cambiarCantidad(e.target.value)} style={{ width: '9rem' }} />
+          <InputCalculo value={devCantidad} onChange={cambiarCantidad} placeholder="Cantidad devuelta" width="9rem" />
           <SelectorBuscable opciones={cuentas.filter((c) => c.habilitado)} valor={devCuenta} onCambiar={setDevCuenta}
             obtenerId={(c) => c.id_cuenta} obtenerTexto={(c) => c.nombre} placeholder="-- Cuenta del reembolso --" />
-          <input type="number" placeholder="Monto reembolso" value={devMonto} onChange={(e) => setDevMonto(e.target.value)} style={{ width: '9rem' }} />
-          {lineaVenta && <span style={{ fontSize: '0.8em', color: '#888' }}> (sugerido {fmtMoneda(lineaVenta.precio_real * (parseFloat(devCantidad) || 0))} Bs)</span>}
+          <InputCalculo value={devMonto} onChange={setDevMonto} placeholder="Monto reembolso" width="9rem" decimales={2} />
+          {lineaVenta && <span style={{ fontSize: '0.8em', color: '#888' }}> (sugerido {fmtMoneda(lineaVenta.precio_real * (Number.isNaN(evaluar(devCantidad)) ? 0 : evaluar(devCantidad)))} Bs)</span>}
         </div>
 
         <div style={{ margin: '0.4rem 0' }}>
@@ -267,10 +281,10 @@ function PaginaDevoluciones() {
             </label>
             {devAbsorber && loteDevInfo && devCantidad !== '' && (
               <div style={{ marginTop: '0.3rem', fontSize: '0.9em' }}>
-                Costo a absorber: <strong>{fmtMoneda(loteDevInfo.costo_unitario * parseFloat(devCantidad || 0))} Bs</strong>
+                Costo a absorber: <strong>{fmtMoneda(loteDevInfo.costo_unitario * (Number.isNaN(evaluar(devCantidad)) ? 0 : evaluar(devCantidad)))} Bs</strong>
                 <div>
-                  <input type="number" placeholder={`Botellas estimadas (sug. costo × ${tasa})`} value={devBotellas}
-                    onChange={(e) => setDevBotellas(e.target.value)} style={{ width: '18rem' }} />
+                  <InputCalculo placeholder={`Botellas estimadas (sug. costo × ${tasa})`} value={devBotellas}
+                    onChange={setDevBotellas} width="18rem" />
                   <span style={{ color: '#888', fontSize: '0.85em' }}> vacío = costo × {tasa}</span>
                 </div>
               </div>
@@ -283,8 +297,7 @@ function PaginaDevoluciones() {
           <div style={{ background: '#f7f7ff', padding: '0.4rem', margin: '0.3rem 0' }}>
             <div>
               Botellas que produce el reproceso:{' '}
-              <input type="number" placeholder="≤ cantidad devuelta" value={devRepProducida}
-                onChange={(e) => setDevRepProducida(e.target.value)} style={{ width: '9rem' }} />
+              <InputCalculo value={devRepProducida} onChange={setDevRepProducida} placeholder="≤ cantidad devuelta" width="9rem" />
             </div>
             <InsumosNuevos lotesCompra={lotesCompra} jornadas={jornadas} value={devRepInsumos} onChange={setDevRepInsumos} />
           </div>
@@ -307,8 +320,8 @@ function PaginaDevoluciones() {
             placeholder="-- Lote a reprocesar --" />
         </div>
         <div style={{ margin: '0.4rem 0' }}>
-          <input type="number" placeholder="Cantidad a reprocesar" value={dirCantidad} onChange={(e) => setDirCantidad(e.target.value)} style={{ width: '11rem' }} />
-          <input type="number" placeholder="Botellas producidas" value={dirProducida} onChange={(e) => setDirProducida(e.target.value)} style={{ width: '11rem' }} />
+          <InputCalculo value={dirCantidad} onChange={setDirCantidad} placeholder="Cantidad a reprocesar" width="11rem" />
+          <InputCalculo value={dirProducida} onChange={setDirProducida} placeholder="Botellas producidas" width="11rem" />
         </div>
         <InsumosNuevos lotesCompra={lotesCompra} jornadas={jornadas} value={dirInsumos} onChange={setDirInsumos} />
         <button onClick={registrarReprocesoDirecto}>REGISTRAR REPROCESO</button>

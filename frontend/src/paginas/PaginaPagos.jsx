@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
+import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
+import { evaluar } from '../calculo'
 
 function PaginaPagos() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -16,7 +18,10 @@ function PaginaPagos() {
   const [mensaje, setMensaje] = useState('')
 
   function cargar() {
-    apiGet('/trabajadores').then(setTrabajadores).catch(console.error)
+    // Solo trabajadores con jornadas sin pagar (item 12): no tiene sentido
+    // elegir a alguien a quien no se le debe nada. Los deshabilitados con
+    // deuda igual aparecen, para poder cerrar su cuenta pendiente (6.5).
+    apiGet('/trabajadores-con-deuda').then(setTrabajadores).catch(console.error)
     apiGet('/cuentas').then(setCuentas).catch(console.error)
   }
 
@@ -44,16 +49,18 @@ function PaginaPagos() {
       return
     }
 
+    const montoRealNum = evaluar(montoReal)
+    if (Number.isNaN(montoRealNum)) { setMensaje('El monto no es una operación válida'); return }
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
-    if (cuenta && parseFloat(montoReal) > cuenta.saldo) {
-      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el pago es de ${montoReal} Bs`)
+    if (cuenta && montoRealNum > cuenta.saldo) {
+      setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el pago es de ${montoRealNum} Bs`)
       return
     }
 
     apiPost('/pagos', {
       id_trabajador: parseInt(idTrabajador),
       id_cuenta: parseInt(idCuenta),
-      monto_real: parseFloat(montoReal),
+      monto_real: montoRealNum,
       fecha: fechaParaEnviar,
     })
       .then((data) => {
@@ -77,7 +84,7 @@ function PaginaPagos() {
           valor={idTrabajador}
           onCambiar={elegirTrabajador}
           obtenerId={(t) => t.id_trabajador}
-          obtenerTexto={(t) => t.nombre}
+          obtenerTexto={(t) => `${t.nombre}${t.habilitado ? '' : ' (deshabilitado)'} — debe ${t.monto_sugerido} Bs`}
           placeholder="-- Trabajador --"
         />
       </div>
@@ -90,8 +97,7 @@ function PaginaPagos() {
             <strong> Se le debe: {sugerido} Bs</strong>
           </p>
           <div>
-            <input type="number" placeholder="Monto a pagar"
-              value={montoReal} onChange={(e) => setMontoReal(e.target.value)} />
+            <InputCalculo value={montoReal} onChange={setMontoReal} placeholder="Monto a pagar" decimales={2} />
             <SelectorBuscable
               opciones={cuentas.filter((c) => c.habilitado)}
               valor={idCuenta}
