@@ -16,6 +16,9 @@ function PaginaGastos() {
   const [descripcion, setDescripcion] = useState('')
   const [idGrupo, setIdGrupo] = useState('')
   const [mensaje, setMensaje] = useState('')
+  // Gasto cubierto por aporte externo (item 10b): lo pagó otra persona.
+  const [pagadoExterno, setPagadoExterno] = useState(false)
+  const [quienPago, setQuienPago] = useState('')
 
   // ----- Registrar VARIOS gastos a la vez, como tabla (misma idea que la
   // tabla de Compras): cada linea es un gasto independiente que sale ENTERO
@@ -95,8 +98,11 @@ function PaginaGastos() {
 
     const montoNum = evaluar(monto)
     if (Number.isNaN(montoNum)) { setMensaje('El monto no es una operación válida'); return }
+    if (pagadoExterno && quienPago.trim() === '') { setMensaje('Indicá quién pagó el gasto'); return }
+    // Si lo cubre un aporte externo, la cuenta no paga nada (neto cero), así que
+    // no hace falta que tenga saldo. Solo se valida saldo en un gasto normal.
     const cuenta = cuentas.find((c) => c.id_cuenta === parseInt(idCuenta))
-    if (cuenta && montoNum > cuenta.saldo) {
+    if (!pagadoExterno && cuenta && montoNum > cuenta.saldo) {
       setMensaje(`Saldo insuficiente: la cuenta tiene ${cuenta.saldo} Bs y el gasto es de ${montoNum} Bs`)
       return
     }
@@ -107,12 +113,16 @@ function PaginaGastos() {
       descripcion: descripcion,
       id_grupo: idGrupo ? parseInt(idGrupo) : null,
       fecha: fechaParaEnviar,
+      pagado_externo: pagadoExterno,
+      quien_pago: pagadoExterno ? quienPago.trim() : null,
     })
       .then(() => {
-        setMensaje('Gasto registrado')
+        setMensaje(pagadoExterno ? `Gasto registrado (cubierto por ${quienPago.trim()}, no tocó tus cuentas)` : 'Gasto registrado')
         setMonto('')
         setDescripcion('')
         setIdGrupo('')
+        setPagadoExterno(false)
+        setQuienPago('')
         cargar()   // recargar cuentas (el saldo cambió)
       })
       .catch((e) => setMensaje(e.message))
@@ -142,6 +152,26 @@ function PaginaGastos() {
           placeholder="-- Grupo (opcional) --"
         />
         <button onClick={registrar}>Registrar gasto</button>
+      </div>
+
+      {/* Gasto cubierto por aporte externo (item 10b): lo pagó otra persona,
+          así que se registra el gasto pero no reduce tus cuentas. */}
+      <div style={{ marginTop: '0.4rem' }}>
+        <label>
+          <input type="checkbox" checked={pagadoExterno}
+            onChange={(e) => { setPagadoExterno(e.target.checked); if (!e.target.checked) setQuienPago('') }} />
+          {' '}Lo pagó otra persona (aporte externo — no descuenta tus cuentas)
+        </label>
+        {pagadoExterno && (
+          <>
+            {' '}
+            <input type="text" placeholder="¿Quién pagó? (ej. cónyuge)"
+              value={quienPago} onChange={(e) => setQuienPago(e.target.value)} />
+            <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+              se registra el gasto y un aporte externo que lo cubre; la cuenta queda igual
+            </span>
+          </>
+        )}
       </div>
       {mensaje && <p>{mensaje}</p>}
 

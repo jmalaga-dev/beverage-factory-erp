@@ -499,6 +499,9 @@ class Venta(Base):
     Id_Venta = Column(Integer, primary_key=True)
     Id_Cliente = Column(Integer, ForeignKey("Cliente.Id_Cliente"), nullable=False)
     Fecha_Venta = Column(Date, nullable=False)
+    # Taxi/delivery de la venta (item 8): se prorratea uniforme por botella y
+    # baja el ingreso neto que entra y se reparte. Default 0.
+    Taxi_Venta = Column(Numeric, nullable=False, server_default="0")
 
     cliente = relationship("Cliente", back_populates="ventas")
     detalles = relationship("Detalle_Venta", back_populates="venta")

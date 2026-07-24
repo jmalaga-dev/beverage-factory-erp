@@ -93,14 +93,16 @@ function PaginaVentas() {
     apiGet(`/ultimo-precio-cliente/${idCliente}`).then(setUltimosPrecios).catch(() => setUltimosPrecios({}))
   }, [idCliente])
 
-  // Recalcular el reparto 70/30 cada vez que cambian las líneas (lo resuelve el
-  // backend, misma lógica que al registrar: acumula el saldo línea por línea).
+  // Recalcular el reparto 70/30 cada vez que cambian las líneas o el taxi (lo
+  // resuelve el backend, misma lógica que al registrar: reparte el NETO —
+  // bruto menos taxi por botella— acumulando el saldo línea por línea).
   useEffect(() => {
     if (lineas.length === 0) { setReparto(null); return }
-    apiPost('/ventas/preview-reparto', lineas.map((l) => ({
-      id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: precioNum(l),
-    }))).then(setReparto).catch(() => setReparto(null))
-  }, [lineas])
+    apiPost('/ventas/preview-reparto', {
+      lineas: lineas.map((l) => ({ id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: precioNum(l) })),
+      taxi: taxiNum,
+    }).then(setReparto).catch(() => setReparto(null))
+  }, [lineas, taxi])
 
   // El precio por línea se guarda como TEXTO crudo (precio_texto), no como
   // número: la caja acepta operaciones (ej. "100/12", item 11) y si el estado
@@ -196,8 +198,10 @@ function PaginaVentas() {
 
     apiPost('/ventas', {
       id_cliente: parseInt(idCliente),
-      // el taxi NO se envía; reparto 70/30 = default en el backend
+      // El taxi SÍ se envía (item 8): baja el ingreso neto que entra y se
+      // reparte 70/30. reparto 70/30 = default en el backend.
       lineas: lineas.map((l) => ({ id_produccion: l.id_produccion, cantidad: l.cantidad, precio_real: evaluar(l.precio_texto) })),
+      taxi: taxiNum,
       fecha: fechaParaEnviar,
     })
       .then(() => {
@@ -370,16 +374,16 @@ function PaginaVentas() {
         </table>
       )}
 
-      {/* Taxi/delivery: solo cálculo en pantalla */}
+      {/* Taxi/delivery: baja el ingreso neto que entra (item 8) */}
       {lineas.length > 0 && (
         <div style={{ margin: '0.5rem 0' }}>
           <label>
-            Taxi/delivery (solo cálculo, no mueve caja):{' '}
+            Taxi/delivery (baja lo que entra, se prorratea por botella):{' '}
             <InputCalculo value={taxi} onChange={setTaxi} placeholder="0.00" decimales={2} />
           </label>
           {hayTaxi && (
             <span style={{ marginLeft: '0.5rem', color: '#557' }}>
-              = {fmtMoneda(taxiPorBotella)} Bs por botella ({fmtNumero(totalBotellasVenta, 2)} botellas)
+              = {fmtMoneda(taxiPorBotella)} Bs por botella ({fmtNumero(totalBotellasVenta, 2)} botellas) — entra el neto
             </span>
           )}
         </div>

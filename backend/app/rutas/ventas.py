@@ -30,6 +30,7 @@ class VentaEntrada(BaseModel):
     lineas: list[LineaVentaEntrada]
     fecha: date | None = None
     reparto: bool = True   # True = 70/30 automatico Fabrica/Casa (mejora 2.C)
+    taxi: Decimal = 0      # taxi/delivery: baja el ingreso neto (item 8)
 
 
 @router.post("/ventas")
@@ -50,6 +51,7 @@ def crear_venta(datos: VentaEntrada, sesion: Session = Depends(get_sesion)):
             lineas=lineas,
             fecha=datos.fecha or date.today(),
             reparto=datos.reparto,
+            taxi=datos.taxi,
         )
         return {"mensaje": "Venta registrada", "id_venta": venta.Id_Venta, "lineas": len(lineas)}
     except ValueError as e:
@@ -62,13 +64,23 @@ class LineaPreviewReparto(BaseModel):
     precio_real: Decimal
 
 
+class PreviewRepartoEntrada(BaseModel):
+    lineas: list[LineaPreviewReparto]
+    taxi: Decimal = 0
+
+
 @router.post("/ventas/preview-reparto")
-def preview_reparto_venta(lineas: list[LineaPreviewReparto], sesion: Session = Depends(get_sesion)):
-    """Muestra cómo se repartiría el ingreso de una venta entre Fábrica y Casa
-    (70/30 con recuperación de inversión), sin registrar nada. Acumula el saldo
-    línea por línea, igual que al registrar."""
+def preview_reparto_venta(datos: PreviewRepartoEntrada, sesion: Session = Depends(get_sesion)):
+    """Muestra cómo se repartiría el ingreso NETO de una venta entre Fábrica y
+    Casa (70/30 con recuperación de inversión), sin registrar nada. El taxi se
+    prorratea uniforme por botella y baja el neto, igual que al registrar (item
+    8). Acumula el saldo línea por línea."""
     from app.models import Produccion
     from app.servicios.saldo_producto import saldo_de_producto, dividir_ingreso
+
+    lineas = datos.lineas
+    total_botellas = sum(l.cantidad for l in lineas)
+    taxi_por_botella = datos.taxi / total_botellas if total_botellas > 0 else 0
 
     saldo_por_producto = {}
     detalle = []
@@ -80,7 +92,7 @@ def preview_reparto_venta(lineas: list[LineaPreviewReparto], sesion: Session = D
         pid = produccion.Id_Producto_Terminado
         if pid not in saldo_por_producto:
             saldo_por_producto[pid] = saldo_de_producto(sesion, pid)
-        ingreso = l.cantidad * l.precio_real
+        ingreso = l.cantidad * (l.precio_real - taxi_por_botella)
         a_fab, a_casa = dividir_ingreso(saldo_por_producto[pid], ingreso)
         saldo_por_producto[pid] = saldo_por_producto[pid] + ingreso
         total_fabrica += float(a_fab)

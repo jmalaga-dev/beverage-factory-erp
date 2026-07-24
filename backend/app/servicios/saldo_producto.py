@@ -90,19 +90,32 @@ def _inversion_por_producto(sesion, fecha_corte=None):
 
 
 def _ingresos_por_producto(sesion, fecha_corte=None):
-    """Ingresos totales de las ventas de cada producto, hasta fecha_corte (o de
-    siempre). Devuelve {id_producto: monto}."""
-    q = (
+    """Ingresos NETOS de las ventas de cada producto, hasta fecha_corte (o de
+    siempre). Neto = precio bruto menos la parte de taxi de esas botellas
+    (item 8): es lo que de verdad entró y se repartió. Devuelve
+    {id_producto: monto}. En ventas sin taxi (todas las históricas) neto =
+    bruto, así que no cambia nada de lo ya calculado."""
+    filas = (
         sesion.query(Detalle_Venta, Venta, Produccion)
         .join(Venta, Detalle_Venta.Id_Venta == Venta.Id_Venta)
         .join(Produccion, Detalle_Venta.Id_Produccion == Produccion.Id_Produccion)
     )
     if fecha_corte is not None:
-        q = q.filter(Venta.Fecha_Venta <= fecha_corte)
+        filas = filas.filter(Venta.Fecha_Venta <= fecha_corte)
+    filas = filas.all()
+
+    # Botellas totales por venta, para prorratear su taxi uniforme por botella.
+    botellas_por_venta = {}
+    for detalle, venta, _p in filas:
+        botellas_por_venta[venta.Id_Venta] = botellas_por_venta.get(venta.Id_Venta, 0) + (detalle.Cantidad_Venta or 0)
+
     acum = {}
-    for detalle, _venta, produccion in q.all():
-        ingreso = (detalle.Cantidad_Venta or 0) * (detalle.Precio_Venta_Real or 0)
-        acum[produccion.Id_Producto_Terminado] = acum.get(produccion.Id_Producto_Terminado, 0) + ingreso
+    for detalle, venta, produccion in filas:
+        cantidad = detalle.Cantidad_Venta or 0
+        total_botellas = botellas_por_venta.get(venta.Id_Venta, 0)
+        taxi_por_botella = (venta.Taxi_Venta or 0) / total_botellas if total_botellas > 0 else 0
+        ingreso_neto = cantidad * ((detalle.Precio_Venta_Real or 0) - taxi_por_botella)
+        acum[produccion.Id_Producto_Terminado] = acum.get(produccion.Id_Producto_Terminado, 0) + ingreso_neto
     return acum
 
 
