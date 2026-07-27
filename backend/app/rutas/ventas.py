@@ -143,13 +143,20 @@ def listar_ventas(sesion: Session = Depends(get_sesion)):
     for v in ventas:
         cliente = sesion.get(Cliente, v.Id_Cliente)
         detalles = sesion.query(Detalle_Venta).filter_by(Id_Venta=v.Id_Venta).all()
-        total = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+        # "total" es lo que REALMENTE entro (neto), no lo que pago el cliente:
+        # asi el listado coincide con los movimientos de caja de esa venta, y el
+        # bruto se obtiene sumando el taxi en vez de restandolo. El bruto va
+        # igual, para la pantalla de devoluciones (que reembolsa lo pagado).
+        bruto = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+        taxi = float(v.Taxi_Venta or 0)
         resultado.append({
             "id_venta": v.Id_Venta,
             "cliente": cliente.Nombre_Cliente if cliente else "?",
             "fecha": str(v.Fecha_Venta),
             "lineas": len(detalles),
-            "total": round(total, 2),
+            "total": round(bruto - taxi, 2),
+            "taxi": round(taxi, 2),
+            "bruto": round(bruto, 2),
         })
     return resultado
 
@@ -174,9 +181,16 @@ def detalle_venta(id_venta: int, sesion: Session = Depends(get_sesion)):
             "cantidad": float(d.Cantidad_Venta),
             "precio_real": float(d.Precio_Venta_Real),
         })
+    bruto = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+    taxi = float(venta.Taxi_Venta or 0)
     return {
         "id_venta": venta.Id_Venta,
         "cliente": cliente.Nombre_Cliente if cliente else "?",
         "fecha": str(venta.Fecha_Venta),
         "lineas": lineas,
+        # El precio por linea es el BRUTO (lo que pago el cliente): es lo que se
+        # reembolsa en una devolucion. El taxi ya se pago al taxista, no vuelve.
+        "bruto": round(bruto, 2),
+        "taxi": round(taxi, 2),
+        "total": round(bruto - taxi, 2),
     }

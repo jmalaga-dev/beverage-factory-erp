@@ -2221,6 +2221,22 @@ el bruto) a las cuentas y descuenta el stock, todo verificado y con cleanup
 completo por SQL; en el navegador, el reparto de una venta con taxi 60 baja de
 823,80 a 763,80 exacto.
 
+**Ampliación: cómo se muestra una venta con taxi.** Pedido del usuario, con un
+argumento propio: "si quiero saber el movimiento es la suma y no tener que
+restar todas las veces". El listado de ventas pasa de mostrar un único `Total`
+(bruto) a mostrar **`Ingreso` (neto) + `Taxi` al lado**, y la cronología del
+balance suma el neto y aclara `(cobrado X − taxi Y)` en el evento. La razón de
+fondo, más fuerte que la comodidad: los `Movimiento` de ENTRADA de una venta con
+taxi suman el **neto**, así que con el bruto en pantalla el listado y la caja
+decían números distintos. `GET /ventas` y `GET /ventas/{id}` devuelven ahora
+`total` (neto), `taxi` y `bruto`; devoluciones usa `bruto`, que es lo que se
+reembolsa. Ver DECISIONES_DISENO 3.9.
+
+Verificado contra datos reales: en todas las ventas del listado se cumple
+`ingreso + taxi = cobrado` fila por fila y en los totales; la cronología del
+balance sobre un período que incluye ventas con taxi muestra el neto con su
+desglose y deja intactas las ventas sin taxi; `npx vite build` compila.
+
 ### 10.23 Gasto pagado por otra persona (aporte externo cubre el gasto) — Opus
 Pedido explícito, replica el "gasto de otro lado que dio ingreso" del Excel:
 algunos gastos los paga alguien de afuera (ej. la cónyuge), y no había forma de

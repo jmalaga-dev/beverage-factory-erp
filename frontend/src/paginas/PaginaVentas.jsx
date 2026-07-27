@@ -11,12 +11,17 @@ import { evaluar } from '../calculo'
 
 // Columnas del historial de ventas (tabla plegable con buscador, mejora item 7:
 // la lista crece mucho y solo se consulta puntualmente, no en cada carga).
+// "Ingreso" es lo que realmente entró (neto), no lo que pagó el cliente: así la
+// columna coincide con los movimientos de caja de esa venta. El taxi va al lado
+// —no restado— para que lo cobrado sea una SUMA (ingreso + taxi) y no haya que
+// restar cada vez. Guion cuando no hubo taxi, que es la mayoría de las filas.
 const columnasVentas = [
   { key: 'id_venta', label: 'Venta' },
   { key: 'cliente', label: 'Cliente' },
   { key: 'fecha', label: 'Fecha' },
   { key: 'lineas', label: 'Líneas' },
-  { key: 'total', label: 'Total', formato: (v) => fmtMoneda(v) },
+  { key: 'total', label: 'Ingreso', formato: (v) => fmtMoneda(v) },
+  { key: 'taxi', label: 'Taxi', formato: (v) => (v ? fmtMoneda(v) : '—') },
 ]
 
 function PaginaVentas() {

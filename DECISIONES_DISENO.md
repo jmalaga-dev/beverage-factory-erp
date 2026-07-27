@@ -257,6 +257,17 @@ estimadas y restantes). Dos decisiones:
   de taxi aparte. Guard: si el taxi por botella supera el precio de una línea
   (esa botella perdería plata), se bloquea con aviso en vez de dejar un neto
   negativo.
+- **Al mostrar una venta, el total es lo que entró; el taxi va al lado, no
+  restado.** En el historial de ventas la columna se llama **"Ingreso"** (neto)
+  y tiene una columna **"Taxi"** al lado (guion cuando no hubo); en la
+  cronología del balance el total del evento también es el neto, con
+  `(cobrado X − taxi Y)` cuando corresponde. El criterio: el número principal
+  tiene que **coincidir con los movimientos de caja** de esa venta —que suman el
+  neto—, y lo cobrado se obtiene **sumando** el taxi, nunca restándolo, para no
+  rehacer la resta cada vez que se consulta. El endpoint devuelve los tres
+  (`total` neto, `taxi`, `bruto`) para que cada pantalla elija: la de
+  **devoluciones muestra el bruto**, porque ahí el número útil es lo que pagó el
+  cliente, que es lo que se le reembolsa (el taxi ya se pagó y no vuelve).
 
 ### 3.10 Devolución y reproceso (mejora 3.3)
 - **La devolución es una sola operación atómica que compone tres cosas:** el

@@ -13,6 +13,9 @@
 #  - Gastos con varias cuentas el mismo dia: asignacion greedy en orden.
 #  - Absorciones UOE historicas: contra un Item_Absorcion generico, porque
 #    el excel no dice que utensilio absorbio cada lote.
+#  - Taxi de una venta: la diferencia entre PV*CANTIDAD y la columna TOTAL del
+#    excel (ver seccion 5). Requiere la columna Venta.Taxi_Venta, o sea correr
+#    antes migraciones/027_venta_taxi.sql.
 #
 # Uso:  python backend/scripts/migrar_excel_v2.py [--dry-run]
 #
@@ -556,7 +559,8 @@ for f in datos:
     if fecha is None:
         anota("venta_sin_fecha", f[74])
         continue
-    ventas_agrupadas[(cli, fecha)].append((str(f[74]), num(f[78]) or 0, num(f[77]) or 0))
+    ventas_agrupadas[(cli, fecha)].append(
+        (str(f[74]), num(f[78]) or 0, num(f[77]) or 0, num(f[79])))
 
 n_ventas = n_det_ventas = 0
 for (cli, fecha), lineas in sorted(ventas_agrupadas.items(), key=lambda kv: kv[0][1]):
@@ -566,16 +570,31 @@ for (cli, fecha), lineas in sorted(ventas_agrupadas.items(), key=lambda kv: kv[0
             (cli[:60], cli))
         anota("cliente_creado_desde_ventas", cli)
     detalles = []
-    for lote, cantidad, pv in lineas:
+    taxi = 0.0
+    for lote, cantidad, pv, total in lineas:
         if lote not in prod_lote:
             anota("venta_lote_sin_produccion", lote)
             continue
         detalles.append((prod_lote[lote], cantidad, pv))
+        # PV es el precio de lista y TOTAL lo que realmente cobro el reparto:
+        # cuando difieren, la diferencia es el taxi ya prorrateado entre las
+        # botellas de esa entrega. Se acumula por venta -que es donde vive el
+        # taxi en V2 (Venta.Taxi_Venta, migracion 027)- y el precio por linea
+        # se guarda BRUTO (decision 3.9). En las filas donde el precio ya venia
+        # prorrateado, TOTAL == PV*CANTIDAD y esto da 0: el taxi de esas ventas
+        # es irrecuperable, quedo dentro del propio PV.
+        if total is not None:
+            taxi += cantidad * pv - total
     if not detalles:
         continue
+    if taxi < 0:
+        # TOTAL mayor que PV*CANTIDAD no es un taxi: es un recargo o un error
+        # de tipeo del excel. Se ignora en vez de escribir un taxi negativo.
+        anota("venta_total_mayor_que_bruto", f"{cli[:40]} {fecha}")
+        taxi = 0.0
     id_venta = uno(
-        'INSERT INTO "Venta" ("Id_Cliente", "Fecha_Venta") VALUES (%s, %s) RETURNING "Id_Venta"',
-        (cliente_id[cli], fecha))
+        'INSERT INTO "Venta" ("Id_Cliente", "Fecha_Venta", "Taxi_Venta") VALUES (%s, %s, %s) RETURNING "Id_Venta"',
+        (cliente_id[cli], fecha, round(taxi, 2)))
     lote_insert('INSERT INTO "Detalle_Venta" ("Id_Venta", "Id_Produccion", "Cantidad_Venta", "Precio_Venta_Real") VALUES %s',
                 [(id_venta, idp, c, p) for idp, c, p in detalles])
     n_ventas += 1

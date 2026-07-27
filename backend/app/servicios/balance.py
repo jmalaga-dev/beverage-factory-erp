@@ -328,9 +328,15 @@ def resumen_desde_ultima_foto(sesion):
         cliente = sesion.get(Cliente, v.Id_Cliente)
         nombre = cliente.Nombre_Cliente if cliente else "?"
         detalles = sesion.query(Detalle_Venta).filter_by(Id_Venta=v.Id_Venta).all()
-        total_venta = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
-        agregar(v.Fecha_Venta, f"Venta a: {nombre} total de {total_venta} Bs")
-        total_ventas += total_venta
+        # El total de la cronologia es lo que ENTRO (neto): es un recuento de
+        # plata, y el taxi de esa venta nunca llego a la caja. Se muestra al
+        # lado para no perder de vista por que el numero es menor al cobrado.
+        bruto = sum(float(d.Cantidad_Venta) * float(d.Precio_Venta_Real) for d in detalles)
+        taxi = float(v.Taxi_Venta or 0)
+        neto = round(bruto - taxi, 2)
+        detalle_taxi = f" (cobrado {round(bruto, 2)} - taxi {round(taxi, 2)})" if taxi else ""
+        agregar(v.Fecha_Venta, f"Venta a: {nombre} total de {neto} Bs{detalle_taxi}")
+        total_ventas += neto
 
     dias = [
         {"fecha": str(fecha), "eventos": textos}

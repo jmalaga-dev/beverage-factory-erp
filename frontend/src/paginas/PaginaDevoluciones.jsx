@@ -227,9 +227,12 @@ function PaginaDevoluciones() {
 
         {vincular && (
           <div style={{ margin: '0.4rem 0' }}>
+            {/* Acá se muestra el BRUTO, no el ingreso neto: para encontrar la
+                venta a devolver, el número útil es el que pagó el cliente, que
+                es lo que se le reembolsa. El taxi ya se pagó y no vuelve. */}
             <SelectorBuscable opciones={ventas} valor={idVenta} onCambiar={elegirVenta}
               obtenerId={(v) => v.id_venta}
-              obtenerTexto={(v) => `Venta ${v.id_venta} - ${v.cliente} (${v.fecha}, ${fmtMoneda(v.total)} Bs)`}
+              obtenerTexto={(v) => `Venta ${v.id_venta} - ${v.cliente} (${v.fecha}, ${fmtMoneda(v.bruto ?? v.total)} Bs)`}
               placeholder="-- Venta --" />
             {detalleVenta && (
               <SelectorBuscable opciones={detalleVenta.lineas} valor={lineaSel} onCambiar={elegirLinea}
