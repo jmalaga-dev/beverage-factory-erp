@@ -47,9 +47,14 @@ export const filasBalance = [
 // Movimientos del periodo. Van aparte porque en la pantalla de Balance su
 // columna "actual" no sale del balance en vivo sino del resumen desde la
 // ultima foto (son flujos del periodo, no saldos a hoy).
+// Las cuatro salidas van desglosadas, no sumadas: cada una tiene su propia
+// tabla y su propio vinculo con el movimiento (decision 4.1). "Gastos" es el
+// residuo -lo que sale y no es ninguna de las otras tres-, asi que solo se
+// entiende viendo las cuatro juntas.
 export const filasMovimientos = [
   { label: 'Ventas de la semana', campo: 'ventas' },
   { label: 'Compras de la semana', campo: 'compras' },
   { label: 'Gastos de la semana', campo: 'gastos' },
+  { label: 'Servicios de la semana (luz, agua, internet…)', campo: 'servicios' },
   { label: 'Pagos a trabajadores', campo: 'pagos' },
 ]

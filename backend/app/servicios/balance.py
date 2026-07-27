@@ -16,7 +16,8 @@ from app.config import UMBRAL_STOCK_MINIMO
 from app.models import (
     Balance, Balance_Detalle,
     Cliente, Cuenta, Deuda, Activo, Tipo_Bien,
-    Compra, Detalle_Venta, Item_Absorcion, Materia_Prima, Pago_Trabajador,
+    Compra, Detalle_Venta, Gasto_Extra, Gasto_Extra_Mes, Grupo_Movimiento,
+    Item_Absorcion, Materia_Prima, Pago_Trabajador,
     Produccion, Producto_Intermedio, Producto_Terminado, Venta,
     Movimiento, Produccion_Intermedio,
     Registro_Trabajador, Trabajador,
@@ -100,6 +101,9 @@ def serializar_balance(balance):
         "gastos": float(balance.Gastos_Semana or 0),
         # None (no 0): las fotos tomadas antes de esta columna no tienen este dato
         "pagos": float(balance.Pagos_Semana) if balance.Pagos_Semana is not None else None,
+        "servicios": (
+            float(balance.Servicios_Semana) if balance.Servicios_Semana is not None else None
+        ),
     }
 
 
@@ -207,10 +211,13 @@ def resumen_desde_ultima_foto(sesion):
     esperar al cierre semanal. Si no hay ninguna foto guardada, resume desde
     el principio.
 
-    Separa compras / pagos a trabajadores / gastos usando el vinculo real
-    (Compra.Id_Movimiento, Pago_Trabajador.Id_Movimiento) en vez de asumir
-    que toda SALIDA es una compra (ese era el bug de 4.1: antes se sumaba
-    todo como "compras_semana" y "gastos_semana" quedaba en cero fijo).
+    Separa compras / pagos a trabajadores / servicios / gastos usando el
+    vinculo real (Compra.Id_Movimiento, Pago_Trabajador.Id_Movimiento,
+    Gasto_Extra_Mes.Id_Movimiento) en vez de asumir que toda SALIDA es una
+    compra (ese era el bug de 4.1: antes se sumaba todo como "compras_semana"
+    y "gastos_semana" quedaba en cero fijo).
+
+    "Gastos" es el residuo: lo que sale y no es ninguna de las otras tres.
     """
     ultimo = sesion.query(Balance).order_by(Balance.Id_Balance.desc()).first()
     desde = ultimo.Fecha_Balance if ultimo else None
@@ -252,16 +259,47 @@ def resumen_desde_ultima_foto(sesion):
         if p.Id_Movimiento:
             ids_movimiento_pago.add(p.Id_Movimiento)
 
-    # ---- Gastos: movimientos SALIDA que no son ni compra ni pago ----
+    # ---- Servicios (gastos extra: luz, agua, internet, telefono, impuestos) ----
+    # Cuarta forma en que sale la plata, con su propia tabla igual que las
+    # compras y los pagos. El monto sale de Gasto_Extra_Mes, no del libro de
+    # movimientos: los meses migrados del excel V1 quedaron pagados sin generar
+    # movimiento, asi que contarlos desde Movimiento perderia casi toda la
+    # historia. Es el mismo criterio que compras_semana, que suma Compra y no
+    # los movimientos (hay compras sin Id_Movimiento y aun asi cuentan).
+    q = sesion.query(Gasto_Extra_Mes).filter(
+        Gasto_Extra_Mes.Fecha_Pago_Gasto_Extra_Mes.isnot(None)
+    )
+    if desde:
+        q = q.filter(Gasto_Extra_Mes.Fecha_Pago_Gasto_Extra_Mes > desde)
+    total_servicios = 0.0
+    ids_movimiento_servicio = set()
+    for s in q.all():
+        gasto = sesion.get(Gasto_Extra, s.Id_Gasto_Extra)
+        nombre = gasto.Descripcion_Gasto_Extra if gasto else "?"
+        agregar(s.Fecha_Pago_Gasto_Extra_Mes,
+                f"Servicio: {nombre} {s.Anio_Mes} {float(s.Monto_Gasto_Extra_Mes)} Bs")
+        total_servicios += float(s.Monto_Gasto_Extra_Mes)
+        if s.Id_Movimiento:
+            ids_movimiento_servicio.add(s.Id_Movimiento)
+
+    # ---- Gastos: movimientos SALIDA que no son ni compra, ni pago, ni servicio ----
     q = sesion.query(Movimiento).filter(Movimiento.Tipo_Movimiento == "SALIDA")
     if desde:
         q = q.filter(Movimiento.Fecha_Movimiento > desde)
     total_gastos = 0.0
+    # Desglose por grupo (mejora 10.26): el total solo dice cuanto, no en que.
+    # Se acumula aca mismo para no recorrer los movimientos dos veces.
+    gastos_por_grupo = {}
     for m in q.all():
-        if m.Id_Movimiento in ids_movimiento_compra or m.Id_Movimiento in ids_movimiento_pago:
+        if (m.Id_Movimiento in ids_movimiento_compra
+                or m.Id_Movimiento in ids_movimiento_pago
+                or m.Id_Movimiento in ids_movimiento_servicio):
             continue
         agregar(m.Fecha_Movimiento, f"Gasto: {m.Descripcion_Movimiento} {float(m.Monto_Movimiento)} Bs")
         total_gastos += float(m.Monto_Movimiento)
+        grupo = sesion.get(Grupo_Movimiento, m.Id_Grupo_Movimiento) if m.Id_Grupo_Movimiento else None
+        nombre = grupo.Nombre_Grupo_Movimiento if grupo else "(sin grupo)"
+        gastos_por_grupo[nombre] = gastos_por_grupo.get(nombre, 0.0) + float(m.Monto_Movimiento)
 
     # ---- Producciones intermedias ----
     q = sesion.query(Produccion_Intermedio)
@@ -306,6 +344,13 @@ def resumen_desde_ultima_foto(sesion):
         "compras": round(total_compras, 2),
         "gastos": round(total_gastos, 2),
         "pagos": round(total_pagos, 2),
+        "servicios": round(total_servicios, 2),
+        # De mayor a menor: en pantalla se leen como subcomponentes de "Gastos"
+        # y lo util es ver arriba en que se fue la plata.
+        "gastos_por_grupo": [
+            {"grupo": g, "monto": round(v, 2)}
+            for g, v in sorted(gastos_por_grupo.items(), key=lambda x: -x[1])
+        ],
         "dias": dias,
     }
 
@@ -348,7 +393,8 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         # Mientras se valoriza cada bloque se acumula tambien su detalle por
         # item, para guardarlo en la foto (4.6). Estructura comun:
         #   {tipo: {id_item: [descripcion, cantidad, valor]}}
-        detalle_foto = {"MP": {}, "INTERMEDIO": {}, "TERMINADO": {}, "ACTIVO": {}}
+        detalle_foto = {"MP": {}, "INTERMEDIO": {}, "TERMINADO": {}, "ACTIVO": {},
+                        "GASTO_GRUPO": {}}
 
         def acumular(tipo, id_item, descripcion, cantidad, valor):
             fila = detalle_foto[tipo].setdefault(id_item, [descripcion, 0, 0])
@@ -465,16 +511,46 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         pagos_semana = sum(p.Monto_Real_Pago for p in pagos_semana_lista)
         ids_movimiento_pago = {p.Id_Movimiento for p in pagos_semana_lista if p.Id_Movimiento}
 
-        # Gastos: lo que queda de las SALIDA que no es compra ni pago.
+        # Servicios (gastos extra): tambien tienen su propio vinculo. El monto
+        # sale de Gasto_Extra_Mes, igual que las compras salen de Compra: los
+        # meses migrados del excel V1 se pagaron sin generar movimiento, asi
+        # que contarlos desde Movimiento perderia casi toda la historia.
+        q_serv = sesion.query(Gasto_Extra_Mes).filter(
+            Gasto_Extra_Mes.Fecha_Pago_Gasto_Extra_Mes.isnot(None)
+        )
+        if fecha_corte is not None:
+            q_serv = q_serv.filter(Gasto_Extra_Mes.Fecha_Pago_Gasto_Extra_Mes >= fecha_corte)
+        if fecha_balance is not None:
+            q_serv = q_serv.filter(Gasto_Extra_Mes.Fecha_Pago_Gasto_Extra_Mes <= fecha_balance)
+        servicios_semana_lista = q_serv.all()
+        servicios_semana = sum(s.Monto_Gasto_Extra_Mes for s in servicios_semana_lista)
+        ids_movimiento_servicio = {
+            s.Id_Movimiento for s in servicios_semana_lista if s.Id_Movimiento
+        }
+
+        # Gastos: lo que queda de las SALIDA que no es compra, ni pago, ni servicio.
         q_salidas = sesion.query(Movimiento).filter(Movimiento.Tipo_Movimiento == "SALIDA")
         if fecha_corte is not None:
             q_salidas = q_salidas.filter(Movimiento.Fecha_Movimiento >= fecha_corte)
         if fecha_balance is not None:
             q_salidas = q_salidas.filter(Movimiento.Fecha_Movimiento <= fecha_balance)
-        gastos_semana = sum(
-            m.Monto_Movimiento for m in q_salidas.all()
-            if m.Id_Movimiento not in ids_movimiento_compra and m.Id_Movimiento not in ids_movimiento_pago
-        )
+        # Ademas del total, se congela el desglose por grupo (10.26) como un
+        # bloque mas del detalle de la foto. Va con la descripcion COPIADA, no
+        # por relacion, por el mismo motivo que el resto de los bloques: un
+        # grupo puede renombrarse o borrarse y la foto tiene que seguir
+        # leyendose tal como era ese dia.
+        gastos_semana = 0
+        for m in q_salidas.all():
+            if (m.Id_Movimiento in ids_movimiento_compra
+                    or m.Id_Movimiento in ids_movimiento_pago
+                    or m.Id_Movimiento in ids_movimiento_servicio):
+                continue
+            gastos_semana += m.Monto_Movimiento
+            grupo = (sesion.get(Grupo_Movimiento, m.Id_Grupo_Movimiento)
+                     if m.Id_Grupo_Movimiento else None)
+            acumular("GASTO_GRUPO", m.Id_Grupo_Movimiento or 0,
+                     grupo.Nombre_Grupo_Movimiento if grupo else "(sin grupo)",
+                     0, m.Monto_Movimiento)
 
         # ===== ESCENARIOS y PATRIMONIO =====
         total_activos_fijos = total_inmuebles + total_equipos + total_otros
@@ -506,6 +582,7 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
             Compras_Semana=compras_semana,
             Gastos_Semana=gastos_semana,
             Pagos_Semana=pagos_semana,
+            Servicios_Semana=servicios_semana,
             Escenario_A=escenario_a,
             Escenario_B=escenario_b,
             Escenario_C=escenario_c,

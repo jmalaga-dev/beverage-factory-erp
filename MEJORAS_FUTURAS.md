@@ -2254,3 +2254,108 @@ consulta SQL de verificación se corrió contra la BD real (corre OK, la
 definición cuadra: de las SALIDA, excluye correctamente las pocas ligadas a
 compra/pago). Un gasto cubierto por aporte externo (10.23) aparece acá como
 gasto y su aporte en el Dashboard 5, como corresponde.
+
+> **Revisado en 10.25:** la medida pasó a apoyarse en una columna calculada y
+> sumó una tercera exclusión (los servicios). Leer 10.25 antes de armar el
+> reporte: lo de acá quedó viejo.
+
+### 10.25 Gastos: detalle por descripción, servicios aparte y limpieza de grupos — Opus
+Salió de intentar agregar al Dashboard 10 una tabla con
+`Descripcion_Movimiento` para ver *en qué* se fue la plata de cada grupo: el
+visual moría con "se superaron los límites de recursos visuales". Tirando de ese
+hilo aparecieron tres problemas encadenados.
+
+**a) La medida era O(n) por celda.** El filtro
+`NOT ( Movimiento[Id_Movimiento] IN VALUES ( Compra[Id_Movimiento] ) )` mezcla
+dos tablas, así que DAX no lo resuelve en el motor de almacenamiento: lo vuelve
+un `FILTER` sobre toda la lista de `Id_Movimiento`, **una vez por celda**. Con 10
+grupos en el eje no se nota; con miles de descripciones, el visual muere. La
+clasificación se movió a una **columna calculada** `Movimiento[Es_Gasto]`, que se
+evalúa una sola vez al Actualizar. La tabla de detalle va en una página de
+*drill through* filtrada por esa columna (no por la medida), con `Id_Movimiento`
+para que no se fusionen filas iguales. Detalle en `reportes-powerbi/README.md`.
+
+**b) Los servicios rompían la comparación año contra año.** Los gastos extra
+recurrentes (luz, agua, internet, teléfono, impuestos) viven en `Gasto_Extra_Mes`
+desde el principio del histórico, pero **casi ninguna de esas filas tenía
+`Id_Movimiento`**: sólo las pagadas desde la app lo generan, y las que vinieron
+de la migración quedaron marcadas como pagadas sin generar ninguno. Resultado:
+aparecían como gasto sólo a partir del mes en que se empezó a pagarlos por la
+app, y en ningún año anterior. Se decidió **no reconstruir** esos movimientos
+—habría sido inventar asientos en un libro donde nunca se registraron— y en
+cambio tratarlos como **cuarta forma en que sale la plata**, hermana de compras y
+pagos: excluidos de "gastos" por su vínculo, con línea propia. El monto sale de
+`Gasto_Extra_Mes`, no del libro de movimientos, igual que `compras_semana` sale de
+`Compra` (hay compras sin `Id_Movimiento` y aun así cuentan). Así la serie queda
+homogénea en todo el histórico.
+
+**c) El catálogo de grupos tenía basura y huecos.** Había una etiqueta que era el
+encabezado de una columna del sistema viejo colado como valor (sin un solo
+movimiento); otra que se usó unos días y nunca más, porque era el "antes" de
+haberla abierto en tres etiquetas más finas; y una tercera cuyo nombre decía una
+cosa y cuyo contenido era otra. Las tres se eliminaron. Se crearon tres grupos
+nuevos para tipos de gasto que no tenían dónde caer y terminaban todos en el
+cajón genérico. Y los gastos anteriores a que el sistema viejo tuviera columna de
+grupo —el bucket "(en blanco)" del dashboard— se etiquetaron a mano: se exportó
+un Excel con **una fila por descripción distinta**, que es casi un orden de
+magnitud menos trabajo que ir movimiento por movimiento, con sugerencia
+automática y nivel de confianza (coincidencia exacta contra el histórico ya
+etiquetado, o un clasificador por palabras entrenado con ese mismo histórico).
+Se validó a mano y se aplicó con `backend/scripts/aplicar_grupos_validados.py`.
+Hoy **no queda ningún gasto sin grupo en ningún año**.
+
+**Estado: implementado.** BD: migración `028` (`Balance.Servicios_Semana`); el
+alta y baja de grupos y la reasignación los hace el script, no una migración,
+porque los nombres de las categorías son datos del negocio y no van al repo (8.5).
+Backend: `balance.py` calcula `servicios` en las dos rutas (resumen en vivo y foto
+congelada) y lo excluye de gastos; `models.py` suma la columna. Frontend: una
+línea en `filasBalance.js`, que alcanza porque la comparten la pantalla de Balance
+y la Comparativa de fotos. Docs: Dashboard 10 reescrito.
+
+Verificado sobre la base real, sin publicar los valores: para una misma ventana,
+el total de "gastos" con la definición vieja quedó exactamente igual a la suma de
+los dos conceptos nuevos (gastos + servicios), sin fugas ni doble conteo; y la
+consulta de control de gastos sin grupo devuelve cero filas en todos los años.
+
+`Servicios_Semana` es NULL (no 0) en las fotos anteriores a la columna, misma
+convención que `Pagos_Semana`: con 0 la comparativa mostraría una caída inventada.
+
+### 10.26 Desglosar "Gastos de la semana" por grupo en el balance — Opus
+El balance mostraba las cuatro salidas (compras / gastos / servicios / pagos)
+como cuatro totales. La línea de gastos era una bolsa: se veía *cuánto* pero no
+*en qué*, y había que ir a Power BI para responderlo.
+
+**Estado: implementado.** Dos caminos, porque son dos preguntas distintas:
+
+- **En vivo**, `resumen_desde_ultima_foto` devuelve `gastos_por_grupo` (ordenado
+  de mayor a menor) y la pantalla de Balance lo pinta como subcomponentes **antes**
+  de su total, con el mismo patrón visual que los activos fijos: `subcomponente`
+  no suma aparte, ya está dentro de la fila que lo agrupa. Se acumula en el mismo
+  recorrido que ya calculaba el total, sin una segunda pasada.
+- **Congelado**, la foto guarda el desglose como un bloque más de
+  `Balance_Detalle` (`Tipo_Detalle = 'GASTO_GRUPO'`), así que la Comparativa de
+  fotos y el detalle por item lo muestran sin código nuevo.
+
+Reusar `Balance_Detalle` en vez de crear una tabla no fue sólo economía: ese
+detalle guarda la **descripción copiada, no por relación**, precisamente para que
+una foto siga legible aunque el ítem se renombre o se borre. Los grupos de gasto
+son el caso donde eso más importa —10.25 fusionó y borró varios— y por relación
+esas fotos habrían quedado ilegibles. Es un flujo de la semana y no un saldo a la
+fecha como los otros cuatro bloques; se documenta en pantalla y en la migración.
+
+Migración `029`: el `CHECK` de `Tipo_Detalle` sólo aceptaba los cuatro bloques
+originales. Lo encontró la verificación —tomar una foto fallaba al insertar el
+detalle— no el compilador ni los endpoints, que pasaban igual.
+
+Verificado corriendo `tomar_balance` sobre una semana con movimientos dentro de
+una transacción revertida: el desglose suma exactamente `Gastos_Semana`, y los
+servicios quedan fuera, en su propia línea.
+
+### 10.27 Nivel de categoría por encima de los grupos de movimiento — Opus
+`Grupo_Movimiento` es plano: los grupos de gasto de la casa, los de la fábrica y
+los de estructura conviven todos al mismo nivel, y ya son bastantes como para que
+el ranking por grupo se lea de un vistazo. Una columna `Categoria` encima daría
+drill-down en Power BI —categoría → grupo → detalle, en un solo visual— y
+agruparía el ranking sin perder el detalle. Es una columna en el catálogo, no una
+tabla nueva. Se dejó para después de 10.25 a propósito: la categoría se define
+**sobre** los grupos, y los grupos recién ahora quedaron estables.

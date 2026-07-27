@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { apiGet, apiPost } from '../api'
 import FilaBalance from '../componentes/FilaBalance'
 import TablaFiltrable from '../componentes/TablaFiltrable'
@@ -128,11 +128,25 @@ function PaginaBalance() {
               capturo de SU semana anterior; "Estado actual" = lo que paso desde
               esa foto hasta hoy (resumen en vivo, sin tomar otra foto). */}
           {filasMovimientos.map((fila) => (
-            <FilaBalance key={fila.campo} fila={{ ...fila, tipo: 'componente' }}>
-              {celdaImporte(ultimo ? ultimo[fila.campo] : null)}
-              {celdaImporte(resumen ? resumen[fila.campo] : null)}
-              <td className="num">{diff(fila.campo, 'resumen')}</td>
-            </FilaBalance>
+            <Fragment key={fila.campo}>
+              {/* Desglose de los gastos por grupo (10.26). Van ANTES de su
+                  total, como los activos fijos: primero los sumandos, después
+                  la línea que los agrupa. Solo tienen columna "Estado actual":
+                  el desglose de la última foto vive en su detalle por item, no
+                  en la fila de totales. */}
+              {fila.campo === 'gastos' && (resumen?.gastos_por_grupo || []).map((g) => (
+                <FilaBalance key={g.grupo} fila={{ tipo: 'subcomponente', label: g.grupo }}>
+                  <td className="num">—</td>
+                  {celdaImporte(g.monto)}
+                  <td className="num"></td>
+                </FilaBalance>
+              ))}
+              <FilaBalance fila={{ ...fila, tipo: 'componente' }}>
+                {celdaImporte(ultimo ? ultimo[fila.campo] : null)}
+                {celdaImporte(resumen ? resumen[fila.campo] : null)}
+                <td className="num">{diff(fila.campo, 'resumen')}</td>
+              </FilaBalance>
+            </Fragment>
           ))}
         </tbody>
       </table>

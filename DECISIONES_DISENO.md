@@ -539,11 +539,27 @@ mismo lote en la UI. El backend sigue siendo la fuente de verdad: aunque el
 frontend no fusionara, el backend ya no puede dejar stock negativo.
 
 **Categorizar una SALIDA sin adivinar:** para separar compras / pagos a
-trabajadores / gastos dentro de los movimientos de dinero (todos
+trabajadores / servicios / gastos dentro de los movimientos de dinero (todos
 `Tipo_Movimiento = "SALIDA"`), se usa el vínculo real que cada tabla ya tiene
-con `Movimiento` (`Compra.Id_Movimiento`, `Pago_Trabajador.Id_Movimiento`) en
-vez de adivinar por texto o grupo. Lo que no está vinculado a ninguna de las
-dos es, por descarte, un gasto.
+con `Movimiento` (`Compra.Id_Movimiento`, `Pago_Trabajador.Id_Movimiento`,
+`Gasto_Extra_Mes.Id_Movimiento`) en vez de adivinar por texto o grupo. Lo que no
+está vinculado a ninguna de las tres es, por descarte, un **gasto**: es el
+residuo, no una categoría propia.
+
+**El monto de cada salida sale de su tabla, no del libro de movimientos**
+(mejora 10.25). `compras_semana` suma `Compra`, `pagos_semana` suma
+`Pago_Trabajador` y `servicios_semana` suma `Gasto_Extra_Mes`; el vínculo con
+`Movimiento` existe sólo para poder **excluirlas** del residuo. Esto no es un
+detalle de implementación: hay filas de esas tablas sin `Id_Movimiento` (compras
+registradas sin su pago, y sobre todo casi todos los meses de servicios, que la
+migración del sistema anterior trajo pagados pero sin generar movimiento).
+Contarlas desde
+`Movimiento` perdería esa historia y haría que un concepto apareciera recién
+desde la fecha en que se empezó a cargarlo por la app. Por la misma razón se
+descartó reconstruir esos movimientos a posteriori: el libro de movimientos
+registra lo que efectivamente se registró, no lo que se deduce que pasó — mismo
+criterio que con el historial incompleto de `Movimiento_Deuda`, que se documenta
+en vez de rellenarse.
 
 **Tipos de movimiento propios en vez de forzar ENTRADA/SALIDA (mejoras 7.5,
 7.0/7.3):** los movimientos de dinero que no son ni venta ni compra/pago/

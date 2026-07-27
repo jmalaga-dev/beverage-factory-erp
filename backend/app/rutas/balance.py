@@ -103,7 +103,8 @@ def detalle_balance(id_balance: int, sesion: Session = Depends(get_sesion)):
         .order_by(Balance_Detalle.Tipo_Detalle, Balance_Detalle.Descripcion_Balance_Detalle)
         .all()
     )
-    bloques = {"MP": [], "INTERMEDIO": [], "TERMINADO": [], "ACTIVO": []}
+    bloques = {"MP": [], "INTERMEDIO": [], "TERMINADO": [], "ACTIVO": [],
+               "GASTO_GRUPO": []}
     for f in filas:
         bloques.setdefault(f.Tipo_Detalle, []).append({
             "id_item": f.Id_Item_Balance_Detalle,
