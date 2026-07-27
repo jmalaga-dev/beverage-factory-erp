@@ -4,8 +4,8 @@ import TablaFiltrable from './TablaFiltrable'
 import { fmtMoneda, fmtNumero } from '../formato'
 
 // Detalle por item de una foto de balance guardada (mejora 4.6): un
-// desplegable que adentro tiene los cuatro bloques, cada uno plegable a su
-// vez (materia prima, intermedio, terminado y activos).
+// desplegable que adentro tiene los bloques, cada uno plegable a su vez
+// (materia prima, intermedio, terminado, activos y gastos por grupo).
 //
 // Muestra lo que quedó CONGELADO en la foto, no el catálogo de hoy: la
 // descripción de cada item es la copia que se guardó ese día. Por eso
@@ -15,11 +15,17 @@ import { fmtMoneda, fmtNumero } from '../formato'
 // terminado. Sus otros bloques salen vacíos porque ese dato nunca se guardó,
 // no porque valieran cero — y eso se aclara en pantalla, para no leer un
 // hueco de datos como un stock en cero.
+// GASTO_GRUPO es distinto a los otros cuatro: no es un saldo a la fecha de la
+// foto sino un FLUJO de la semana previa (10.26). Va igual acá porque el
+// mecanismo es el mismo —una fila por item, con la descripción congelada— y
+// porque es justo el bloque donde esa copia más importa: un grupo puede
+// fusionarse o borrarse, y la foto tiene que seguir diciendo lo que decía.
 const BLOQUES = [
   ['MP', 'Materia prima'],
   ['INTERMEDIO', 'Producto intermedio'],
   ['TERMINADO', 'Producto terminado'],
   ['ACTIVO', 'Activos fijos'],
+  ['GASTO_GRUPO', 'Gastos de la semana, por grupo'],
 ]
 
 // `variante` ('a' | 'b') solo elige el color; el contenido es idéntico.
@@ -67,7 +73,9 @@ function DetalleFoto({ idBalance, titulo, variante = 'a' }) {
                 </p>
               )
             }
-            const esActivo = clave === 'ACTIVO'
+            // Ni un activo ni un grupo de gasto tienen "cantidad": el activo es
+            // una unidad y el grupo es una suma de plata.
+            const sinCantidad = clave === 'ACTIVO' || clave === 'GASTO_GRUPO'
             return (
               <TablaFiltrable
                 key={clave}
@@ -76,8 +84,7 @@ function DetalleFoto({ idBalance, titulo, variante = 'a' }) {
                 claveOrden="descripcion"
                 columnas={[
                   { key: 'descripcion', label: nombre },
-                  // Un activo es una unidad: su cantidad no significa nada.
-                  ...(esActivo ? [] : [{ key: 'cantidad', label: 'Cantidad', formato: (v) => fmtNumero(v) }]),
+                  ...(sinCantidad ? [] : [{ key: 'cantidad', label: 'Cantidad', formato: (v) => fmtNumero(v) }]),
                   { key: 'valor', label: 'Valor (Bs)', formato: (v) => fmtMoneda(v) },
                 ]}
               />

@@ -488,7 +488,7 @@ valor `[Ingresos]`, ordenado descendente, Top N (ej. Top 15).
 `[Ingresos]`.
 
 ⚠️ **Dato de calidad a tener en cuenta:** parte de los clientes migrados desde
-el Excel no tenían coordenadas cargadas y quedaron en `(0, 0)` — en el mapa se
+el sistema anterior no tenían coordenadas cargadas y quedaron en `(0, 0)` — en el mapa se
 van a ver todos apilados en un mismo punto (el `(0,0)` del planeta). Si molesta,
 agregar un filtro visual `Latitud_Cliente <> 0` al mapa (no a las tablas de
 ranking, esas están bien igual).
@@ -772,15 +772,15 @@ producto en Power BI. La cuenta de filas con `saldo < 0` es
 # Dashboard 7 — Evolución de precio por materia prima (y detección de outliers)
 
 *¿Cómo se movió el precio de cada insumo en el tiempo, y qué precios viejos
-parecen errores de carga del Excel?*
+parecen errores de carga heredados del sistema anterior?*
 
 Este dashboard es la cara visual de la mejora **5.2**: hay materias primas cuyo
 precio unitario mínimo histórico está muy por debajo de cualquier compra
 reciente (algún insumo puede ir de un precio muy bajo a varios múltiplos más a
 lo largo de los años; algunos envases muestran saltos parecidos). Parte es
 inflación de varios años, parte son probables errores de tipeo arrastrados del
-Excel. Verlos en una línea temporal es lo que permite distinguir una cosa de la
-otra.
+sistema anterior. Verlos en una línea temporal es lo que permite distinguir una
+cosa de la otra.
 
 ## Tablas a cargar
 
@@ -950,7 +950,8 @@ no al revés. Poner `[Botellas por hora]` con `Trabajador` en el eje daría un
 número sin significado. Dejá esa métrica en una tarjeta global o cortada sólo
 por fecha.
 
-⚠️ **Dato de calidad:** las jornadas migradas del Excel tienen tarifas reales,
+⚠️ **Dato de calidad:** las jornadas migradas del sistema anterior traen su
+tarifa,
 pero si algún trabajador viejo quedó cargado en Bs/hora (en vez de sueldo
 semanal, ver mejora 10.1) su `[Tarifa hora]` va a salir distorsionada hasta que
 se reingrese su sueldo. Revisá la columna `[Tarifa hora]` en una tabla simple
@@ -982,7 +983,8 @@ Filtrá el mismo trabajador y mes en Power BI y comparás `horas` contra
 ⚠️ **Por qué NO es un "aging" clásico.** Un aging reparte la deuda por
 antigüedad (0-30 días, 30-60…) usando la **fecha de vencimiento**, y `Deuda` no
 la tiene. Además `Movimiento_Deuda` en esta base sólo guarda movimientos tipo
-`PAGO` — los aumentos de deuda no quedaron con fecha en la migración del Excel,
+`PAGO` — los aumentos de deuda no quedaron con fecha en la migración del sistema
+anterior,
 así que **el saldo histórico no se puede reconstruir** (no se sabe cuánto se
 debía en una fecha pasada). Lo que sí es real y útil son dos cosas: la **foto
 del saldo vivo de hoy** (`Deuda[Saldo_Actual_Deuda]`, cacheado y correcto) y el
@@ -1062,8 +1064,7 @@ consulta tiene que coincidir con el punto de la línea de ese mes.
 
 # Dashboard 10 — Gastos por grupo, mes a mes y año contra año
 
-*¿En qué grupo (comida, mantenimiento, limpieza…) se gasta más, y cómo
-evoluciona mes a mes y de un año a otro?*
+*¿En qué grupo se gasta más, y cómo evoluciona mes a mes y de un año a otro?*
 
 Es el dashboard analítico del pedido "ver los gastos por grupos por año". La app
 registra cada gasto con un **grupo** (etiqueta validada) desde la pantalla de
@@ -1071,13 +1072,27 @@ Gastos; acá se agregan por grupo y por tiempo para ver dónde se va la plata.
 
 ## Qué cuenta como "gasto" (y qué NO)
 
-Un gasto es un `Movimiento` con `Tipo_Movimiento = 'SALIDA'` **que no es ni una
-compra ni un pago a trabajador**. Esas dos también son SALIDA, pero se
-identifican por su vínculo (`Compra[Id_Movimiento]`, `Pago_Trabajador[Id_Movimiento]`),
-no adivinando por texto — es el mismo criterio "categorizar sin adivinar" que
-usa el balance de la app (DECISIONES_DISENO 4, mejora 4.1). Por eso la medida de
-abajo excluye esos dos vínculos: si no, el gráfico sumaría toda la materia prima
-y los sueldos como si fueran gastos operativos.
+Un gasto es un `Movimiento` con `Tipo_Movimiento = 'SALIDA'` **que no es una
+compra, ni un pago a trabajador, ni un servicio**. Las tres también son SALIDA,
+pero cada una tiene su propia tabla y se identifica por su **vínculo**
+(`Compra[Id_Movimiento]`, `Pago_Trabajador[Id_Movimiento]`,
+`Gasto_Extra_Mes[Id_Movimiento]`), no adivinando por texto — es el mismo criterio
+"categorizar sin adivinar" que usa el balance de la app (DECISIONES_DISENO 4,
+mejora 4.1). "Gasto" es el **residuo**: lo que sale y no es ninguna de las otras
+tres. Si no se excluyeran, el gráfico sumaría toda la materia prima, los sueldos
+y la luz como si fueran gastos del día a día.
+
+**Por qué los servicios van aparte** (luz, agua, internet, teléfono, impuestos de
+fábrica): se registran en `Gasto_Extra_Mes` y se pagan desde la pantalla de
+Prorrateo. Pero sólo los pagados **desde la app** generan un `Movimiento`: los
+meses migrados del sistema anterior quedaron marcados como pagados sin generar
+ninguno.
+Si contaran como gasto, aparecerían en el dashboard únicamente a partir del mes
+en que se empezó a pagarlos desde la app y en ningún año anterior — una
+discontinuidad que haría mentir a la comparación año contra año. Excluyéndolos,
+la serie es homogénea en todo el histórico. Su evolución propia se mira sobre
+`Gasto_Extra_Mes`, que sí tiene la historia completa (ver el final de esta
+sección), y su total de la semana está desglosado en el balance de la app.
 
 Nota: un gasto **cubierto por un aporte externo** (item 10b — lo pagó otra
 persona) igual aparece acá, y está bien: es un gasto real de la fábrica/casa. El
@@ -1085,9 +1100,10 @@ aporte que lo financió se ve por separado en el Dashboard 5 (ingreso externo).
 
 ## Tablas a cargar
 
-`Movimiento`, `Grupo_Movimiento`, `Compra` y `Pago_Trabajador` (estas dos solo
-para excluir sus movimientos), más la tabla `Calendario` ya armada para los
-dashboards 2 a 5 (reusarla, no crear otra).
+`Movimiento`, `Grupo_Movimiento`, `Compra`, `Pago_Trabajador` y `Gasto_Extra_Mes`
+(estas tres últimas solo para excluir sus movimientos), más la tabla `Calendario`
+ya armada para los dashboards 2 a 5 (reusarla, no crear otra). Si querés además
+el gráfico de servicios del final, cargá también `Gasto_Extra`.
 
 ## Relaciones
 
@@ -1097,39 +1113,53 @@ Calendario[Fecha]               (1)       → Movimiento[Fecha_Movimiento]      
 ```
 
 La relación `Calendario → Movimiento` ya existe si armaste el Dashboard 5. Las de
-`Compra`/`Pago_Trabajador` a `Movimiento` por `Id_Movimiento` **no hacen falta**
-como relación del modelo (la exclusión de abajo usa `VALUES`, no el filtro que
-viaja por relación); si Power BI las detecta solas, dejalas en *inactivas* para
-que no cambien el sentido de los filtros.
+`Compra` / `Pago_Trabajador` / `Gasto_Extra_Mes` a `Movimiento` por
+`Id_Movimiento` **no hacen falta** como relación del modelo (la exclusión de
+abajo usa `VALUES`, no el filtro que viaja por relación); si Power BI las detecta
+solas, dejalas en *inactivas* para que no cambien el sentido de los filtros.
 
-## Medida DAX
+## La clasificación va en una columna, no en la medida
 
-```dax
-Gastos =
-CALCULATE (
-    SUM ( 'Movimiento'[Monto_Movimiento] ),
-    'Movimiento'[Tipo_Movimiento] = "SALIDA",
-    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Compra'[Id_Movimiento] ) ),
-    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Pago_Trabajador'[Id_Movimiento] ) )
-)
-```
-
-Las compras y los pagos tienen su `Id_Movimiento` en esas tablas; los gastos no
-(su vínculo no existe), así que quedan afuera de la exclusión y sí se suman. Un
-gasto sin grupo asignado cae en el bucket **(en blanco)** del eje — es un gasto
-real, solo que sin etiquetar; conviene irles poniendo grupo en la app.
-
-Opcional, para una tarjeta de "gasto del período":
+Modelado → **Nueva columna**, sobre `Movimiento`:
 
 ```dax
-Cantidad de gastos =
-CALCULATE (
-    COUNTROWS ( 'Movimiento' ),
-    'Movimiento'[Tipo_Movimiento] = "SALIDA",
-    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Compra'[Id_Movimiento] ) ),
-    NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Pago_Trabajador'[Id_Movimiento] ) )
-)
+Es_Gasto =
+'Movimiento'[Tipo_Movimiento] = "SALIDA"
+    && NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Compra'[Id_Movimiento] ) )
+    && NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Pago_Trabajador'[Id_Movimiento] ) )
+    && NOT ( 'Movimiento'[Id_Movimiento] IN VALUES ( 'Gasto_Extra_Mes'[Id_Movimiento] ) )
 ```
+
+Las compras, los pagos y los servicios tienen su `Id_Movimiento` en esas tablas;
+los gastos no (su vínculo no existe), así que quedan afuera de las exclusiones y
+sí se suman.
+
+⚠️ **Esto tiene que ser una columna calculada, no un filtro dentro de la medida** —
+y no es cosmético, es la diferencia entre que el dashboard responda o se cuelgue.
+Un filtro como `NOT ( Movimiento[Id_Movimiento] IN VALUES ( Compra[Id_Movimiento] ) )`
+mezcla dos tablas, así que DAX no lo puede resolver en el motor de
+almacenamiento: lo convierte en un `FILTER` sobre **la lista entera** de
+`Id_Movimiento` y lo recorre **una vez por cada celda del visual**. Con 10 grupos
+en el eje ni se nota. Al bajar a nivel de descripción son miles de celdas, cada
+una repitiendo el barrido completo, y el visual muere con *"se superaron los
+límites de recursos visuales"*. Como columna, la clasificación se calcula **una
+sola vez al Actualizar** y después es una comparación booleana sobre una columna
+comprimida.
+
+Con eso, las medidas quedan triviales:
+
+```dax
+Gastos = CALCULATE ( SUM ( 'Movimiento'[Monto_Movimiento] ), 'Movimiento'[Es_Gasto] = TRUE )
+```
+
+```dax
+Cantidad de gastos = CALCULATE ( COUNTROWS ( 'Movimiento' ), 'Movimiento'[Es_Gasto] = TRUE )
+```
+
+**Ya no debería existir el bucket "(en blanco)"** en el eje de grupos: los gastos
+anteriores a que el sistema viejo tuviera columna de grupo llegaron sin etiquetar
+y se reasignaron a mano (ver `backend/scripts/aplicar_grupos_validados.py`). Si
+vuelve a aparecer, es un gasto nuevo que alguien cargó sin elegir grupo en la app.
 
 ## Armar los visuales
 
@@ -1155,8 +1185,63 @@ CALCULATE (
    mix de gastos entre años.
 5. Tarjetas: `[Gastos]` (total del período) y `[Cantidad de gastos]`.
 
+## Ver los gastos concretos detrás de un grupo
+
+El ranking dice *cuánto* se fue en mantenimiento, pero no *en qué*. Para eso hace
+falta bajar a `Movimiento[Descripcion_Movimiento]`, que es texto libre y casi
+único por fila. Dos reglas para que eso no reviente el visual:
+
+**Filtrar por columna, no por medida.** Una tabla de detalle no agrega nada: sólo
+lista filas. Si la filtrás con la medida `[Gastos]`, Power BI la evalúa celda por
+celda; si la filtrás con la columna `Es_Gasto`, resuelve todo escaneando una
+columna booleana.
+
+**No dejarla en la página principal.** Aunque sea rápida, listar todos los gastos
+de todos los años es ruido. Va en una página de *drill through*:
+
+1. Página nueva, `Detalle de gastos`. En su panel de Filtros → **Extraer datos**
+   (*Drill through*) → arrastrar `Grupo_Movimiento[Nombre_Grupo_Movimiento]`.
+   Dejar activado **Mantener todos los filtros**, así los slicers de año y mes de
+   la página principal viajan con vos.
+2. Visual **Tabla** con: `Movimiento[Fecha_Movimiento]`,
+   `Grupo_Movimiento[Nombre_Grupo_Movimiento]`, `Movimiento[Descripcion_Movimiento]`,
+   `Movimiento[Monto_Movimiento]` (con **No resumir**) y `Movimiento[Id_Movimiento]`.
+3. Filtro de ese objeto visual: `Movimiento[Es_Gasto]` → *is True*.
+
+`Monto` **sin resumir** evita que el visual agrupe por descripción, y
+`Id_Movimiento` garantiza **una fila por movimiento**: sin él, dos gastos del
+mismo día, mismo grupo y misma descripción se fusionarían en una sola fila con el
+importe mal. Si molesta verlo, se le baja el ancho de columna al mínimo.
+
+**Cómo se usa:** click derecho sobre una barra del ranking por grupo → *Extraer
+datos* → *Detalle de gastos*, y ves exactamente los movimientos de ese grupo en
+el período que tenías filtrado.
+
+Si preferís tenerlo a la vista sin cambiar de página, la alternativa es la misma
+tabla en la página principal con un filtro visual **Top N = 50 por
+`Monto_Movimiento`** ("los 50 gastos más grandes del período"), que suele ser lo
+que interesa mirar.
+
+## Los servicios, aparte
+
+Los gastos extra están excluidos de `[Gastos]` a propósito (ver arriba). Su
+evolución se mira sobre `Gasto_Extra_Mes`, que tiene la historia completa desde
+2021 aunque casi ninguna fila tenga movimiento asociado:
+
+```dax
+Servicios = SUM ( 'Gasto_Extra_Mes'[Monto_Gasto_Extra_Mes] )
+```
+
+`Gasto_Extra_Mes[Anio_Mes]` es texto `YYYY-MM`, así que sirve directo como eje sin
+pasar por `Calendario`. Un gráfico de líneas con ese eje y `[Servicios]`, y una
+leyenda con `Gasto_Extra[Descripcion_Gasto_Extra]`, responde "¿cuál servicio se
+disparó y desde cuándo?". Al ser costos fijos, su peso sobre el total de salidas
+suele ser parecido año tras año: si un año se despega, ahí hay algo que mirar.
+
 **Recordatorio operativo:** el reporte está en modo *Importar*, así que hay que
-tocar **Actualizar** en Power BI Desktop para que tome los gastos nuevos.
+tocar **Actualizar** en Power BI Desktop para que tome los gastos nuevos. Ojo que
+`Es_Gasto` es una **columna calculada**: se recalcula en ese mismo Actualizar, no
+hay que hacer nada aparte.
 
 ## Verificación
 
@@ -1171,14 +1256,28 @@ LEFT JOIN "Grupo_Movimiento" g ON g."Id_Grupo_Movimiento" = m."Id_Grupo_Movimien
 WHERE m."Tipo_Movimiento" = 'SALIDA'
   AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Compra" WHERE "Id_Movimiento" IS NOT NULL)
   AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Pago_Trabajador" WHERE "Id_Movimiento" IS NOT NULL)
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Gasto_Extra_Mes" WHERE "Id_Movimiento" IS NOT NULL)
 GROUP BY 1, 2, 3
 ORDER BY 1, 2, gastos DESC;
 ```
 
 Cada fila (año-mes-grupo) tiene que coincidir con el punto/segmento de ese grupo
 en Power BI. El total sin filtros tiene que dar igual que `[Gastos]` y que la
-fila "Gastos" del balance de la app para el mismo período (misma definición de
-gasto).
+fila "Gastos de la semana" del balance de la app para el mismo período (misma
+definición de gasto, las mismas tres exclusiones).
+
+Y esta otra tiene que devolver **cero filas** — si devuelve alguna, hay gastos sin
+grupo y en el dashboard van a aparecer como "(en blanco)":
+
+```sql
+SELECT to_char(m."Fecha_Movimiento",'YYYY') AS anio, COUNT(*)
+FROM "Movimiento" m
+WHERE m."Tipo_Movimiento" = 'SALIDA' AND m."Id_Grupo_Movimiento" IS NULL
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Compra" WHERE "Id_Movimiento" IS NOT NULL)
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Pago_Trabajador" WHERE "Id_Movimiento" IS NOT NULL)
+  AND m."Id_Movimiento" NOT IN (SELECT "Id_Movimiento" FROM "Gasto_Extra_Mes" WHERE "Id_Movimiento" IS NOT NULL)
+GROUP BY 1;
+```
 
 ---
 
@@ -1189,6 +1288,7 @@ gasto).
   **entre proveedores**. Bloqueado por **datos, no por código**: la mejora 5.1
   ya creó las tablas `Proveedor` / `Proveedor_Materia_Prima` y la columna
   `Compra[Id_Proveedor]`, pero hoy están **vacías** (las compras migradas
-  del Excel tienen `Id_Proveedor` en NULL). Se puede documentar y armar recién
+  del sistema anterior tienen `Id_Proveedor` en NULL). Se puede documentar y
+  armar recién
   cuando se carguen proveedores reales y las compras nuevas empiecen a quedar
   atadas a uno.
