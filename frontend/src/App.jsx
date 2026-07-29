@@ -3,6 +3,7 @@ import './App.css'
 import MenuCategoria from './componentes/MenuCategoria'
 import LimiteError from './componentes/LimiteError'
 import { FechaGlobalProvider, useFechaGlobal } from './componentes/FechaGlobal'
+import PanelSaldos from './componentes/PanelSaldos'
 import PaginaClientes from './paginas/PaginaClientes'
 import PaginaCompras from './paginas/PaginaCompras'
 import PaginaCatalogos from './paginas/PaginaCatalogos'
@@ -68,19 +69,37 @@ const categorias = [
   ] },
 ]
 
+// Fecha de hoy en formato YYYY-MM-DD, en hora LOCAL (no UTC): a las 11pm en
+// Bolivia (UTC-4) ya es el dia siguiente en UTC, asi que toISOString() solo
+// compensando el timezone offset evita ese corrimiento (mismo idiom de 10.12
+// y PaginaCierreSemanal).
+function hoyISO() {
+  const d = new Date()
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+// Color segun la fecha elegida sea pasada, hoy, o futura (item 7). El color
+// nunca es la unica pista: siempre acompaña un texto.
+function estadoFecha(fechaGlobal) {
+  if (!fechaGlobal) return { color: 'var(--fecha-hoy)', texto: '(vacío = hoy, como siempre)' }
+  const hoy = hoyISO()
+  if (fechaGlobal === hoy) return { color: 'var(--fecha-hoy)', texto: 'hoy' }
+  if (fechaGlobal < hoy) return { color: 'var(--fecha-pasada)', texto: 'fecha pasada' }
+  return { color: 'var(--fecha-futura)', texto: '⚠ fecha futura' }
+}
+
 // Input de la fecha global (mejora 6.10), junto al título. Si tiene valor,
 // los formularios lo usan como fecha por defecto en vez de "hoy".
 function FechaGlobalInput() {
   const { fechaGlobal, setFechaGlobal } = useFechaGlobal()
+  const { color, texto } = estadoFecha(fechaGlobal)
   return (
     <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
-      <label style={{ fontSize: '0.9em', color: fechaGlobal ? '#a06000' : '#888' }}>
+      <label style={{ fontSize: '0.9em', color }}>
         Fecha para nuevos registros:{' '}
         <input type="date" value={fechaGlobal} onChange={(e) => setFechaGlobal(e.target.value)} />
         {' '}
-        {fechaGlobal
-          ? <span>(se usará esta fecha en vez de hoy — <button onClick={() => setFechaGlobal('')}>usar hoy</button>)</span>
-          : <span>(vacío = hoy, como siempre)</span>}
+        <span>({texto}{fechaGlobal ? <> — <button onClick={() => setFechaGlobal('')}>usar hoy</button></> : null})</span>
       </label>
     </div>
   )
@@ -92,6 +111,7 @@ function AppInterno() {
       <div>
         <h1>Fábrica V2</h1>
         <FechaGlobalInput />
+        <PanelSaldos />
 
         {/* Menú de navegación agrupado por categorías */}
         <nav style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap' }}>

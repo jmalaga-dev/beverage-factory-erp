@@ -6,6 +6,7 @@ import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtNumero, fmtMoneda } from '../formato'
 import { evaluar } from '../calculo'
+import { textoTramos, estaPartida } from '../tramos'
 
 function PaginaCompras() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -598,7 +599,18 @@ function PaginaCompras() {
                   <td style={{ textAlign: 'right' }}>{fmtNumero(l.cantidad)}</td>
                   <td style={{ textAlign: 'right' }}>{fmtMoneda(l.precioTotal)}</td>
                   <td>{l.nombreProveedor}</td>
-                  <td>{lotePreview?.asignaciones?.[i] === 'CASA' ? 'Casa' : lotePreview?.asignaciones?.[i] === 'FABRICA' ? 'Fábrica' : '—'}</td>
+                  {/* Si la compra cruza el limite de la billetera se paga entre
+                      las dos, y eso PARTE el lote en dos compras (una Compra
+                      enlaza un solo movimiento). Se avisa acá, antes de
+                      confirmar, porque cambia el historial de compras. */}
+                  <td style={estaPartida(lotePreview?.asignaciones?.[i]) ? { background: '#fff4e0' } : {}}>
+                    {textoTramos(lotePreview?.asignaciones?.[i])}
+                    {estaPartida(lotePreview?.asignaciones?.[i]) && (
+                      <div style={{ fontSize: '0.75em', color: '#a06000' }}>
+                        se registra como 2 lotes
+                      </div>
+                    )}
+                  </td>
                   <td><button onClick={() => quitarLineaLote(i)}>quitar</button></td>
                 </tr>
               ))}

@@ -5,23 +5,40 @@ Registrar VARIAS compras de materia prima de una sola vez, como tabla
 
 A diferencia de compra_dividida.py (que reparte UN precio entre varias
 materias primas), aca cada linea ya trae su propio precio; lo que se reparte
-es DE QUE CUENTA sale cada linea: se gasta la cuenta FABRICA linea por linea,
-en el orden en que se cargaron, hasta que ya no alcanza para cubrir la
-siguiente linea COMPLETA; de ahi en adelante (esa linea incluida) todo sale
-de la cuenta CASA. No se parte una misma compra entre las dos cuentas.
-Si ni juntando ambas cuentas alcanza, no se registra nada (todo o nada).
+es DE QUE CUENTA sale cada linea. Si ni juntando ambas cuentas alcanza, no se
+registra nada (todo o nada).
 
-La logica de "que cuenta le toca a cada linea" es generica (ver reparto.py,
+Bloque C: la cuenta FABRICA se DRENA hasta cero antes de tocar CASA. Cuando
+una linea no entra completa en lo que queda, se parte.
+
+**Partir una compra parte el LOTE, no solo el pago.** Una fila de Compra es un
+lote de inventario y enlaza UN solo Id_Movimiento, asi que no puede pagarse
+desde dos cuentas. La linea partida se registra entonces como DOS compras del
+mismo insumo, mismo proveedor y misma fecha, cada una pagada entera por su
+cuenta, repartiendo la cantidad en la misma proporcion que el precio. El
+precio unitario resultante es identico en las dos (y al de la linea original),
+asi que el costeo, el stock consolidado y el FIFO no cambian: lo unico que
+cambia es que el historial de compras muestra dos filas en vez de una. Es el
+mismo mecanismo que ya usa la compra dividida por pliego (3.8), que tambien
+registra N Compra en una sola transaccion.
+
+La logica de "que cuenta(s) le tocan a cada linea" es generica (ver reparto.py,
 compartida con gastos_lote.py, que usa el orden inverso: Casa->Fabrica).
 """
+
+from decimal import Decimal
 
 from app.servicios.compras import _aplicar_compra
 from app.servicios.reparto import cuenta_unica_de_rol, asignar_cuentas_por_linea
 
+# Decimales con los que se parte la cantidad de un lote. 6 es la misma
+# precision con la que FIFO reparte cantidades entre lotes.
+DECIMALES_CANTIDAD = Decimal("0.000001")
+
 
 def _asignar(sesion, lineas):
-    """Resuelve las cuentas Fabrica/Casa y decide de cual sale cada linea de
-    compra (Fabrica primero, Casa despues)."""
+    """Resuelve las cuentas Fabrica/Casa y decide de cual(es) sale cada linea
+    de compra (drena Fabrica primero, Casa despues)."""
     cuenta_fabrica = cuenta_unica_de_rol(sesion, "FABRICA")
     cuenta_casa = cuenta_unica_de_rol(sesion, "CASA")
     lineas_monto = [{"monto": l["precio_total"]} for l in lineas]
@@ -30,6 +47,34 @@ def _asignar(sesion, lineas):
         "CASA", cuenta_casa.Saldo_Actual_Cuenta,
     )
     return cuenta_fabrica, cuenta_casa, asignaciones, total_fabrica, total_casa
+
+
+def _repartir_cantidad(cantidad, precio_total, tramos):
+    """
+    Reparte la cantidad del lote entre los tramos, en la misma proporcion que
+    el precio. El ULTIMO tramo absorbe el redondeo, para que la suma de las
+    cantidades sea exactamente la cantidad original (mismo criterio que la
+    compra dividida 3.8 y el prorrateo: nada de restos sueltos).
+    """
+    if len(tramos) == 1:
+        return [cantidad]
+
+    cantidades = []
+    asignado = Decimal(0)
+    for idx, tramo in enumerate(tramos):
+        if idx == len(tramos) - 1:
+            parte = cantidad - asignado
+        else:
+            parte = (cantidad * tramo["monto"] / precio_total).quantize(DECIMALES_CANTIDAD)
+            asignado += parte
+        if parte <= 0:
+            raise ValueError(
+                f"No se puede partir la compra entre dos cuentas: la cantidad "
+                f"({cantidad}) es demasiado chica para repartirla. Cargá esa línea "
+                f"por separado eligiendo la cuenta a mano."
+            )
+        cantidades.append(parte)
+    return cantidades
 
 
 def previsualizar_compras_lote(sesion, lineas):
@@ -49,9 +94,9 @@ def previsualizar_compras_lote(sesion, lineas):
 
 def registrar_compras_lote(sesion, lineas, fecha=None):
     """
-    Registra N compras (una Compra normal por linea) en una sola transaccion
-    atomica (todo o nada), pagando primero desde la cuenta FABRICA y luego
-    desde CASA.
+    Registra las compras en una sola transaccion atomica (todo o nada),
+    drenando primero la cuenta FABRICA y luego CASA. Una linea que se paga
+    entre las dos cuentas genera DOS Compra (ver la nota del encabezado).
 
     lineas: [{id_materia_prima, cantidad, precio_total, id_proveedor}]
     Cada compra se registra de contado y recibida (sin credito ni pedido
@@ -61,29 +106,33 @@ def registrar_compras_lote(sesion, lineas, fecha=None):
         raise ValueError("Agrega al menos una línea")
 
     cuenta_fabrica, cuenta_casa, asignaciones, total_fabrica, total_casa = _asignar(sesion, lineas)
+    cuentas = {"FABRICA": cuenta_fabrica, "CASA": cuenta_casa}
 
     try:
         resultado = []
-        for linea, rol in zip(lineas, asignaciones):
-            id_cuenta = (
-                cuenta_fabrica.Id_Cuenta if rol == "FABRICA" else cuenta_casa.Id_Cuenta
-            )
-            compra = _aplicar_compra(
-                sesion,
-                id_materia_prima=linea["id_materia_prima"],
-                id_cuenta=id_cuenta,
-                cantidad=linea["cantidad"],
-                precio_total=linea["precio_total"],
-                fecha=fecha,
-                id_proveedor=linea["id_proveedor"],
-                monto_pagado=None,
-                recibida=True,
-            )
-            resultado.append({"compra_obj": compra, "cuenta": rol})
+        for linea, tramos in zip(lineas, asignaciones):
+            cantidades = _repartir_cantidad(linea["cantidad"], linea["precio_total"], tramos)
+            compras = []
+            for tramo, cantidad in zip(tramos, cantidades):
+                compra = _aplicar_compra(
+                    sesion,
+                    id_materia_prima=linea["id_materia_prima"],
+                    id_cuenta=cuentas[tramo["rol"]].Id_Cuenta,
+                    cantidad=cantidad,
+                    precio_total=tramo["monto"],
+                    fecha=fecha,
+                    id_proveedor=linea["id_proveedor"],
+                    monto_pagado=None,
+                    recibida=True,
+                )
+                compras.append({"compra_obj": compra, "cuenta": tramo["rol"],
+                                "monto": tramo["monto"], "cantidad": cantidad})
+            resultado.append({"tramos": compras, "partida": len(tramos) > 1})
 
-        sesion.flush()   # asigna los Id_Compra de todas las lineas
+        sesion.flush()   # asigna los Id_Compra de todos los tramos
         for r in resultado:
-            r["id_compra"] = r.pop("compra_obj").Id_Compra
+            for t in r["tramos"]:
+                t["id_compra"] = t.pop("compra_obj").Id_Compra
 
         sesion.commit()
         return {

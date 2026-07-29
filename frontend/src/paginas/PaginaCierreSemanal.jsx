@@ -57,7 +57,10 @@ function PaginaCierreSemanal() {
   function confirmar() {
     apiPost('/cierre-semanal', { desde, hasta, base: baseReparto })
       .then((r) => {
-        setMensaje(`Cierre hecho (base: ${ETIQUETA_BASE[baseReparto]}): ${r.lotes_cerrados} lote(s), ${r.jornadas_repartidas} jornada(s), ${fmtNumero(r.total_horas)} h, ${fmtMoneda(r.total_costo_trabajo)} Bs de trabajo repartidos.`)
+        const gastos = r.gastos_repartidos
+          ? `, ${r.gastos_repartidos} gasto(s) de fábrica por ${fmtMoneda(r.total_gastos)} Bs`
+          : ''
+        setMensaje(`Cierre hecho (base: ${ETIQUETA_BASE[baseReparto]}): ${r.lotes_cerrados} lote(s), ${r.jornadas_repartidas} jornada(s), ${fmtNumero(r.total_horas)} h, ${fmtMoneda(r.total_costo_trabajo)} Bs de trabajo${gastos}.`)
         setPlan(null)
       })
       .catch((e) => setMensaje(e.message))
@@ -65,15 +68,22 @@ function PaginaCierreSemanal() {
 
   const hayReparto = plan && !plan.sin_datos && plan.productos.length > 0
   const otra = baseReparto === 'botellas' ? 'paquetes' : 'botellas'
+  // Gastos de fábrica del rango (bloque E). Puede haberlos aunque no haya
+  // reparto posible: en ese caso quedan pendientes y hay que avisarlo.
+  const gastos = plan?.gastos || []
+  const gastosPendientes = plan?.gastos_pendientes || []
 
   return (
     <div>
-      <h2>Cierre de producción (prorrateo de horas)</h2>
+      <h2>Cierre de producción (prorrateo de horas y gastos de fábrica)</h2>
       <p style={{ fontSize: '0.85em', color: '#666', marginTop: 0 }}>
-        Reparte las <strong>horas en standby</strong> del rango entre los productos
-        terminados producidos (sin trabajo aún) en ese rango, y le suma a cada lote su
-        costo de trabajo. El reparto se hace en proporción a la <strong>base</strong>
-        {' '}elegida abajo. Las jornadas ya usadas y los lotes que ya tienen trabajo no se tocan.
+        Reparte las <strong>horas en standby</strong> del rango —y los{' '}
+        <strong>gastos de fábrica</strong> de los grupos marcados como “Cierre prod.”
+        en Catálogos— entre los productos terminados producidos (sin trabajo aún) en
+        ese rango, y se los suma al costo de cada lote. El reparto se hace en
+        proporción a la <strong>base</strong> elegida abajo, la misma para las horas y
+        para los gastos. Las jornadas ya usadas, los lotes que ya tienen trabajo y los
+        gastos ya repartidos no se tocan.
       </p>
 
       <div style={{ margin: '0.5rem 0' }}>
@@ -106,6 +116,20 @@ function PaginaCierreSemanal() {
 
       {mensaje && <p style={{ color: hayReparto ? 'green' : '#a06000' }}>{mensaje}</p>}
 
+      {/* Gastos de fábrica encontrados pero SIN lotes donde repartirse: no se
+          pierden, los toma el próximo cierre que sí tenga producción. Se avisa
+          porque si no desaparecerían en silencio. */}
+      {gastosPendientes.length > 0 && (
+        <div style={{ background: '#fff4e0', border: '1px solid #e0b070', padding: '0.5rem', margin: '0.5rem 0' }}>
+          <strong>Hay {gastosPendientes.length} gasto(s) de fábrica en este rango sin dónde repartirse</strong>
+          {' '}({fmtMoneda(gastosPendientes.reduce((s, g) => s + g.monto, 0))} Bs).
+          <div style={{ fontSize: '0.85em', color: '#7a5a20' }}>
+            No hay producción terminada sin trabajo asignado en el rango. Quedan
+            pendientes y los tomará el próximo cierre que sí tenga producción.
+          </div>
+        </div>
+      )}
+
       {hayReparto && (
         <>
           {/* Jornadas en standby que se van a repartir */}
@@ -132,6 +156,40 @@ function PaginaCierreSemanal() {
             </tbody>
           </table>
 
+          {/* Gastos de fábrica que también se reparten (bloque E) */}
+          {gastos.length > 0 && (
+            <>
+              <h3>Gastos de fábrica a repartir</h3>
+              <p style={{ fontSize: '0.82em', color: '#666', marginTop: 0 }}>
+                Gastos del rango cuyo grupo está marcado como “Cierre prod.” en
+                Catálogos (ej. los extras que se dan a los trabajadores). Se reparten
+                entre los mismos productos y con la misma base que las horas, y se
+                suman al costo del lote. Un gasto ya repartido en un cierre anterior
+                no vuelve a aparecer.
+              </p>
+              <table border="1" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr><th>Mov.</th><th>Descripción</th><th>Grupo</th><th>Fecha</th><th>Monto</th></tr>
+                </thead>
+                <tbody>
+                  {gastos.map((g) => (
+                    <tr key={g.id_movimiento}>
+                      <td>{g.id_movimiento}</td>
+                      <td>{g.descripcion}</td>
+                      <td>{g.grupo}</td>
+                      <td>{g.fecha}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtMoneda(g.monto)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ fontWeight: 'bold' }}>
+                    <td colSpan={4}>Total</td>
+                    <td style={{ textAlign: 'right' }}>{fmtMoneda(plan.total_gastos)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
           {/* Reparto por producto */}
           <h3>
             Reparto entre los terminados — base <span style={{ color: '#1d4ed8' }}>{ETIQUETA_BASE[baseReparto]}</span>
@@ -147,6 +205,7 @@ function PaginaCierreSemanal() {
               <tr>
                 <th>Lote</th><th>Producto</th><th>Botellas</th><th>Paquetes</th><th>%</th>
                 <th>Horas asignadas</th><th>+ Trabajo</th>
+                {gastos.length > 0 && <th>+ Gasto fábrica</th>}
                 <th>Varía vs {ETIQUETA_BASE[otra]}</th>
                 <th>Costo actual</th><th>Costo nuevo</th>
               </tr>
@@ -161,9 +220,15 @@ function PaginaCierreSemanal() {
                   <td style={{ textAlign: 'right' }}>{fmtNumero(p.proporcion, 2)}%</td>
                   <td style={{ textAlign: 'right' }}>{fmtNumero(p.horas_total, 2)} h</td>
                   <td style={{ textAlign: 'right' }}>{fmtMoneda(p.costo_trabajo)}</td>
+                  {gastos.length > 0 && (
+                    <td style={{ textAlign: 'right' }}>{fmtMoneda(p.costo_gasto)}</td>
+                  )}
                   <td style={{ textAlign: 'right', fontSize: '0.85em' }}>
                     <Delta valor={p.horas_total - p.horas_total_alt} sufijo=" h" /><br />
                     <Delta valor={p.costo_trabajo - p.costo_trabajo_alt} sufijo=" Bs" />
+                    {gastos.length > 0 && (
+                      <><br /><Delta valor={p.costo_gasto - p.costo_gasto_alt} sufijo=" Bs gasto" /></>
+                    )}
                   </td>
                   <td style={{ textAlign: 'right' }}>{fmtNumero(p.costo_unit_actual, 4)}</td>
                   <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{fmtNumero(p.costo_unit_nuevo, 4)}</td>

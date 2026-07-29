@@ -363,6 +363,25 @@ estimadas y restantes). Dos decisiones:
   requiere un cambio de modelo (varios movimientos de pago por registro) que se
   pospuso. Los aportes externos siguen cargándose con `INGRESO_EXTERNO` (7.5).
 
+**Ampliación — de "una línea, una cuenta" a "drenar y partir" (mejora
+10.32).** El reparto original asignaba cada línea completa a una cuenta y,
+apenas una no entraba, mandaba esa y todas las siguientes a la segunda sin
+volver a mirar la primera — en la práctica dejaba saldo sin usar en la
+primera billetera. Se reemplazó por un reparto en **tramos**: se drena la
+primera cuenta hasta cero y la línea que cruza ese límite se parte entre
+las dos (sus tramos suman exacto el monto original). En Gastos, cada tramo
+es un `Movimiento` propio con descripción/grupo/fecha **idénticos** al
+original (la partición es mecánica de pago, no dos gastos: los reportes que
+agrupan por descripción o grupo no cambian). **Compras SÍ entró al mismo
+mecanismo**, resolviendo la limitación de arriba de otra forma: en vez de
+partir el *pago* de una `Compra` (que sigue enlazando un único movimiento),
+se parte el **lote**. Una línea que cruza el límite genera dos `Compra` del
+mismo insumo/proveedor/fecha, con la cantidad prorrateada en la misma
+proporción que el precio (mismo criterio de "última línea absorbe el
+redondeo" que la compra dividida por pliego, 3.11) — el precio unitario
+resultante es idéntico en ambos lotes, así que costeo/stock/FIFO no se
+enteran, y lo único distinto es una fila más en el historial de compras.
+
 ### 3.15 Reparto 70/30 de la venta con recuperación de inversión (mejora 2.C)
 - **El saldo por producto se calcula al vuelo, no en una columna.** `saldo =
   ingresos acumulados de sus ventas − inversión acumulada en producirlo`, sobre
@@ -460,6 +479,26 @@ estimadas y restantes). Dos decisiones:
   desde la BD y lo aplica (no confía en números del cliente), así lo que se ve
   es exactamente lo que se confirma. Rango libre de dos fechas, no semana fija.
 
+**Ampliación — también reparte gastos de fábrica, misma mecánica (mejora
+10.30).** Ciertos gastos (`SALIDA` de un grupo marcado con
+`Prorratea_Cierre_Produccion`) se reparten entre los mismos lotes elegibles,
+con la misma base que las horas, y se suman al costo unitario igual que el
+trabajo. **Marca en el grupo, no match por nombre** — mismo principio que
+`Categoria_Tipo_Bien` (4.2): las relaciones son por Id, así que el grupo se
+renombra sin tocar la lógica. **Libro `Gasto_Cierre_Produccion`**, calcado de
+`Absorcion_Produccion` (3.8): un movimiento que ya figura no se reparte de
+nuevo, lo que hace idempotente re-correr el cierre, igual que el standby en
+cero lo hace para las horas — y de paso deja trazabilidad de a qué lotes fue
+cada gasto. **Riesgo evitado:** una `SALIDA` ya repartida (o anulada, ver
+10.29 más abajo) queda sin vínculo con compra/pago/servicio, y por descarte
+se contaría como gasto de la semana en el balance aunque su plata ya esté
+dentro del costo de un lote (o de vuelta en la cuenta) — se corrigió con el
+mismo helper que blinda las anulaciones (`ids_salidas_anuladas` en
+`balance.py`). **Si no hay lote elegible, el gasto queda pendiente para el
+próximo cierre** en vez de perderse o bloquear el cierre de las horas —
+decisión de negocio, igual que el standby que no se puede repartir
+simplemente espera al próximo rango con producción.
+
 ### 3.16 Eliminar una producción reciente, solo si está intacta (mejora 6a)
 - **Extiende a producciones el criterio "intacta" que ya usaban las jornadas
   (3.4), en vez de crear una regla nueva.** Intacta = el lote sigue exactamente
@@ -538,6 +577,18 @@ Operaciones construidas (con backend, API y pantalla):
   absorción, solo si nada consumió ese lote todavía.
 - Anular un ingreso externo mal cargado (mejora 10a): movimiento inverso
   enlazado al original, nunca un DELETE.
+- Anular el pago de un gasto del mes (mejora 10.29): el mismo patrón de
+  movimiento inverso, generalizado a cualquier `SALIDA` (`ANULACION_SALIDA`);
+  bloqueado si el mes ya fue prorrateado o si el pago no tiene movimiento de
+  caja asociado (histórico migrado).
+- Reparto por prioridad en tramos (mejora 10.32): drena la primera cuenta y
+  parte la línea que cruza el límite entre las dos, tanto en la tabla de
+  gastos (un `Movimiento` por tramo) como en la de compras (partir el pago
+  parte también el lote, dos `Compra` con cantidad prorrateada).
+- Gastos de fábrica prorrateados en el cierre de producción (mejora 10.30):
+  además de las horas standby, reparte entre los mismos lotes los gastos de
+  los grupos marcados, con un libro propio (`Gasto_Cierre_Produccion`) que
+  evita repartir dos veces el mismo movimiento.
 
 **Agrupar lotes repetidos antes de descontar (correctitud):** los servicios
 que consumen lotes (producción intermedia/terminada, venta) validan el stock
@@ -604,6 +655,22 @@ propio tipo (no `SALIDA`) por el mismo motivo que `INGRESO_EXTERNO`/
 semana. Bloqueado si la cuenta ya no tiene ese saldo (el dinero se movió o se
 gastó) y si el ingreso ya estaba anulado (no se puede anular dos veces).
 
+**Ampliación — el mismo patrón, generalizado a cualquier SALIDA (mejora
+10.29).** Anular el pago de un gasto del mes (caso real: se pagó un monto
+que resultó no ser el correcto) necesita el mismo mecanismo, en la
+dirección contraria: el dinero **vuelve** a la cuenta. Se agregó
+`ANULACION_SALIDA` (mismo motivo de tipo propio: si fuera `ENTRADA`, el
+balance la contaría como venta) y se reusó `Id_Movimiento_Anulado`, ya
+genérico desde el diseño original. Al anular, la fila del gasto del mes
+suelta su `Id_Movimiento` y vuelve a quedar "cargada sin pagar" (conserva el
+monto, que es lo que se va a corregir) — mismo bloqueo de doble anulación,
+más dos guardarraíles propios de este caso: no se puede anular si el mes ya
+fue **prorrateado** (el reparto se calculó con ese monto) ni si el pago
+viene de la **migración del histórico** sin movimiento de caja asociado
+(crear el inverso inventaría un ingreso que nunca ocurrió). Este mismo
+patrón es también el que blinda el bloque E (10.30) para que una salida
+repartida o anulada no se cuente además como gasto.
+
 **Gasto cubierto por aporte externo (mejora 10b):** cuando un gasto lo paga
 alguien de afuera (ej. la cónyuge), se registra igual —para que cuente en los
 reportes de gastos— pero **no reduce las cuentas propias**. Se modela como el
@@ -615,6 +682,16 @@ gastos por grupo, 8.1/Dashboard 10) y el aporte que lo cubrió queda registrado
 con quién lo pagó (y se ve en el Dashboard 5 de ingresos externos). No hace
 falta migración: reutiliza el tipo `INGRESO_EXTERNO` (7.5). No se valida saldo
 suficiente porque el aporte entra antes de que salga el gasto.
+
+**Ampliación — también dentro de la tabla de varios gastos (mejora 10.31).**
+El mismo mecanismo (`_aplicar_gasto_externo`, separado en un núcleo sin
+commit para poder componerse con líneas propias) ahora se puede marcar por
+línea en la tabla de gastos, no solo en el formulario suelto. El detalle que
+importa: una línea externa **no entra al reparto por prioridad** de las
+demás líneas (10.32) — como su neto es cero, si entrara "gastaría" saldo que
+en realidad nunca salió y adelantaría a las líneas siguientes hacia la
+segunda cuenta antes de tiempo. Se aparta antes de repartir y se reinserta
+en su posición original al armar el resultado.
 
 **Clasificar sin adivinar por texto (mismo principio, aplicado a activos):**
 la clasificación Inmueble/Equipo/Otro de los activos fijos en el balance

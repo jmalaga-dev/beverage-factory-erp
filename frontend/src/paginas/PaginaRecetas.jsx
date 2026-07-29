@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api'
 import SelectorBuscable from '../componentes/SelectorBuscable'
 import InputCalculo from '../componentes/InputCalculo'
+import CantidadPaquetes, { totalBotellas } from '../componentes/CantidadPaquetes'
 import { fmtNumero, fmtBotellasYPaquetes } from '../formato'
 import { evaluar } from '../calculo'
 
@@ -19,7 +20,11 @@ function PaginaRecetas() {
   const [tipo, setTipo] = useState('INTERMEDIO')     // INTERMEDIO / TERMINADO
   const [idProducto, setIdProducto] = useState('')
   const [nombre, setNombre] = useState('')
+  // Rendimiento base: en TERMINADO se carga en paquetes + botellas sueltas
+  // (item 1, extension de 6.13 a Recetas); en INTERMEDIO sigue siendo un solo
+  // campo (rinde en su propia unidad, no se empaqueta).
   const [rendimiento, setRendimiento] = useState('')
+  const [rendimientoPaquetes, setRendimientoPaquetes] = useState('')
   // Insumos que se van armando
   const [detalles, setDetalles] = useState([])  // [{tipo, id_insumo, cantidad, nombre}]
   // Temporal para agregar un insumo
@@ -68,13 +73,16 @@ function PaginaRecetas() {
   function quitarDetalle(i) { setDetalles(detalles.filter((_, idx) => idx !== i)) }
 
   function limpiarForm() {
-    setEditandoId(null); setTipo('INTERMEDIO'); setIdProducto(''); setNombre(''); setRendimiento(''); setDetalles([])
+    setEditandoId(null); setTipo('INTERMEDIO'); setIdProducto('')
+    setNombre(''); setRendimiento(''); setRendimientoPaquetes(''); setDetalles([])
   }
 
   function guardar() {
-    if (idProducto === '' || rendimiento === '') { setMensaje('Elige producto y rendimiento'); return }
-    const rendimientoNum = evaluar(rendimiento)
-    if (Number.isNaN(rendimientoNum)) { setMensaje('El rendimiento no es una operación válida'); return }
+    if (idProducto === '' || (tipo === 'TERMINADO' ? rendimientoTotal <= 0 : rendimiento === '')) {
+      setMensaje('Elige producto y rendimiento'); return
+    }
+    const rendimientoNum = tipo === 'TERMINADO' ? rendimientoTotal : evaluar(rendimiento)
+    if (Number.isNaN(rendimientoNum) || rendimientoNum <= 0) { setMensaje('El rendimiento no es una operación válida'); return }
     if (detalles.length === 0) { setMensaje('Agrega al menos un insumo'); return }
     const cuerpo = {
       tipo,
@@ -96,7 +104,10 @@ function PaginaRecetas() {
     setTipo(r.tipo)
     setIdProducto(String(r.id_producto))
     setNombre(r.nombre || '')
+    // El total guardado no distingue como se cargo originalmente (paquetes +
+    // botellas): se vuelca entero al campo de botellas sueltas, editable.
     setRendimiento(String(r.rendimiento))
+    setRendimientoPaquetes('')
     setDetalles(r.detalles.map((d) => ({ tipo: d.tipo, id_insumo: d.id_insumo, cantidad: d.cantidad, nombre: d.nombre })))
     setMensaje('')
   }
@@ -114,6 +125,22 @@ function PaginaRecetas() {
     ? terminados.filter((p) => p.habilitado)
     : intermedios.filter((p) => p.habilitado)
   const obtenerIdProducto = tipo === 'TERMINADO' ? ((p) => p.id_producto_terminado) : ((p) => p.id_producto_intermedio)
+
+  // Cambiar de producto limpia el rendimiento: un valor en paquetes
+  // pertenece al tamaño de paquete del producto anterior (mismo criterio
+  // que ya usa Producción Terminada, 6.13).
+  function elegirProducto(id) {
+    setIdProducto(id)
+    setRendimiento(''); setRendimientoPaquetes('')
+  }
+
+  // Tamaño de paquete del terminado elegido (solo aplica a tipo TERMINADO;
+  // el intermedio rinde en su propia unidad, sin equivalencia).
+  const productoElegido = tipo === 'TERMINADO' && idProducto !== ''
+    ? terminados.find((p) => p.id_producto_terminado === parseInt(idProducto))
+    : null
+  const bppElegido = productoElegido ? productoElegido.botellas_por_paquete : 1
+  const rendimientoTotal = totalBotellas(rendimientoPaquetes, rendimiento, bppElegido)
 
   function tablaRecetas(lista) {
     return (
@@ -163,20 +190,31 @@ function PaginaRecetas() {
         en Producción se escala a lo que vayas a producir y resuelve los lotes por FIFO.
       </p>
       <div>
-        <select value={tipo} onChange={(e) => { setTipo(e.target.value); setIdProducto('') }}>
+        <select value={tipo} onChange={(e) => { setTipo(e.target.value); setIdProducto(''); setRendimiento(''); setRendimientoPaquetes('') }}>
           <option value="INTERMEDIO">Producto intermedio</option>
           <option value="TERMINADO">Producto terminado</option>
         </select>
         <SelectorBuscable
           opciones={opcionesProducto}
           valor={idProducto}
-          onCambiar={setIdProducto}
+          onCambiar={elegirProducto}
           obtenerId={obtenerIdProducto}
           obtenerTexto={(p) => p.descripcion}
           placeholder={`-- Producto ${tipo === 'TERMINADO' ? 'terminado' : 'intermedio'} que produce --`}
         />
         <input type="text" placeholder="Nombre (opcional)" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-        <InputCalculo value={rendimiento} onChange={setRendimiento} placeholder="Rendimiento base" />
+        {tipo === 'TERMINADO' ? (
+          <CantidadPaquetes
+            botellasPorPaquete={bppElegido}
+            paquetes={rendimientoPaquetes}
+            botellas={rendimiento}
+            onCambiarPaquetes={setRendimientoPaquetes}
+            onCambiarBotellas={setRendimiento}
+            etiquetaBotellas="Rendimiento base (botellas)"
+          />
+        ) : (
+          <InputCalculo value={rendimiento} onChange={setRendimiento} placeholder="Rendimiento base" />
+        )}
       </div>
 
       <h4>Insumos de la receta</h4>

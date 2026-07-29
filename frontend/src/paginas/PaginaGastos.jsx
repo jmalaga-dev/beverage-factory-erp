@@ -5,6 +5,7 @@ import InputCalculo from '../componentes/InputCalculo'
 import { useFechaGlobal } from '../componentes/FechaGlobal'
 import { fmtMoneda } from '../formato'
 import { evaluar } from '../calculo'
+import { textoTramos, estaPartida, esExterna } from '../tramos'
 
 function PaginaGastos() {
   const { fechaParaEnviar } = useFechaGlobal()
@@ -21,15 +22,19 @@ function PaginaGastos() {
   const [quienPago, setQuienPago] = useState('')
 
   // ----- Registrar VARIOS gastos a la vez, como tabla (misma idea que la
-  // tabla de Compras): cada linea es un gasto independiente que sale ENTERO
-  // de una cuenta, elegida sola por prioridad. Para gastos el orden por
-  // defecto es al reves que en compras: primero CASA, luego FABRICA. -----
+  // tabla de Compras): cada linea es un gasto independiente, y la cuenta se
+  // elige sola por prioridad drenando la primera billetera. Para gastos el
+  // orden por defecto es al reves que en compras: primero CASA, luego
+  // FABRICA. Una linea puede marcarse como pagada por otra persona. -----
   const [loteTipo, setLoteTipo] = useState('FAMILIAR')   // FAMILIAR = Casa->Fabrica, FABRICA = Fabrica->Casa
-  const [loteLineas, setLoteLineas] = useState([])   // [{descripcion, monto, id_grupo, nombreGrupo}]
+  const [loteLineas, setLoteLineas] = useState([])   // [{descripcion, monto, id_grupo, nombreGrupo, pagadoExterno, quienPago}]
   const [loteDescripcion, setLoteDescripcion] = useState('')
   const [loteMonto, setLoteMonto] = useState('')
   const [loteIdGrupo, setLoteIdGrupo] = useState('')
-  const [lotePreview, setLotePreview] = useState(null)   // { asignaciones, total_fabrica, total_casa, saldo_fabrica, saldo_casa }
+  // Pago externo de la linea que se esta armando (bloque D)
+  const [lotePagadoExterno, setLotePagadoExterno] = useState(false)
+  const [loteQuienPago, setLoteQuienPago] = useState('')
+  const [lotePreview, setLotePreview] = useState(null)   // { asignaciones, total_fabrica, total_casa, total_externo, saldo_fabrica, saldo_casa }
   const [lotePreviewError, setLotePreviewError] = useState('')
   const [loteMensaje, setLoteMensaje] = useState('')
 
@@ -46,16 +51,36 @@ function PaginaGastos() {
     }
     const montoLinea = evaluar(loteMonto)
     if (Number.isNaN(montoLinea)) { setLoteMensaje('El monto no es una operación válida'); return }
+    if (lotePagadoExterno && loteQuienPago.trim() === '') {
+      setLoteMensaje('Indicá quién pagó esa línea'); return
+    }
     const grupo = grupos.find((g) => g.id_grupo === parseInt(loteIdGrupo))
     setLoteLineas([...loteLineas, {
       descripcion: loteDescripcion.trim(),
       monto: montoLinea,
       id_grupo: loteIdGrupo ? parseInt(loteIdGrupo) : null,
       nombreGrupo: grupo ? grupo.nombre : '',
+      pagadoExterno: lotePagadoExterno,
+      quienPago: lotePagadoExterno ? loteQuienPago.trim() : null,
     }])
     setLoteDescripcion(''); setLoteMonto(''); setLoteIdGrupo(''); setLoteMensaje('')
+    // "Quién pagó" NO se limpia: normalmente vienen varias seguidas de la misma
+    // persona (los albañiles que pagó una misma vez), y re-tipearlo cada vez
+    // era justo la molestia que motivó esto.
   }
   function quitarLineaLote(i) { setLoteLineas(loteLineas.filter((_, idx) => idx !== i)) }
+
+  // Forma en que el backend espera cada linea (preview y registro mandan lo
+  // mismo, para que la vista previa sea fiel a lo que se va a registrar).
+  function lineaParaApi(l) {
+    return {
+      monto: l.monto,
+      descripcion: l.descripcion,
+      id_grupo: l.id_grupo,
+      pagado_externo: !!l.pagadoExterno,
+      quien_pago: l.pagadoExterno ? l.quienPago : null,
+    }
+  }
 
   // Suma total en vivo
   const loteTotalGeneral = loteLineas.reduce((s, l) => s + l.monto, 0)
@@ -66,7 +91,7 @@ function PaginaGastos() {
       setLotePreview(null); setLotePreviewError(''); return
     }
     apiPost('/gastos-lote/preview', {
-      lineas: loteLineas.map((l) => ({ monto: l.monto, descripcion: l.descripcion, id_grupo: l.id_grupo })),
+      lineas: loteLineas.map(lineaParaApi),
       tipo: loteTipo,
     })
       .then((r) => { setLotePreview(r); setLotePreviewError('') })
@@ -77,7 +102,7 @@ function PaginaGastos() {
     if (loteLineas.length === 0) { setLoteMensaje('Agrega al menos una línea'); return }
     if (lotePreviewError) { setLoteMensaje(lotePreviewError); return }
     apiPost('/gastos-lote', {
-      lineas: loteLineas.map((l) => ({ monto: l.monto, descripcion: l.descripcion, id_grupo: l.id_grupo })),
+      lineas: loteLineas.map(lineaParaApi),
       tipo: loteTipo,
       fecha: fechaParaEnviar,
     })
@@ -180,9 +205,14 @@ function PaginaGastos() {
       <h2>Registrar varios gastos a la vez (tabla)</h2>
       <p style={{ fontSize: '0.85em', color: '#666', marginTop: 0 }}>
         Agrega una línea por cada gasto. La cuenta de pago se asigna sola,
-        por prioridad: con <strong>Gasto familiar</strong> primero se gasta
-        Casa línea por línea hasta que ya no alcanza, y de ahí en adelante
-        se paga con Fábrica; con <strong>Gasto de fábrica</strong> es al revés.
+        por prioridad: con <strong>Gasto familiar</strong> se gasta Casa
+        <strong> hasta agotarla</strong> y recién ahí se sigue con Fábrica; con
+        {' '}<strong>Gasto de fábrica</strong> es al revés. El gasto que cruza
+        ese límite se paga <strong>entre las dos</strong> (ej. «Casa 40,00 +
+        Fábrica 30,00») y queda registrado como un movimiento por cuenta.
+        Si una línea la pagó otra persona, marcá el casillero de abajo: se
+        registra el gasto con el aporte que lo cubre, no descuenta tus cuentas
+        y no entra en el reparto.
       </p>
       <div style={{ border: '1px solid #ccc', padding: '0.6rem', margin: '0.5rem 0' }}>
         <div>
@@ -211,6 +241,26 @@ function PaginaGastos() {
           <button onClick={agregarLineaLote}>Agregar línea</button>
         </div>
 
+        {/* Pago externo de la línea (bloque D): evita tener que ir a
+            Transferencias a cargar el ingreso y volver acá por el gasto. */}
+        <div style={{ marginTop: '0.3rem', fontSize: '0.9em' }}>
+          <label>
+            <input type="checkbox" checked={lotePagadoExterno}
+              onChange={(e) => { setLotePagadoExterno(e.target.checked); if (!e.target.checked) setLoteQuienPago('') }} />
+            {' '}Esta línea la pagó otra persona (no descuenta tus cuentas)
+          </label>
+          {lotePagadoExterno && (
+            <>
+              {' '}
+              <input type="text" placeholder="¿Quién pagó? (ej. Juan)"
+                value={loteQuienPago} onChange={(e) => setLoteQuienPago(e.target.value)} />
+              <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+                se registra el gasto y el aporte que lo cubre; queda fuera del reparto
+              </span>
+            </>
+          )}
+        </div>
+
         {/* Tabla de líneas cargadas, con la cuenta asignada en vivo */}
         {loteLineas.length > 0 && (
           <table border="1" style={{ marginTop: '0.5rem', borderCollapse: 'collapse' }}>
@@ -220,10 +270,26 @@ function PaginaGastos() {
             <tbody>
               {loteLineas.map((l, i) => (
                 <tr key={i}>
-                  <td>{l.descripcion}</td>
+                  <td>
+                    {l.descripcion}
+                    {l.pagadoExterno && (
+                      <span style={{ color: '#0a6', fontSize: '0.8em' }}> · lo pagó {l.quienPago}</span>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'right' }}>{fmtMoneda(l.monto)}</td>
                   <td>{l.nombreGrupo || '—'}</td>
-                  <td>{lotePreview?.asignaciones?.[i] === 'CASA' ? 'Casa' : lotePreview?.asignaciones?.[i] === 'FABRICA' ? 'Fábrica' : '—'}</td>
+                  {/* Una linea que cruza el limite de la primera billetera se
+                      parte entre las dos (bloque C): se muestran los dos tramos
+                      con su monto. Una linea externa (bloque D) no sale de
+                      ninguna cuenta propia. Ambas se resaltan para que no
+                      pasen inadvertidas. */}
+                  <td style={
+                    esExterna(lotePreview?.asignaciones?.[i]) ? { background: '#eaf7ee' }
+                      : estaPartida(lotePreview?.asignaciones?.[i]) ? { background: '#fff4e0' }
+                        : {}
+                  }>
+                    {textoTramos(lotePreview?.asignaciones?.[i])}
+                  </td>
                   <td><button onClick={() => quitarLineaLote(i)}>quitar</button></td>
                 </tr>
               ))}
@@ -239,6 +305,9 @@ function PaginaGastos() {
               <>
                 {' '}— Fábrica: {fmtMoneda(lotePreview.total_fabrica)} (saldo {fmtMoneda(lotePreview.saldo_fabrica)})
                 {' '}— Casa: {fmtMoneda(lotePreview.total_casa)} (saldo {fmtMoneda(lotePreview.saldo_casa)})
+                {lotePreview.total_externo > 0 && (
+                  <> {' '}— Externo: {fmtMoneda(lotePreview.total_externo)} (no sale de tus cuentas)</>
+                )}
               </>
             )}
           </p>

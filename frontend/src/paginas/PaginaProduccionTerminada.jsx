@@ -48,7 +48,11 @@ function PaginaProduccionTerminada() {
   // Pre-recetas (3.6) de tipo TERMINADO
   const [recetas, setRecetas] = useState([])
   const [recetaSel, setRecetaSel] = useState('')
-  const [recetaCantidad, setRecetaCantidad] = useState('')
+  // Cantidad a producir en paquetes + botellas sueltas (item 1, extension de
+  // 6.13 a este formulario). El total se deriva con totalBotellas(), igual
+  // que la cantidad manual de mas abajo.
+  const [recetaPaquetes, setRecetaPaquetes] = useState('')
+  const [recetaBotellas, setRecetaBotellas] = useState('')
 
   function cargar() {
     apiGet('/productos-terminados').then(setProductos).catch(console.error)
@@ -144,12 +148,25 @@ function PaginaProduccionTerminada() {
   }
   function quitarTrabajo(i) { setInsumosTrabajo(insumosTrabajo.filter((_, idx) => idx !== i)) }
 
+  // Receta elegida y su tamaño de paquete, para el selector de cantidad
+  // paquetes+botellas de "Aplicar receta".
+  const recetaSeleccionada = recetaSel !== ''
+    ? recetas.find((r) => r.id_receta === parseInt(recetaSel))
+    : null
+  const bppReceta = recetaSeleccionada ? recetaSeleccionada.botellas_por_paquete : 1
+  const recetaCantidadTotal = totalBotellas(recetaPaquetes, recetaBotellas, bppReceta)
+
+  // Cambiar de receta limpia la cantidad: un valor en paquetes pertenece al
+  // tamaño de paquete del producto anterior (mismo criterio que elegirProducto).
+  function elegirReceta(id) {
+    setRecetaSel(id)
+    setRecetaPaquetes(''); setRecetaBotellas('')
+  }
+
   // Aplicar pre-receta de terminado (3.6): escala + FIFO y pre-llena
   function aplicarReceta() {
-    if (recetaSel === '' || recetaCantidad === '') { setMensaje('Elige receta y cantidad a producir'); return }
-    const cantReceta = evaluar(recetaCantidad)
-    if (Number.isNaN(cantReceta) || cantReceta <= 0) { setMensaje('La cantidad a producir no es válida'); return }
-    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${cantReceta}`)
+    if (recetaSel === '' || recetaCantidadTotal <= 0) { setMensaje('Elige receta y cantidad a producir'); return }
+    apiGet(`/recetas/${recetaSel}/aplicar?cantidad=${recetaCantidadTotal}`)
       .then((d) => {
         setIdProducto(String(d.id_producto))
         // La receta escala en botellas: se vuelca al campo de botellas y se
@@ -265,14 +282,21 @@ function PaginaProduccionTerminada() {
           <SelectorBuscable
             opciones={recetas.filter((r) => r.habilitado && r.tipo === 'TERMINADO')}
             valor={recetaSel}
-            onCambiar={setRecetaSel}
+            onCambiar={elegirReceta}
             obtenerId={(r) => r.id_receta}
             obtenerTexto={(r) =>
               `${r.nombre || r.producto} (rinde ${fmtBotellasYPaquetes(r.rendimiento, r.botellas_por_paquete)})`
             }
             placeholder="-- Receta --"
           />
-          <InputCalculo value={recetaCantidad} onChange={setRecetaCantidad} placeholder="Cantidad a producir" />
+          <CantidadPaquetes
+            botellasPorPaquete={bppReceta}
+            paquetes={recetaPaquetes}
+            botellas={recetaBotellas}
+            onCambiarPaquetes={setRecetaPaquetes}
+            onCambiarBotellas={setRecetaBotellas}
+            etiquetaBotellas="Botellas sueltas a producir"
+          />
           <button onClick={aplicarReceta}>Aplicar receta</button>
         </div>
       )}

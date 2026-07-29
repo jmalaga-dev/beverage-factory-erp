@@ -151,6 +151,10 @@ class Grupo_Movimiento(Base):
     Id_Grupo_Movimiento = Column(Integer, primary_key=True)
     Nombre_Grupo_Movimiento = Column(String, unique=True, nullable=False)
     Habilitado_Grupo_Movimiento = Column(Boolean, nullable=False, server_default="true")
+    # Los gastos de este grupo se reparten entre los productos terminados de la
+    # semana en el cierre de produccion (bloque E, migracion 031). Es una
+    # columna y no un match por nombre: el grupo se puede renombrar libremente.
+    Prorratea_Cierre_Produccion = Column(Boolean, nullable=False, server_default="false")
 
     movimientos = relationship("Movimiento", back_populates="grupo")
 
@@ -434,6 +438,23 @@ class Absorcion_Produccion(Base):
 
     item = relationship("Item_Absorcion", back_populates="absorciones")
     produccion = relationship("Produccion", back_populates="absorciones")
+
+
+class Gasto_Cierre_Produccion(Base):
+    """Libro de que gasto de fabrica se repartio, a que lote y por cuanto
+    (bloque E, migracion 031). Mismo rol que Absorcion_Produccion para la
+    absorcion (1.4): evita repartir dos veces el mismo movimiento -- asi
+    re-correr el cierre es seguro -- y deja la trazabilidad del costo."""
+    __tablename__ = "Gasto_Cierre_Produccion"
+
+    Id_Gasto_Cierre_Produccion = Column(Integer, primary_key=True)
+    Id_Movimiento = Column(Integer, ForeignKey("Movimiento.Id_Movimiento"), nullable=False)
+    Id_Produccion = Column(Integer, ForeignKey("Produccion.Id_Produccion"), nullable=False)
+    Monto_Asignado = Column(Numeric, nullable=False)
+    Fecha_Cierre = Column(Date, nullable=False)
+
+    movimiento = relationship("Movimiento")
+    produccion = relationship("Produccion")
 
 
 class Detalle_Prod_Intermedio(Base):

@@ -25,6 +25,10 @@ function PaginaProrrateo() {
   const [monto, setMonto] = useState('')
   // De dónde salió el monto sugerido, para que se vea que es editable (6.7).
   const [origenMonto, setOrigenMonto] = useState('')
+  // Filtro del desplegable (item 2): por defecto solo los que faltan cargar
+  // este mes, para no reintentar cargar uno que ya se cargó (o ya se pagó).
+  // Desmarcado muestra todos, incluidos los ya cargados, para corregirlos.
+  const [soloFaltantes, setSoloFaltantes] = useState(true)
   // Pago: cuenta elegida por fila
   const [cuentaPago, setCuentaPago] = useState({})     // {id_gasto_extra_mes: id_cuenta}
   const [mensaje, setMensaje] = useState('')
@@ -69,6 +73,20 @@ function PaginaProrrateo() {
       .catch((e) => setMensaje(e.message))
   }
 
+  // Anular un pago mal hecho (bloque B): la plata vuelve a la cuenta con un
+  // movimiento inverso y la fila queda sin pagar, lista para corregir el monto
+  // y volver a pagarla. No borra el pago original.
+  function anularPago(g) {
+    if (!window.confirm(
+      `¿Anular el pago de «${g.descripcion}» (${fmtMoneda(g.monto)} Bs)?\n\n` +
+      `La plata vuelve a ${g.cuenta_pago} y el gasto queda sin pagar, para que ` +
+      `puedas corregir el monto. El pago original no se borra: queda junto a su anulación.`
+    )) return
+    apiPost(`/gastos-mes/${g.id_gasto_extra_mes}/anular-pago`, { fecha: fechaParaEnviar })
+      .then((d) => { setMensaje(d.mensaje); cargar(anioMes) })
+      .catch((e) => setMensaje(e.message))
+  }
+
   function ejecutar() {
     apiPost('/prorrateos', { anio_mes: anioMes })
       .then((d) => { setMensaje(`Prorrateo hecho: ${d.asignaciones} asignaciones (${d.productos} productos × ${d.gastos} gastos)`); cargar(anioMes) })
@@ -79,9 +97,25 @@ function PaginaProrrateo() {
   // verdad el mes anterior, y solo si no hay, el estimado fijo del catálogo.
   // La factura de luz del mes pasado predice mucho mejor la de este mes que
   // un número cargado una vez al crear el gasto y nunca actualizado.
+  //
+  // Si el gasto ELEGIDO ya está cargado este mes (visible cuando "solo
+  // faltantes" está desmarcado), la prioridad es distinta: se antepone lo ya
+  // cargado este mismo mes, para corregirlo (registrar_monto_mes hace upsert,
+  // asi que volver a Guardar pisa el valor anterior; si ya esta pagado, el
+  // backend lo rechaza con un mensaje claro).
   function elegirGasto(id) {
     setSelGasto(id)
     const g = recurrentes.find((x) => x.id_gasto_extra === parseInt(id))
+
+    const yaCargado = estado?.detalle?.find((x) => x.id_gasto_extra === parseInt(id))
+    if (yaCargado) {
+      setMonto(String(yaCargado.monto))
+      setOrigenMonto(yaCargado.pagado
+        ? `lo ya pagado este mes (${yaCargado.fecha_pago}) — pagado: no se puede corregir el monto`
+        : 'lo ya cargado este mes, sin pagar')
+      return
+    }
+
     const porDefecto = g && g.precio_mensual ? String(g.precio_mensual) : ''
     setMonto(porDefecto)
     setOrigenMonto(porDefecto ? 'el estimado del catálogo' : '')
@@ -96,6 +130,12 @@ function PaginaProrrateo() {
       })
       .catch(() => { /* sin datos del mes anterior: queda el del catálogo */ })
   }
+
+  // Opciones del desplegable de alta, segun el filtro (item 2).
+  const idsCargados = new Set((estado?.detalle || []).map((d) => d.id_gasto_extra))
+  const opcionesGasto = soloFaltantes
+    ? recurrentes.filter((g) => !idsCargados.has(g.id_gasto_extra))
+    : recurrentes
 
   return (
     <div>
@@ -115,23 +155,38 @@ function PaginaProrrateo() {
 
       {/* ===== Gastos del mes ===== */}
       <h3>Gastos del mes</h3>
-      <div style={{ margin: '0.4rem 0' }}>
-        <SelectorBuscable
-          opciones={recurrentes}
-          valor={selGasto}
-          onCambiar={elegirGasto}
-          obtenerId={(g) => g.id_gasto_extra}
-          obtenerTexto={(g) => `${g.descripcion} (típico ${fmtMoneda(g.precio_mensual)} Bs)`}
-          placeholder="-- Gasto recurrente --"
-        />
-        <InputCalculo value={monto} onChange={setMonto} placeholder="Monto de este mes" decimales={2} />
-        {origenMonto && (
-          <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
-            sugerido según {origenMonto} — editable
-          </span>
-        )}
-        <button onClick={agregarMonto}>Guardar monto</button>
-      </div>
+      {preview?.ya_prorrateado ? (
+        <p style={{ color: '#888' }}>
+          Este mes ya fue prorrateado: no se pueden agregar ni corregir gastos.
+        </p>
+      ) : (
+        <>
+          <div style={{ margin: '0.4rem 0' }}>
+            <label style={{ fontSize: '0.85em', color: '#666' }}>
+              <input type="checkbox" checked={soloFaltantes}
+                onChange={(e) => { setSoloFaltantes(e.target.checked); setSelGasto(''); setMonto(''); setOrigenMonto('') }} />
+              {' '}Mostrar solo los que faltan cargar
+            </label>
+          </div>
+          <div style={{ margin: '0.4rem 0' }}>
+            <SelectorBuscable
+              opciones={opcionesGasto}
+              valor={selGasto}
+              onCambiar={elegirGasto}
+              obtenerId={(g) => g.id_gasto_extra}
+              obtenerTexto={(g) => `${g.descripcion} (típico ${fmtMoneda(g.precio_mensual)} Bs)`}
+              placeholder="-- Gasto recurrente --"
+            />
+            <InputCalculo value={monto} onChange={setMonto} placeholder="Monto de este mes" decimales={2} />
+            {origenMonto && (
+              <span style={{ marginLeft: '0.4rem', color: '#557', fontSize: '0.85em' }}>
+                sugerido según {origenMonto} — editable
+              </span>
+            )}
+            <button onClick={agregarMonto}>Guardar monto</button>
+          </div>
+        </>
+      )}
 
       {estado && estado.detalle.length > 0 ? (
         <table border="1" style={{ borderCollapse: 'collapse' }}>
@@ -145,7 +200,7 @@ function PaginaProrrateo() {
                 <td style={{ textAlign: 'right' }}>{fmtMoneda(g.monto)}</td>
                 <td>{g.pagado ? `✅ pagado (${g.fecha_pago}, ${g.cuenta_pago})` : '⏳ pendiente'}</td>
                 <td>
-                  {!g.pagado && (
+                  {!g.pagado ? (
                     <>
                       <SelectorBuscable
                         opciones={cuentas.filter((c) => c.habilitado)}
@@ -157,6 +212,13 @@ function PaginaProrrateo() {
                       />
                       {' '}<button onClick={() => pagar(g.id_gasto_extra_mes)}>Pagar</button>
                     </>
+                  ) : (
+                    /* Anular el pago (bloque B): unica via para corregir el monto
+                       de un gasto ya pagado. Se oculta si el mes ya fue
+                       prorrateado -- ese reparto se calculo con este monto. */
+                    !preview?.ya_prorrateado && (
+                      <button onClick={() => anularPago(g)}>Anular pago</button>
+                    )
                   )}
                 </td>
               </tr>

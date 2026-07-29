@@ -148,20 +148,33 @@ def previsualizar_compras_lote_ruta(datos: ComprasLoteEntrada, sesion: Session =
 
 @router.post("/compras-lote")
 def crear_compras_lote(datos: ComprasLoteEntrada, sesion: Session = Depends(get_sesion)):
-    """Registra varias compras a la vez (una por línea), pagando primero
-    desde la cuenta Fábrica y luego desde Casa. Todo o nada."""
+    """Registra varias compras a la vez, drenando primero la cuenta Fábrica y
+    luego Casa. Una línea que se paga entre las dos cuentas se registra como
+    dos compras del mismo insumo (el lote se parte junto con el pago, porque
+    una Compra enlaza un solo movimiento). Todo o nada."""
     try:
         resultado = registrar_compras_lote(
             sesion,
             lineas=_lineas_lote_dict(datos),
             fecha=datos.fecha or date.today(),
         )
+        partidas = sum(1 for r in resultado["lineas"] if r["partida"])
+        mensaje = f"{len(resultado['lineas'])} compras registradas"
+        if partidas:
+            mensaje += f" ({partidas} dividida(s) en dos lotes por la cuenta de pago)"
         return {
-            "mensaje": f"{len(resultado['lineas'])} compras registradas",
+            "mensaje": mensaje,
             "total_fabrica": float(resultado["total_fabrica"]),
             "total_casa": float(resultado["total_casa"]),
             "lineas": [
-                {"id_compra": r["id_compra"], "cuenta": r["cuenta"]}
+                {
+                    "partida": r["partida"],
+                    "tramos": [
+                        {"id_compra": t["id_compra"], "cuenta": t["cuenta"],
+                         "monto": float(t["monto"]), "cantidad": float(t["cantidad"])}
+                        for t in r["tramos"]
+                    ],
+                }
                 for r in resultado["lineas"]
             ],
         }

@@ -11,7 +11,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencias import get_sesion
-from app.servicios.gastos_mensuales import registrar_monto_mes, pagar_monto_mes, estado_mes
+from app.servicios.gastos_mensuales import (
+    registrar_monto_mes, pagar_monto_mes, anular_pago_mes, estado_mes,
+)
 from app.servicios.prorrateo import preview_prorrateo, ejecutar_prorrateo
 
 router = APIRouter(tags=["prorrateo"])
@@ -46,6 +48,26 @@ def pagar_gasto_mes(id_gasto_extra_mes: int, datos: PagoMesEntrada, sesion: Sess
     try:
         fila = pagar_monto_mes(sesion, id_gasto_extra_mes, datos.id_cuenta, datos.fecha or date.today())
         return {"mensaje": "Gasto del mes pagado", "id_gasto_extra_mes": fila.Id_Gasto_Extra_Mes}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class AnulacionPagoEntrada(BaseModel):
+    fecha: date | None = None
+
+
+@router.post("/gastos-mes/{id_gasto_extra_mes}/anular-pago")
+def anular_pago_gasto_mes(id_gasto_extra_mes: int, datos: AnulacionPagoEntrada,
+                          sesion: Session = Depends(get_sesion)):
+    """Anula el pago de un gasto del mes con un movimiento inverso: la plata
+    vuelve a la cuenta y la fila queda sin pagar, para corregir el monto y
+    volver a pagarla. No borra el pago original (bloque B)."""
+    try:
+        anulacion = anular_pago_mes(sesion, id_gasto_extra_mes, datos.fecha or date.today())
+        return {
+            "mensaje": "Pago anulado: la plata volvió a la cuenta y el gasto quedó sin pagar",
+            "id_movimiento_anulacion": anulacion.Id_Movimiento,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

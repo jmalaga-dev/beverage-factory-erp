@@ -15,6 +15,16 @@ from app.servicios.cierre_semanal import calcular_cierre, ejecutar_cierre
 router = APIRouter(tags=["cierre"])
 
 
+def _gasto_dict(g):
+    return {
+        "id_movimiento": g["id_movimiento"],
+        "descripcion": g["descripcion"],
+        "grupo": g["grupo"],
+        "fecha": g["fecha"],
+        "monto": float(g["monto"]),
+    }
+
+
 def _serializar_plan(plan):
     """Convierte el plan (con Decimales) al dict que consume el frontend."""
     return {
@@ -27,6 +37,7 @@ def _serializar_plan(plan):
         "total_paquetes": float(plan.get("total_paquetes", 0)),
         "total_horas": float(plan["total_horas"]),
         "total_valor_trabajo": float(plan["total_valor_trabajo"]),
+        "total_gastos": float(plan.get("total_gastos", 0)),
         "jornadas": [
             {
                 "id_jornada": j["id_jornada"],
@@ -38,6 +49,11 @@ def _serializar_plan(plan):
             }
             for j in plan["jornadas"]
         ],
+        # Gastos de fabrica del rango que este cierre va a repartir (bloque E)
+        "gastos": [_gasto_dict(g) for g in plan.get("gastos", [])],
+        # Los que se encontraron pero NO se pueden repartir (no hay lotes
+        # elegibles): quedan para el proximo cierre, y hay que avisarlo.
+        "gastos_pendientes": [_gasto_dict(g) for g in plan.get("gastos_pendientes", [])],
         "productos": [
             {
                 "id_produccion": p["id_produccion"],
@@ -48,11 +64,13 @@ def _serializar_plan(plan):
                 "costo_unit_actual": round(float(p["costo_unit_actual"]), 4),
                 "horas_total": round(float(p["horas_total"]), 4),
                 "costo_trabajo": round(float(p["costo_trabajo"]), 2),
+                "costo_gasto": round(float(p["costo_gasto"]), 2),
                 "costo_unit_nuevo": round(float(p["costo_unit_nuevo"]), 4),
                 # Numeros de la otra base, para ver cuanto varia el reparto:
                 "proporcion_alt": round(float(p["proporcion_alt"]) * 100, 2),
                 "horas_total_alt": round(float(p["horas_total_alt"]), 4),
                 "costo_trabajo_alt": round(float(p["costo_trabajo_alt"]), 2),
+                "costo_gasto_alt": round(float(p["costo_gasto_alt"]), 2),
                 "costo_unit_nuevo_alt": round(float(p["costo_unit_nuevo_alt"]), 4),
                 "asignaciones": [
                     {
@@ -61,6 +79,14 @@ def _serializar_plan(plan):
                         "horas": round(float(a["horas"]), 4),
                     }
                     for a in p["asignaciones"]
+                ],
+                "asignaciones_gasto": [
+                    {
+                        "id_movimiento": a["id_movimiento"],
+                        "descripcion": a["descripcion"],
+                        "monto": round(float(a["monto"]), 2),
+                    }
+                    for a in p["asignaciones_gasto"]
                 ],
             }
             for p in plan["productos"]

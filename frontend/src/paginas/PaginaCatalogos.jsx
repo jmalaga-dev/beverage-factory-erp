@@ -85,6 +85,10 @@ function PaginaCatalogos() {
         ]}
       />
 
+      {/* El marcador "Cierre prod." (bloque E) decide qué grupos de gasto se
+          reparten entre los productos de la semana al cerrar la producción
+          (ej. los extras que se dan a los trabajadores). Es una marca y no un
+          nombre reservado: el grupo se puede renombrar libremente. */}
       <Catalogo
         titulo="Grupo de Movimiento"
         abiertoInicial={false}
@@ -92,6 +96,14 @@ function PaginaCatalogos() {
         idKey="id_grupo"
         campos={[{ nombre: 'nombre', label: 'Nombre', tipo: 'text', obligatorio: true }]}
         camposTabla={[{ key: 'nombre', label: 'Nombre' }]}
+        marcador={{
+          campo: 'prorratea_cierre',
+          ruta: 'prorratea-cierre',
+          label: 'Cierre prod.',
+          ayuda: 'Los gastos de este grupo se reparten entre los productos terminados de la semana, en el Cierre de producción',
+          tituloSi: 'Se reparte en el cierre de producción (clic para quitar)',
+          tituloNo: 'No se reparte (clic para que entre al cierre de producción)',
+        }}
       />
 
       <Catalogo

@@ -21,7 +21,12 @@ import { fmtNumero } from '../formato'
 //   soportaDestacado          si el catalogo tiene el marcador "destacado" (item 14):
 //                             agrega una columna con una estrella para marcar/desmarcar.
 //                             El backend expone PATCH /endpoint/{id}/destacado.
-function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial, permitirCrear = true, soportaDestacado = false }) {
+//   marcador                  columna de toggle booleano generica (bloque E), para
+//                             banderas propias de un catalogo:
+//                             {campo, ruta, label, ayuda, tituloSi, tituloNo}
+//                             El backend expone PATCH /endpoint/{id}/{ruta}
+//                             recibiendo {[campo]: bool}.
+function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial, permitirCrear = true, soportaDestacado = false, marcador = null }) {
   const [items, setItems] = useState([])
   const [valores, setValores] = useState({})
   const [mensaje, setMensaje] = useState('')
@@ -92,6 +97,13 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
       .catch((e) => setMensaje(e.message))
   }
 
+  function alternarMarcador(item) {
+    apiPatch(`/${endpoint}/${item[idKey]}/${marcador.ruta}`,
+      { [marcador.campo]: !item[marcador.campo] })
+      .then((r) => { setMensaje(r.mensaje || ''); cargar() })
+      .catch((e) => setMensaje(e.message))
+  }
+
   function borrar(item) {
     if (!window.confirm(`¿Borrar «${item[camposTabla[0].key]}»? No se puede deshacer.`)) return
     apiDelete(`/${endpoint}/${item[idKey]}`)
@@ -148,6 +160,7 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
               <tr>
                 {camposTabla.map((c) => <th key={c.key}>{c.label}</th>)}
                 {soportaDestacado && <th>Destacado</th>}
+                {marcador && <th title={marcador.ayuda}>{marcador.label}</th>}
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
@@ -194,6 +207,15 @@ function Catalogo({ titulo, endpoint, idKey, campos, camposTabla, abiertoInicial
                           title={item.destacado ? 'Destacado (clic para quitar)' : 'No destacado (clic para destacar)'}
                           style={{ fontSize: '1.1em', lineHeight: 1 }}>
                           {item.destacado ? '★' : '☆'}
+                        </button>
+                      </td>
+                    )}
+                    {marcador && (
+                      <td style={{ textAlign: 'center' }}>
+                        <button onClick={() => alternarMarcador(item)}
+                          title={item[marcador.campo] ? marcador.tituloSi : marcador.tituloNo}
+                          style={{ fontSize: '1.1em', lineHeight: 1 }}>
+                          {item[marcador.campo] ? '☑' : '☐'}
                         </button>
                       </td>
                     )}
