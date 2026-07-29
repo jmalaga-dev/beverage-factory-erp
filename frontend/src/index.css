@@ -22,6 +22,12 @@
   --foto-b-bg: rgba(180, 83, 9, 0.07);
   --foto-b-borde: rgba(180, 83, 9, 0.45);
 
+  /* Color de la fecha global segun sea pasada, hoy, o futura (item 7). El
+     color nunca es la unica pista: siempre va con un texto al lado. */
+  --fecha-pasada: #a06000;
+  --fecha-hoy: #0a7d2c;
+  --fecha-futura: #c62828;
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -63,6 +69,11 @@
     --foto-b: #fbbf24;
     --foto-b-bg: rgba(251, 191, 36, 0.10);
     --foto-b-borde: rgba(251, 191, 36, 0.45);
+
+    /* Mismo criterio: subidos de luminosidad para el fondo oscuro. */
+    --fecha-pasada: #d99a2b;
+    --fecha-hoy: #4ade80;
+    --fecha-futura: #f87171;
   }
 
   #social .button-icon {

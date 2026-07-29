@@ -25,6 +25,27 @@ from app.models import (
 from app.servicios.trabajadores import tarifa_hora
 
 
+def ids_salidas_anuladas(sesion):
+    """Ids de las SALIDA que fueron anuladas con un movimiento inverso
+    (ANULACION_SALIDA, migracion 030).
+
+    Por que importa: "gasto" se define por descarte -- SALIDA que no es compra,
+    ni pago a trabajador, ni servicio (4.1 + 10.25). Al anular el pago de un
+    gasto del mes, la fila de Gasto_Extra_Mes deja de estar pagada y suelta su
+    Id_Movimiento, asi que la SALIDA original queda SIN vinculo y, por descarte,
+    se convertiria en un gasto de la semana que nunca existio (ademas de que su
+    plata ya volvio a la cuenta). Una salida cancelada no es un gasto.
+
+    La anulacion en si no necesita filtro: su Tipo_Movimiento propio la deja
+    fuera tanto de las SALIDA (gastos) como de las ENTRADA (ventas).
+    """
+    return {
+        v for (v,) in sesion.query(Movimiento.Id_Movimiento_Anulado)
+        .filter(Movimiento.Tipo_Movimiento == "ANULACION_SALIDA").distinct()
+        if v is not None
+    }
+
+
 def valor_utensilios_sin_absorber(sesion):
     """
     Valor de los items de absorcion (utensilios, feriados) ya comprados pero
@@ -282,10 +303,12 @@ def resumen_desde_ultima_foto(sesion):
         if s.Id_Movimiento:
             ids_movimiento_servicio.add(s.Id_Movimiento)
 
-    # ---- Gastos: movimientos SALIDA que no son ni compra, ni pago, ni servicio ----
+    # ---- Gastos: movimientos SALIDA que no son ni compra, ni pago, ni servicio,
+    #      ni una salida anulada (030) ----
     q = sesion.query(Movimiento).filter(Movimiento.Tipo_Movimiento == "SALIDA")
     if desde:
         q = q.filter(Movimiento.Fecha_Movimiento > desde)
+    anuladas = ids_salidas_anuladas(sesion)
     total_gastos = 0.0
     # Desglose por grupo (mejora 10.26): el total solo dice cuanto, no en que.
     # Se acumula aca mismo para no recorrer los movimientos dos veces.
@@ -293,7 +316,8 @@ def resumen_desde_ultima_foto(sesion):
     for m in q.all():
         if (m.Id_Movimiento in ids_movimiento_compra
                 or m.Id_Movimiento in ids_movimiento_pago
-                or m.Id_Movimiento in ids_movimiento_servicio):
+                or m.Id_Movimiento in ids_movimiento_servicio
+                or m.Id_Movimiento in anuladas):
             continue
         agregar(m.Fecha_Movimiento, f"Gasto: {m.Descripcion_Movimiento} {float(m.Monto_Movimiento)} Bs")
         total_gastos += float(m.Monto_Movimiento)
@@ -546,10 +570,12 @@ def tomar_balance(sesion, fecha_balance=None, dias_semana=7):
         # grupo puede renombrarse o borrarse y la foto tiene que seguir
         # leyendose tal como era ese dia.
         gastos_semana = 0
+        anuladas = ids_salidas_anuladas(sesion)   # salidas canceladas (030)
         for m in q_salidas.all():
             if (m.Id_Movimiento in ids_movimiento_compra
                     or m.Id_Movimiento in ids_movimiento_pago
-                    or m.Id_Movimiento in ids_movimiento_servicio):
+                    or m.Id_Movimiento in ids_movimiento_servicio
+                    or m.Id_Movimiento in anuladas):
                 continue
             gastos_semana += m.Monto_Movimiento
             grupo = (sesion.get(Grupo_Movimiento, m.Id_Grupo_Movimiento)

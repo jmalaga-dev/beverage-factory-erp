@@ -63,6 +63,10 @@ class LineaGastoLote(BaseModel):
     monto: Decimal
     descripcion: str
     id_grupo: int | None = None
+    # Pagado por otra persona (bloque D): no sale de ninguna cuenta propia y
+    # queda fuera del reparto por prioridad.
+    pagado_externo: bool = False
+    quien_pago: str | None = None
 
 
 class GastosLoteEntrada(BaseModel):
@@ -73,7 +77,13 @@ class GastosLoteEntrada(BaseModel):
 
 def _lineas_lote_dict(datos: GastosLoteEntrada):
     return [
-        {"monto": l.monto, "descripcion": l.descripcion, "id_grupo": l.id_grupo}
+        {
+            "monto": l.monto,
+            "descripcion": l.descripcion,
+            "id_grupo": l.id_grupo,
+            "pagado_externo": l.pagado_externo,
+            "quien_pago": l.quien_pago,
+        }
         for l in datos.lineas
     ]
 
@@ -90,8 +100,9 @@ def previsualizar_gastos_lote_ruta(datos: GastosLoteEntrada, sesion: Session = D
 
 @router.post("/gastos-lote")
 def crear_gastos_lote(datos: GastosLoteEntrada, sesion: Session = Depends(get_sesion)):
-    """Registra varios gastos a la vez (uno por línea), pagando primero
-    desde la cuenta de mayor prioridad del tipo elegido. Todo o nada."""
+    """Registra varios gastos a la vez, drenando primero la cuenta de mayor
+    prioridad del tipo elegido. Una línea que se paga entre las dos cuentas
+    genera un movimiento por tramo. Todo o nada."""
     try:
         resultado = registrar_gastos_lote(
             sesion,
@@ -99,12 +110,31 @@ def crear_gastos_lote(datos: GastosLoteEntrada, sesion: Session = Depends(get_se
             tipo=datos.tipo.upper(),
             fecha=datos.fecha or date.today(),
         )
+        partidas = sum(1 for r in resultado["lineas"] if r["partida"])
+        externas = sum(1 for r in resultado["lineas"] if r["externa"])
+        detalles = []
+        if partidas:
+            detalles.append(f"{partidas} pagado(s) entre las dos cuentas")
+        if externas:
+            detalles.append(f"{externas} cubierto(s) por otra persona")
+        mensaje = f"{len(resultado['lineas'])} gastos registrados"
+        if detalles:
+            mensaje += " (" + "; ".join(detalles) + ")"
         return {
-            "mensaje": f"{len(resultado['lineas'])} gastos registrados",
+            "mensaje": mensaje,
             "total_fabrica": float(resultado["total_fabrica"]),
             "total_casa": float(resultado["total_casa"]),
+            "total_externo": float(resultado["total_externo"]),
             "lineas": [
-                {"id_movimiento": r["id_movimiento"], "cuenta": r["cuenta"]}
+                {
+                    "partida": r["partida"],
+                    "externa": r["externa"],
+                    "tramos": [
+                        {"id_movimiento": t["id_movimiento"], "cuenta": t["cuenta"],
+                         "monto": float(t["monto"]), "quien": t["quien"]}
+                        for t in r["tramos"]
+                    ],
+                }
                 for r in resultado["lineas"]
             ],
         }

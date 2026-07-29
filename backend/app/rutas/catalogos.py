@@ -585,6 +585,7 @@ def listar_grupos(sesion: Session = Depends(get_sesion)):
             "id_grupo": g.Id_Grupo_Movimiento,
             "nombre": g.Nombre_Grupo_Movimiento,
             "habilitado": g.Habilitado_Grupo_Movimiento,
+            "prorratea_cierre": g.Prorratea_Cierre_Produccion,
             "en_uso": g.Id_Grupo_Movimiento in usados,
         }
         for g in gs
@@ -633,6 +634,32 @@ def actualizar_grupo(id_grupo: int, datos: GrupoEdicion, sesion: Session = Depen
 @router.patch("/grupos/{id_grupo}/habilitado")
 def cambiar_habilitado_grupo(id_grupo: int, datos: HabilitadoEntrada, sesion: Session = Depends(get_sesion)):
     return _toggle_habilitado(sesion, Grupo_Movimiento, "Habilitado_Grupo_Movimiento", id_grupo, datos.habilitado, "grupo")
+
+
+class ProrrateaCierreEntrada(BaseModel):
+    prorratea_cierre: bool
+
+
+@router.patch("/grupos/{id_grupo}/prorratea-cierre")
+def cambiar_prorratea_cierre(id_grupo: int, datos: ProrrateaCierreEntrada,
+                             sesion: Session = Depends(get_sesion)):
+    """Marca (o desmarca) que los gastos de este grupo se reparten entre los
+    productos terminados de la semana en el cierre de producción (bloque E).
+
+    Marcar/desmarcar solo afecta a los cierres FUTUROS: lo ya repartido queda
+    anotado en Gasto_Cierre_Produccion y dentro del costo de esos lotes, y no
+    se deshace por cambiar la marca."""
+    g = sesion.get(Grupo_Movimiento, id_grupo)
+    if g is None:
+        raise HTTPException(status_code=404, detail=f"No existe grupo con Id {id_grupo}")
+    g.Prorratea_Cierre_Produccion = datos.prorratea_cierre
+    sesion.commit()
+    return {
+        "mensaje": ("Los gastos de este grupo se repartirán en el cierre de producción"
+                    if datos.prorratea_cierre
+                    else "Los gastos de este grupo ya no entran al cierre de producción"),
+        "prorratea_cierre": g.Prorratea_Cierre_Produccion,
+    }
 
 
 @router.delete("/grupos/{id_grupo}")

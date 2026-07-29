@@ -1,10 +1,21 @@
 """
 reparto.py
-Helpers compartidos para repartir un gasto entre la cuenta FABRICA y la
-cuenta CASA por prioridad, usados por las "tablas" de compras y de gastos
-(compras_lote.py y gastos_lote.py): cada linea de la tabla ya trae su propio
-monto, y lo que se decide es de que cuenta sale CADA LINEA COMPLETA (no se
-parte una misma linea entre las dos cuentas).
+Helpers compartidos para repartir gastos y compras entre la cuenta FABRICA y
+la cuenta CASA por prioridad, usados por las "tablas" de compras y de gastos
+(compras_lote.py y gastos_lote.py).
+
+Regla del negocio (bloque C): se DRENA la cuenta de mayor prioridad hasta
+dejarla en cero antes de tocar la otra. Si una linea no entra completa en lo
+que queda, esa linea se PARTE: una parte sale de la primera cuenta (justo lo
+que quedaba) y el resto de la segunda.
+
+Antes se asignaba cada linea ENTERA a una sola cuenta, y apenas una linea no
+entraba se pasaban esa y TODAS las siguientes a la segunda cuenta, sin volver
+a mirar la primera. Eso dejaba plata muerta en la primera billetera: con
+saldos Casa 150 / Fabrica 500 y gastos de 50, 60, 70, 45 y 15, Casa se quedaba
+con 40 Bs sin usar y los ultimos dos gastos (que si entraban) se iban a
+Fabrica. En la practica se gasta una billetera hasta terminarla y recien ahi
+se saca de la otra, aunque un mismo item quede pagado a medias entre las dos.
 """
 
 from app.models import Cuenta
@@ -29,31 +40,48 @@ def cuenta_unica_de_rol(sesion, rol):
 def asignar_cuentas_por_linea(lineas, rol_primero, saldo_primero, rol_segundo, saldo_segundo):
     """
     Recorre las lineas (cada dict con su propio "monto") en el orden dado y
-    decide de que cuenta sale cada una COMPLETA: mientras la suma acumulada
-    (incluyendo la linea actual) quepa en saldo_primero, esa linea sale de
-    rol_primero; apenas una linea no entra completa, esa y TODAS las que
-    siguen salen de rol_segundo (no vuelve a intentar rol_primero despues).
+    decide de que cuenta(s) sale cada una, DRENANDO primero rol_primero.
 
-    Devuelve (asignaciones, total_primero, total_segundo): asignaciones es
-    una lista paralela a lineas con rol_primero o rol_segundo.
+    Devuelve (asignaciones, total_primero, total_segundo), donde `asignaciones`
+    es una lista paralela a `lineas` y cada elemento es una lista de TRAMOS:
+        [{"rol": "CASA", "monto": Decimal("40")},
+         {"rol": "FABRICA", "monto": Decimal("30")}]
+    Una linea que sale entera de una sola cuenta tiene un unico tramo; una
+    linea partida tiene dos. Nunca se emite un tramo de monto cero.
+
+    Los montos de los tramos suman EXACTO el monto de su linea (se reparte por
+    diferencia, sin redondeos intermedios), asi que no hay centavos perdidos.
+
     Lanza ValueError si ni juntando ambas cuentas alcanza.
     """
     asignaciones = []
-    acumulado_primero = 0
-    en_primero = True
-    for linea in lineas:
-        monto = linea["monto"]
-        if en_primero and acumulado_primero + monto <= saldo_primero:
-            asignaciones.append(rol_primero)
-            acumulado_primero += monto
-        else:
-            en_primero = False
-            asignaciones.append(rol_segundo)
+    disponible_primero = saldo_primero
 
-    total_primero = acumulado_primero
-    total_segundo = sum(
-        l["monto"] for l, a in zip(lineas, asignaciones) if a == rol_segundo
-    )
+    for linea in lineas:
+        pendiente = linea["monto"]
+        tramos = []
+
+        # Lo que quede en la primera cuenta se usa hasta agotarlo.
+        if disponible_primero > 0 and pendiente > 0:
+            usar = min(pendiente, disponible_primero)
+            tramos.append({"rol": rol_primero, "monto": usar})
+            disponible_primero -= usar
+            pendiente -= usar
+
+        # El resto (si quedo algo) va a la segunda cuenta.
+        if pendiente > 0:
+            tramos.append({"rol": rol_segundo, "monto": pendiente})
+
+        asignaciones.append(tramos)
+
+    total_primero = saldo_primero - disponible_primero
+    # Suma acumulada a mano (y no sum(), que necesitaria un cero del mismo tipo
+    # para no mezclar int con Decimal en el primer termino).
+    total_segundo = saldo_segundo - saldo_segundo   # cero del mismo tipo que los montos
+    for tramos in asignaciones:
+        for t in tramos:
+            if t["rol"] == rol_segundo:
+                total_segundo += t["monto"]
 
     if total_segundo > saldo_segundo:
         faltante = total_segundo - saldo_segundo

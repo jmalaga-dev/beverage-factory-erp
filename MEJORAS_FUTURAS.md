@@ -2375,3 +2375,222 @@ drill-down en Power BI —categoría → grupo → detalle, en un solo visual—
 agruparía el ranking sin perder el detalle. Es una columna en el catálogo, no una
 tabla nueva. Se dejó para después de 10.25 a propósito: la categoría se define
 **sobre** los grupos, y los grupos recién ahora quedaron estables.
+
+### 10.28 Cargar cantidades en paquetes + botellas también en Recetas — Sonnet
+Pedido explícito: la mejora 6.13 (cargar una cantidad de producto terminado
+como paquetes + botellas sueltas, con la suma mostrada al lado) llegaba a
+Ventas y a la cantidad a producir de Producción Terminada, pero no a las dos
+cajas que faltaban: la "cantidad a producir" del bloque *Aplicar receta* de
+Producción Terminada, y el "rendimiento base" de una receta de tipo TERMINADO
+en la pantalla Recetas.
+
+**Estado: implementado.** Sin backend nuevo: reutiliza el componente
+`CantidadPaquetes` y el helper `totalBotellas()` que ya existían (6.13), con
+el mismo criterio de siempre — el total es un valor **derivado en render**,
+nunca estado propio, y viaja solo. En Recetas, el campo dual solo aparece
+cuando el tipo elegido es TERMINADO (el intermedio sigue con un único campo,
+rinde en su propia unidad, no se empaqueta); cambiar de producto limpia la
+cantidad, mismo criterio que el resto de 6.13. Verificado con `vite build`.
+
+### 10.29 Cierre de mes: no reofrecer gastos ya cargados y poder anular un pago — Sonnet + Opus
+Pedido explícito, con una vuelta: en el desplegable de gastos recurrentes del
+Cierre de mes salían también los que ya se habían cargado (o pagado) ese mes,
+invitando a reintentar cargarlos. Al investigar apareció un hueco más grande:
+un gasto **no pagado** ya se podía corregir (`registrar_monto_mes` hace
+*upsert*), pero era invisible sin un botón que lo mostrara; y un gasto **ya
+pagado** no se podía corregir de ninguna forma — si el monto real difería del
+cargado, no había manera de ajustarlo desde la app.
+
+**Estado: implementado (dos partes).**
+- **Filtro + edición de lo no pagado (Sonnet).** Checkbox "Mostrar solo los
+  que faltan cargar", marcado por defecto, entre el título y el desplegable:
+  oculta los gastos ya cargados este mes. Desmarcándolo aparecen también los
+  ya cargados, y elegir uno no pagado prellena el monto actual (con su
+  origen aclarado, mismo patrón de 6.7) para poder corregirlo antes de
+  guardar. Si el mes ya fue prorrateado, toda la sección de carga se
+  reemplaza por un aviso: el reparto ya se calculó con esos montos, no tiene
+  sentido seguir editando.
+- **Anular el pago de un gasto del mes (Opus), migración nueva.** Mismo
+  criterio que la anulación de un ingreso externo (10a): **movimiento
+  inverso, nunca un DELETE**. Se generalizó el tipo `ANULACION_SALIDA` (antes
+  solo existía `ANULACION_INGRESO_EXTERNO`), que la cuenta puede recibir para
+  cancelar cualquier `SALIDA` sin que el balance la cuente ni como gasto ni
+  como venta. Nuevo servicio `anular_pago_mes`: crea el inverso (la plata
+  vuelve a la cuenta de origen), deja la fila del mes sin pagar (conservando
+  el monto, que es lo que se va a corregir) y bloquea si el mes ya fue
+  prorrateado o si el pago viene de la migración del histórico (sin
+  movimiento de caja asociado — crear uno inventaría un ingreso que nunca
+  existió). Botón **Anular pago** por fila pagada en la tabla del Cierre de
+  mes.
+
+**Un riesgo que casi se escapa, y que la verificación encontró de forma
+concluyente.** Al anular, la fila del mes suelta su vínculo con el
+movimiento (`Id_Movimiento`); pero "gasto" se define en el balance por
+descarte —una `SALIDA` que no es compra, ni pago, ni servicio (ver 4.1 y
+10.25)—, así que esa `SALIDA` huérfana se convertía en un **gasto de la
+semana que nunca existió**, además de que su plata ya había vuelto a la
+cuenta. Se corrigió con un helper compartido (`ids_salidas_anuladas`) usado
+en las dos rutas del balance (resumen en vivo y foto congelada): una salida
+cancelada no es un gasto. Se verificó de forma concluyente comparando el
+cálculo con y sin el fix sobre el mismo pago anulado: sin el fix, el monto
+completo se colaba como gasto fantasma; con el fix, no aparece.
+
+Verificado con una prueba de integración completa (contra una copia
+restaurada de la base, no la real — ver la nota de proceso más abajo):
+pagar → bloqueo de corregir estando pagado → anular → **el saldo vuelve
+exacto** al valor anterior → corregir el monto → repagar → anular de nuevo
+→ los rechazos (mes prorrateado, pago migrado sin movimiento, doble
+anulación, anular algo no pagado). Y `vite build`.
+
+### 10.30 Gastos de fábrica prorrateados en el cierre de producción — Opus
+Pedido explícito: hay un grupo de gastos que son extras que se les dan a los
+trabajadores además del sueldo, sin ser insumo de producción, y hoy son una `SALIDA`
+como cualquier otra — salen de la caja y cuentan como gasto de la semana en
+el balance, pero no tocan el costo de ninguna botella. La idea es que los
+absorba el producto que se produjo esa semana, igual que ya hace el **cierre
+de producción (3.7)** con las horas standby.
+
+**Decisión de negocio: marcar el grupo, no el nombre.** Columna
+`Prorratea_Cierre_Produccion` en `Grupo_Movimiento` (default `false`,
+ningún grupo cambia de comportamiento solo), con un toggle en el catálogo
+(mismo patrón que `Destacado_*` de 10.19, generalizado a un `marcador`
+genérico y reutilizable en el componente `Catalogo`). El grupo se puede
+renombrar libremente desde el catálogo sin tocar nada más — las relaciones
+son por Id (6.1) — y se puede marcar más de uno si aparece otro gasto de la
+misma naturaleza.
+
+**Estado: implementado.** Migración nueva: el flag en `Grupo_Movimiento` y
+una tabla `Gasto_Cierre_Produccion` (`Id_Movimiento`, `Id_Produccion`,
+`Monto_Asignado`), calcada de `Absorcion_Produccion` (1.4) y por los mismos
+dos motivos: evita el doble conteo (un movimiento que ya figura en el libro
+no se vuelve a repartir, así que **re-correr el cierre es seguro**, igual
+que ya lo era con las horas) y deja la trazabilidad de a qué lotes fue cada
+gasto.
+
+- El motor (`cierre_semanal.py`) busca las `SALIDA` del rango cuyo grupo está
+  marcado y que aún no figuran en el libro, y las reparte entre los mismos
+  lotes elegibles con la **misma base** que las horas (botellas o paquetes
+  equivalentes — un solo selector para las dos cosas, para no tener dos
+  criterios activos en la misma pantalla). El costo se suma al unitario del
+  lote igual que el trabajo; los gastos **no** suman horas acumuladas (son
+  dinero, no trabajo).
+- **Decisión de negocio — si hay gastos marcados pero ningún lote elegible,
+  quedan pendientes.** No se pierden ni se bloquea el cierre de las horas
+  por un gasto: el próximo cierre que sí tenga producción los toma. La
+  pantalla avisa cuando esto pasa, con el motivo y el total pendiente.
+- Nueva sección en **Cierre producción**: tabla de los gastos del rango a
+  repartir, columna "+ Gasto fábrica" en el reparto por producto, y el
+  aviso de pendientes.
+
+Verificado con un escenario controlado (dos lotes de tamaño de paquete
+distinto, dos gastos marcados y uno de un grupo no marcado): el reparto por
+botellas y por paquetes suma exacto el total de los gastos en ambos casos
+(sin fugas), el costo unitario sube justo lo que corresponde, un gasto de un
+grupo no marcado queda afuera, re-correr el cierre no duplica nada, un gasto
+cargado antes de que los lotes reciban trabajo se reparte igual (sumándose
+a lo ya aplicado), uno cargado después queda pendiente con el aviso
+correspondiente, y desmarcar el grupo saca sus gastos de cierres futuros
+sin deshacer lo ya repartido. Migración aplicada primero sobre una copia de
+la base restaurada de un respaldo, verificada ahí, y recién después sobre
+la base real (con respaldo previo).
+
+### 10.31 Gasto pagado por otra persona, directo en la tabla de varios gastos — Sonnet
+Pedido explícito: la mejora 10.23 (un gasto que pagó alguien de afuera, ej.
+un aporte que cubre un pago puntual, sin que descuente las cuentas propias)
+solo estaba en el formulario de un gasto suelto, no en la tabla para cargar
+varios de una vez — que es donde se suele cargar el día a día. Faltaba
+poder marcar una línea de la tabla como cubierta por un aporte externo, sin
+tener que salir a un formulario aparte.
+
+**Estado: implementado.** Refactor previo (mismo patrón que `_aplicar_gasto`
+y `_aplicar_compra`): `registrar_gasto_cubierto_externo` se separó en un
+núcleo sin commit (`_aplicar_gasto_externo`) más su envoltorio, para poder
+componerlo junto con líneas propias dentro de la misma transacción del
+lote. Cada línea de la tabla ahora puede marcarse "la pagó otra persona" +
+quién; esa línea **no consume saldo de ninguna cuenta** (crea el par
+`INGRESO_EXTERNO` + `SALIDA` del mismo monto, saldo neto cero) y, el detalle
+que importa, **queda fuera del reparto por prioridad** de las demás líneas:
+si entrara, "gastaría" saldo que en realidad nunca salió y empujaría a las
+líneas siguientes a la segunda cuenta antes de tiempo.
+
+Verificado con el caso que más expone ese detalle: una línea externa grande
+metida en medio de varias propias no desplazó ni un centavo del reparto de
+las líneas de alrededor (se comportan exactamente igual que si la externa no
+existiera), el ingreso y la salida del par son del mismo monto, la salida
+conserva el grupo (entra en el desglose de gastos por grupo, 10.26) y el
+ingreso no lleva grupo (no es un gasto). Guardarraíles: falta indicar quién
+pagó, y atomicidad (un lote mixto que no alcanza no registra ni la línea
+externa). Todo contra una copia restaurada de la base, con la real
+intacta.
+
+### 10.32 Reparto por prioridad: drenar la billetera y partir la línea que la cruza — Opus
+Pedido explícito, con ejemplo concreto: en las tablas de varios gastos/varias
+compras, el reparto por prioridad asignaba cada línea **entera** a una sola
+cuenta — apenas una línea no entraba completa, esa y **todas** las
+siguientes se iban a la segunda cuenta, sin volver a mirar la primera. En la
+práctica eso dejaba plata sin usar en la primera billetera (un resto que ya
+no alcanzaba para la siguiente línea, pero sobraba igual) mientras la
+segunda cargaba de más. Lo que se necesita es drenar la primera billetera
+del todo, aunque para eso un mismo ítem tenga que pagarse en parte con una y
+en parte con la otra.
+
+**Estado: implementado.** El núcleo compartido (`reparto.py`, usado por las
+tablas de Gastos y de Compras) ahora reparte por **tramos**: recorre las
+líneas drenando la primera cuenta hasta dejarla en cero, y la línea que
+cruza ese límite se **parte** en dos tramos (uno por cuenta), con los montos
+sumando exacto la línea original. Ninguna línea que entra completa se toca;
+las que no cruzan el límite siguen enteras.
+
+- **En Gastos:** cada tramo es un `Movimiento` `SALIDA` propio, con
+  **descripción, grupo y fecha idénticos** a los de la línea original — la
+  partición es una mecánica de pago, no dos gastos distintos, así que un
+  reporte que agrupa por descripción o por grupo (el desglose de 10.26, los
+  dashboards de Power BI) sigue sumando exactamente lo mismo que antes.
+- **En Compras, la parte delicada.** Una `Compra` *es* un lote de inventario
+  y enlaza un único movimiento, así que partir el pago obliga a partir el
+  lote: se registran dos `Compra` del mismo insumo, proveedor y fecha, con
+  la **cantidad prorrateada en la misma proporción que el precio** (la
+  última absorbe el redondeo, mismo criterio que la compra dividida por
+  pliego, 3.8). El precio unitario resultante es idéntico en ambos lotes y
+  al original, así que el costeo, el stock consolidado y FIFO no se
+  enteran — lo único que cambia es que el historial de compras muestra dos
+  filas en vez de una. La pantalla lo avisa antes de confirmar.
+- **Guardarraíl nuevo:** si la cantidad es tan chica que un tramo daría
+  cero, se bloquea con un mensaje que sugiere cargar esa línea aparte, en
+  vez de crear un lote de cantidad cero.
+
+Verificado con el algoritmo puro (una línea que entra justo no se parte, la
+primera cuenta en cero manda todo a la segunda, sigue drenando en líneas
+posteriores tras la primera partición, montos con decimales sin perder
+centavos, nunca un tramo en cero) más 200 casos al azar contra los
+invariantes (los tramos de una línea siempre suman su monto, los totales
+cuadran, nunca se toca la segunda cuenta sin agotar la primera). Y de punta
+a punta por HTTP contra una copia de la base: los dos escenarios completos
+(gastos y compras) más atomicidad (un lote que excede ambas cuentas no
+registra ni la línea que sí entraba). La base real quedó intacta en todo
+momento.
+
+### 10.33 Panel de saldos por cuenta, bajo la fecha global — Sonnet
+Pedido explícito: poder ver de un vistazo cuánto hay en cada cuenta/billetera
+sin ir al catálogo, con el mismo formato numérico del resto de la app.
+
+**Estado: implementado.** Componente `PanelSaldos`, colapsado por defecto
+(recuerda el estado en el navegador), debajo de la fecha global en todas las
+pantallas. Al abrirlo lista las cuentas habilitadas con su rol y saldo
+(`fmtMoneda`, que ya da miles con punto y 2 decimales con coma) más una fila
+Total, y se refresca solo al cambiar de pantalla o al abrirse (además de un
+botón manual), para no mostrar un saldo viejo. Cero backend nuevo:
+`/cuentas` ya traía todo lo necesario.
+
+### 10.34 Color de la fecha global según sea pasada, hoy, o futura — Sonnet
+Pedido explícito, ajuste de UI: el input de "Fecha para nuevos registros"
+(6.10) ya cambiaba de color cuando tenía un valor fijado, pero no distinguía
+si esa fecha era del pasado, de hoy, o del futuro.
+
+**Estado: implementado.** Vacío o igual a hoy → verde; anterior a hoy →
+naranja (el color que ya tenía); posterior a hoy → rojo, con un ⚠ al lado.
+El color nunca va solo: siempre acompaña un texto ("hoy", "fecha pasada",
+"fecha futura"), mismo criterio de accesibilidad de 4.6. La comparación usa
+la fecha en **hora local**, compensando el desfase de `toISOString()` —el
+mismo bug de fondo que ya se había corregido en 10.12, donde a última hora
+del día en el huso horario local ya era el día siguiente en UTC.
