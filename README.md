@@ -137,8 +137,9 @@ El modelo editable está en [`fabrica_v2_modelo.dbml`](fabrica_v2_modelo.dbml)
 ├── docker/                  Dockerfiles, nginx, init y seed de demostración
 ├── lanzador/                Lanzador de un clic para uso diario en Windows
 ├── reportes-powerbi/        Documentación de medidas DAX y visuales de Power BI
-├── Fabrica V2.bat           Lanzador de uso diario (doble clic)
-├── Fabrica V2 (demo).bat    Lanzador de demo (datos ficticios, se resetean)
+├── Fabrica V2.bat              Lanzador de uso diario (doble clic)
+├── Fabrica V2 (demo).bat       Lanzador de demo (datos ficticios, se resetean)
+├── Fabrica V2 (demo online).bat  Igual, con link público temporal (Cloudflare)
 ├── docker-compose.yml       Orquestación (modo demo, datos ficticios)
 ├── docker-compose.real.yml  Overlay para evaluar con un respaldo real (local)
 ├── docker-compose.vacio.yml Overlay para instalar sin datos (empresa nueva)
@@ -165,6 +166,11 @@ sistema a terceros sin exponer ningún dato del negocio: usa una base aparte con
 datos ficticios que **se resetea en cada apertura**, corre en el puerto 8011
 (así puede convivir con el anterior) y se conecta con un usuario de PostgreSQL
 sin permisos sobre la base real.
+
+Y un tercero, **`Fabrica V2 (demo online).bat`**, igual al anterior pero con
+un link público temporal (Cloudflare Quick Tunnel, gratis, sin cuenta ni
+dominio) para compartirlo en una entrevista o con un cliente sin estar en la
+misma sala. Requiere `winget install --id Cloudflare.cloudflared` una vez.
 
 Detalles en [`lanzador/README.md`](lanzador/README.md).
 

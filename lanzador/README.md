@@ -2,12 +2,13 @@
 
 Para **usar** el sistema en el día a día, sin abrir terminales a mano.
 
-Hay **dos**, y pueden estar abiertos a la vez:
+Hay **tres**, y pueden estar abiertos a la vez:
 
-| Doble clic en | Qué levanta | Puerto | Datos |
-|---|---|---|---|
-| `Fabrica V2.bat` | la app de trabajo | 8010 | la base **real** |
-| `Fabrica V2 (demo).bat` | para mostrar a terceros | 8011 | **ficticios**, se resetean en cada apertura |
+| Doble clic en | Qué levanta | Puerto | Datos | Acceso |
+|---|---|---|---|---|
+| `Fabrica V2.bat` | la app de trabajo | 8010 | la base **real** | solo esta PC |
+| `Fabrica V2 (demo).bat` | para mostrar a terceros | 8011 | **ficticios**, se resetean en cada apertura | solo esta PC |
+| `Fabrica V2 (demo online).bat` | igual, con link para compartir | 8011 | **ficticios**, se resetean en cada apertura | **internet**, por un link temporal |
 
 Cada uno abre el navegador solo y, al cerrar la ventana, apaga su servidor.
 
@@ -215,14 +216,45 @@ filtra por privilegios.
 La contraseña del rol se genera sola la primera vez y queda en
 `backend/.env.demo`, que **no se versiona**.
 
-### Sobre exponerlo por un túnel
+### `Fabrica V2 (demo online).bat` — el demo con link para compartir
 
-El túnel de Cloudflare apunta a **un puerto**. Mientras el túnel apunte al
-8010 (el real), el demo del 8011 no está expuesto en absoluto. Si en cambio
-se quiere mostrar el demo por internet, se arma un túnel al 8011 — y ahí sí
-conviene decidir si lleva Cloudflare Access o no, sabiendo que sin Access
-cualquiera con el link entra (pero solo a datos ficticios que se borran en la
-próxima apertura).
+Mismo demo (base ficticia, se resetea en cada apertura), más un **Cloudflare
+Quick Tunnel**: al abrirse, además del link local, imprime una URL pública
+(`https://palabras-al-azar.trycloudflare.com`) y la copia al portapapeles.
+Pensado para el caso de "entrevista de 10 minutos" — abrís, mostrás, cerrás.
+
+**Requisito, una sola vez:**
+
+```
+winget install --id Cloudflare.cloudflared
+```
+
+Sin cuenta de Cloudflare, sin dominio propio, sin costo. Si acabás de
+instalarlo, puede hacer falta cerrar y volver a abrir la terminal (o
+reiniciar la sesión) para que Windows actualice el PATH.
+
+**Por qué es un tercer `.bat` y no una casilla en el de siempre:** compartir
+por internet tiene que ser una decisión explícita. El demo local
+(`Fabrica V2 (demo).bat`) nunca intenta abrir un túnel ni depende de tener
+`cloudflared` instalado — son caminos separados a propósito.
+
+**La URL es de un solo uso.** Vale solo mientras esa ventana esté abierta:
+cerrarla mata el túnel (va en el mismo grupo de procesos que el servidor), y
+la próxima vez que se abra sale una URL distinta. Nadie puede guardarse el
+link de una demo anterior y volver a entrar.
+
+**Sin Cloudflare Access.** Cualquiera con el link entra, sin pedir email ni
+login — a propósito, para no tener que registrar a nadie de antemano para
+una demo de minutos. Es una decisión consciente, válida porque:
+- lo que hay del otro lado son datos ficticios que se borran en la próxima
+  apertura (nunca información real del negocio),
+- la ventana de exposición la controla quien abre y cierra el `.bat`,
+- la URL no es adivinable ni queda publicada en ningún lado.
+
+Si en cambio se quiere una URL **estable** (que no cambie cada vez) con
+control de **quién** entra por email, hace falta un dominio propio +
+Cloudflare Access —eso es para la app real (8010), documentado en
+`DECISIONES_DISENO.md` §7 y la mejora 8.7 de `MEJORAS_FUTURAS.md`.
 
 ## Limitaciones
 

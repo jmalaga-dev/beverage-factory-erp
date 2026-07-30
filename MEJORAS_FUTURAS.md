@@ -2038,6 +2038,83 @@ con `git check-ignore` en ambos sentidos.
 - El rol acotado puede escribir en su propia base (hace falta: quien ve la
   demo tiene que poder cargar cosas) pero no leer nada de la real.
 
+**Tercer `.bat`, con link público (jul 2026): `Fabrica V2 (demo online).bat`.**
+Surgió de la pregunta obvia después de armar el demo local: ¿cómo se lo
+muestro a alguien que no está sentado al lado? La 8.7 (túnel + Access) es
+para las 3 personas de uso diario — de largo plazo, con URL estable. Para
+"mostrarlo 10 minutos en una entrevista" eso es demasiado: hay que comprar
+un dominio y armar Access antes de poder abrir nada.
+
+La solución fue un **Cloudflare Quick Tunnel** (`cloudflared tunnel --url
+...`), que no estaba contemplado antes: da una URL pública al instante, sin
+cuenta de Cloudflare, sin dominio propio, sin costo. Verificado con
+búsquedas antes de asumir nada — el precio de un dominio en Cloudflare
+Registrar ($10.44/año, un `.com`) y que el Quick Tunnel de verdad no pide
+dominio, confirmado contra la documentación de Cloudflare y su comunidad.
+
+Se integró como parámetro (`-CompartirPorTunel` en `Iniciar-Fabrica`,
+`_comun.ps1`) en vez de duplicar `iniciar-demo.ps1`: después de que el
+servidor local responde, si el flag está activo, lanza `cloudflared` como
+otro hijo del mismo proceso (hereda el Job Object automáticamente — cerrar
+la ventana también lo mata a él), espera a que aparezca la URL en su log
+(`https://palabras-random.trycloudflare.com`, siempre por stderr) y la
+muestra en el banner final, copiada al portapapeles.
+
+**Por qué un TERCER `.bat` y no una casilla en el de siempre**: mismo
+criterio que la decisión de dos íconos en vez de un menú — compartir por
+internet tiene que ser una decisión explícita, nunca un efecto secundario de
+abrir "el demo de siempre". El `.bat` local nunca depende de tener
+`cloudflared` instalado ni intenta salir a internet.
+
+**Elección consciente: sin Cloudflare Access acá.** A diferencia de la 8.7
+(3 personas, uso diario, necesita saber quién entra), este demo es efímero
+y sobre datos ficticios que se resetean solos. Pedir un email por
+adelantado para una demo espontánea de minutos es fricción sin beneficio
+real: la protección que importa acá es que la URL cambia cada vez y nunca
+queda publicada en ningún lado, no quién se identifica.
+
+**Bug real encontrado al implementar, no al planificar:** `Start-Process` en
+Windows PowerShell 5.1 no permite que `-RedirectStandardOutput` y
+`-RedirectStandardError` apunten al mismo archivo — tira
+`InvalidOperationException`. Apareció recién al correr el `.bat` de punta a
+punta (el script fallaba silenciosamente en cuanto a la salida visible; el
+error real solo aparecía en `stderr` del proceso padre). Se separó en dos
+archivos de log.
+
+**Qué se verificó:**
+- El túnel de verdad sirve la app: interfaz, API y datos ficticios accesibles
+  desde afuera por la URL generada (probado antes de integrarlo al lanzador,
+  con `curl` externo).
+- El `.bat` online de punta a punta: arranca, resetea el demo, abre el
+  túnel, captura la URL del log, la muestra y la copia al portapapeles, y al
+  cerrar mata tanto `uvicorn` como `cloudflared` sin dejar huérfanos.
+- Regresión: `Fabrica V2.bat` y `Fabrica V2 (demo).bat` (sin compartir) se
+  comportan idénticos después de tocar el `_comun.ps1` compartido — ninguno
+  intenta abrir un túnel.
+
+**Bug real encontrado usando el demo, no probándolo (jul 2026): faltaba el
+permiso de secuencia en `Balance_Detalle`.** El rol acotado del demo
+(`fabrica_demo_local`) podía insertar en 40 de las 41 tablas sin problema,
+pero `POST /balances` fallaba con `permiso denegado a la secuencia
+Balance_Detalle_Id_Balance_Detalle_seq`. Apareció en el registro real de una
+sesión de demo, no en las pruebas — la verificación original solo había
+probado un INSERT en `Cliente`.
+
+Causa: 40 de las 41 tablas usan `GENERATED ALWAYS AS IDENTITY` (no necesita
+permiso de secuencia aparte — el `INSERT` alcanza con el permiso de la
+tabla), pero `Balance_Detalle` (migración 024) quedó con un `serial`
+clásico, que sí usa una secuencia con permisos propios. Los `GRANT` del
+reseteo solo cubrían tablas, nunca secuencias.
+
+Arreglo: `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public` más el
+`ALTER DEFAULT PRIVILEGES` correspondiente (mismo patrón que ya se usaba
+para tablas), no un permiso puntual para esa tabla — así no vuelve a pasar
+si una migración futura usa `serial` en vez de `IDENTITY`. Verificado
+reproduciendo el `INSERT` exacto que había fallado, directo con las
+credenciales del rol: antes daba el error de secuencia, después generó el
+id (`Id_Balance_Detalle = 2`) e insertó limpio. Reverificado de paso que el
+rol sigue sin poder leer la base real.
+
 ---
 
 ## 9. TIPOS Y VALIDACIONES
