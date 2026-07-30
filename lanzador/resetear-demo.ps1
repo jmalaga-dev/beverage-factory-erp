@@ -8,11 +8,11 @@
 # prolija, sin arrastrar lo que haya tocado una demo anterior.
 #
 # Por que una base y un rol de PostgreSQL APARTE, y no reusar
-# fabrica_V2_pruebas: esa base es una COPIA de la real (mismos 307 clientes,
-# mismas 3266 ventas — verificado antes de armar esto), no datos ficticios.
-# Mostrarsela a alguien filtraria nombres y numeros reales del negocio. El
-# demo necesita una base con datos inventados, separada de la real y de la
-# de pruebas.
+# fabrica_V2_pruebas: esa base es una COPIA restaurada de un respaldo real
+# (verificado antes de armar esto: mismo contenido que la base real, no
+# datos ficticios). Mostrarsela a alguien filtraria nombres y numeros reales
+# del negocio. El demo necesita una base con datos inventados, separada de
+# la real y de la de pruebas.
 #
 # El rol `fabrica_demo_local` que usa el proceso de uvicorn en este modo NO
 # es el superusuario `postgres` de siempre: no tiene NINGUN privilegio sobre
