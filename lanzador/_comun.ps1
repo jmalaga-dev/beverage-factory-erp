@@ -144,6 +144,11 @@ public static class GrupoProcesos {
 #   AntesDeArrancar   scriptblock opcional que corre despues de validar los
 #                     requisitos y ANTES de levantar uvicorn. El modo demo lo
 #                     usa para resetear su base de datos en cada apertura.
+#   CompartirPorTunel switch. Si esta presente, ademas de levantar el
+#                     servidor local abre un Cloudflare Quick Tunnel
+#                     (`cloudflared tunnel --url ...`) y muestra la URL
+#                     publica generada. Pensado para "Fabrica V2 (demo
+#                     online).bat": sin esto, el demo queda solo en esta PC.
 function Iniciar-Fabrica {
     param(
         [Parameter(Mandatory)][int]$Puerto,
@@ -151,7 +156,8 @@ function Iniciar-Fabrica {
         [string]$PrefijoLog = "registro",
         [hashtable]$VariablesEntorno = @{},
         [scriptblock]$VariablesEntornoDiferidas = $null,
-        [scriptblock]$AntesDeArrancar = $null
+        [scriptblock]$AntesDeArrancar = $null,
+        [switch]$CompartirPorTunel
     )
 
     $Url = "http://127.0.0.1:$Puerto"
@@ -332,6 +338,64 @@ function Iniciar-Fabrica {
 
     Escribir "  [OK] Servidor respondiendo en $Url" "Green"
 
+    # ---------- Tunel publico (opcional) ----------
+    # Un Cloudflare Quick Tunnel: da una URL publica al instante
+    # (https://palabras-random.trycloudflare.com) SIN cuenta, SIN dominio
+    # propio y sin costo. La contrapartida, que para un demo de unos minutos
+    # es una ventaja: la URL es distinta cada vez que se abre, no hay forma
+    # de "guardarla" para volver a entrar despues de cerrado.
+    #
+    # cloudflared se lanza desde ESTE proceso, que ya esta en el Job Object
+    # (ver mas arriba): hereda la pertenencia al grupo automaticamente, asi
+    # que cerrar la ventana con la X tambien lo mata a el, no solo a uvicorn.
+    $tunel = $null
+    if ($CompartirPorTunel) {
+        $cloudflared = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
+        if (-not $cloudflared) {
+            Abortar "No se encontro 'cloudflared'. Instalar con:`n`n    winget install --id Cloudflare.cloudflared`n`ny volver a abrir este lanzador (puede hacer falta una terminal nueva para que tome el PATH)."
+        }
+
+        Escribir "  Abriendo un link publico (Cloudflare Tunnel)..." "Gray"
+        # Salida y error en archivos DISTINTOS: Start-Process en Windows
+        # PowerShell 5.1 no permite que -RedirectStandardOutput y
+        # -RedirectStandardError apunten al mismo archivo (tira
+        # InvalidOperationException). cloudflared escribe todo por stderr,
+        # asi que la URL va a terminar en $logTunelErr, pero se revisan los
+        # dos por si alguna version futura lo cambia.
+        $logTunelOut = Join-Path $PSScriptRoot "$PrefijoLog-tunel.log"
+        $logTunelErr = Join-Path $PSScriptRoot "$PrefijoLog-tunel-errores.log"
+        # --url es el modo "quick tunnel": sin -tunnel-id ni login previo,
+        # apunta al servidor local y listo.
+        $tunel = Start-Process -FilePath $cloudflared `
+            -ArgumentList "tunnel", "--url", $Url `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $logTunelOut -RedirectStandardError $logTunelErr
+
+        $urlPublica = $null
+        foreach ($intento in 1..30) {
+            if ($tunel.HasExited) { break }
+            foreach ($log in @($logTunelErr, $logTunelOut)) {
+                if (Test-Path $log) {
+                    $coincidencia = Select-String -Path $log -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" -ErrorAction SilentlyContinue |
+                        Select-Object -First 1
+                    if ($coincidencia) {
+                        $urlPublica = $coincidencia.Matches[0].Value
+                        break
+                    }
+                }
+            }
+            if ($urlPublica) { break }
+            Start-Sleep -Milliseconds 500
+        }
+
+        if (-not $urlPublica) {
+            Escribir "  No se pudo obtener el link publico. Sigue disponible solo en esta PC." "Yellow"
+            if (Test-Path $logTunelErr) { Get-Content $logTunelErr -Tail 10 | ForEach-Object { Escribir "    $_" "DarkGray" } }
+        } else {
+            Escribir "  [OK] Link publico listo" "Green"
+        }
+    }
+
     # Se abre con explorer.exe y no con Start-Process directo a proposito.
     # Como este script esta en el Job Object que mata a sus hijos, un
     # navegador lanzado desde aca seria hijo y se cerraria junto con el
@@ -345,12 +409,23 @@ function Iniciar-Fabrica {
     Escribir "  ==================================================" "Cyan"
     Escribir "   $Titulo esta corriendo." "White"
     Escribir ""
-    Escribir "   Abierto en:  $Url" "White"
+    Escribir "   Local:   $Url" "White"
+    if ($urlPublica) {
+        Escribir "   Publico: $urlPublica" "White"
+        Escribir ""
+        Escribir "   Ese link publico es SOLO por esta sesion: al cerrar esta" "Yellow"
+        Escribir "   ventana deja de funcionar, y la proxima vez sale otro." "Yellow"
+        try {
+            Set-Clipboard -Value $urlPublica
+            Escribir "   (copiado al portapapeles)" "DarkGray"
+        } catch { }
+    }
     if (-not $hayGrupo) {
+        Escribir ""
         Escribir "   Aviso: no se pudo crear el grupo de procesos; si cerras" "Yellow"
         Escribir "   con la X puede quedar el servidor corriendo." "Yellow"
-        Escribir ""
     }
+    Escribir ""
     Escribir "   Para APAGAR: cerra esta ventana (o Enter aca)." "White"
     Escribir "  ==================================================" "Cyan"
     Escribir ""
@@ -358,7 +433,9 @@ function Iniciar-Fabrica {
     Read-Host "  Enter para apagar" | Out-Null
 
     # Salida ordenada por la via del Enter. Si en cambio se cerro la ventana
-    # con la X, nada de esto corre y el Job Object hace el trabajo.
+    # con la X, nada de esto corre y el Job Object hace el trabajo (mata
+    # tanto a uvicorn como a cloudflared, los dos hijos de este proceso).
     Escribir "  Apagando..." "Gray"
+    if ($tunel -and -not $tunel.HasExited) { Stop-Process -Id $tunel.Id -Force -ErrorAction SilentlyContinue }
     if (-not $servidor.HasExited) { Stop-Process -Id $servidor.Id -Force -ErrorAction SilentlyContinue }
 }

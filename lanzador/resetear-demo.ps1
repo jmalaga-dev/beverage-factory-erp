@@ -183,14 +183,30 @@ GRANT CONNECT ON DATABASE "$NombreBaseDemo" TO $NombreRolDemo;
         # cargar clientes, ventas, etc. de verdad, no solo mirar. Nada de DDL
         # (crear/alterar tablas): eso queda reservado al superusuario que
         # corre las migraciones.
+        #
+        # Secuencias, aparte de las tablas: casi todas las tablas usan
+        # "GENERATED ALWAYS AS IDENTITY" (40 de 41), que no necesita permiso
+        # de secuencia aparte -- el INSERT alcanza con el permiso de la
+        # tabla. Pero Balance_Detalle (migracion 024) quedo con un "serial"
+        # clasico, que SI usa una secuencia con permisos propios. Sin este
+        # GRANT, cualquier INSERT ahi fallaba con "permiso denegado a la
+        # secuencia" -- se detecto de la forma dura: en el registro real del
+        # demo, no en una prueba. Se otorga sobre TODAS las secuencias (no
+        # solo esa) para no repetir el problema si aparece otro "serial" en
+        # una migracion futura.
+        #
         # ALTER DEFAULT PRIVILEGES: para que una migracion futura que agregue
-        # una tabla no requiera acordarse de otorgarle permiso a mano (mismo
-        # criterio que el rol powerbi_lectura en docker/init/00_init.sh).
+        # una tabla o secuencia no requiera acordarse de otorgarle permiso a
+        # mano (mismo criterio que el rol powerbi_lectura en
+        # docker/init/00_init.sh).
         $sqlPermisos = @"
 GRANT USAGE ON SCHEMA public TO $NombreRolDemo;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $NombreRolDemo;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO $NombreRolDemo;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $NombreRolDemo;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO $NombreRolDemo;
 "@
         $archivoTemp2 = Escribir-SqlTemporal $sqlPermisos
         try {

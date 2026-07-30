@@ -19,7 +19,16 @@
 # usar el demo suele ser con alguien mirando. Un menu agrega un paso donde
 # equivocarse de tecla significa mostrar los datos reales. Con dos iconos de
 # nombre distinto no hay tecla que apretar mal.
+#
+# El parametro -Compartir (no se toca a mano: lo pasa "Fabrica V2 (demo
+# online).bat") agrega un Cloudflare Quick Tunnel: el demo queda accesible
+# desde internet por unos minutos, con una URL publica distinta cada vez.
+# Por el mismo criterio de "sin menu": es OTRO archivo .bat, para que
+# compartir el demo por internet sea una eleccion explicita, nunca sin
+# querer al abrir el de siempre.
 # =============================================================================
+
+param([switch]$Compartir)
 
 . (Join-Path $PSScriptRoot "_comun.ps1")
 . (Join-Path $PSScriptRoot "resetear-demo.ps1")
@@ -41,8 +50,11 @@ $variablesDemo = {
     return $vars
 }
 
+$titulo = if ($Compartir) { "FABRICA V2 - DEMO ONLINE (link publico)" } else { "FABRICA V2 - DEMO (datos ficticios)" }
+
 Iniciar-Fabrica -Puerto 8011 `
-    -Titulo "FABRICA V2 - DEMO (datos ficticios)" `
+    -Titulo $titulo `
     -PrefijoLog "registro-demo" `
     -AntesDeArrancar $resetear `
-    -VariablesEntornoDiferidas $variablesDemo
+    -VariablesEntornoDiferidas $variablesDemo `
+    -CompartirPorTunel:$Compartir
