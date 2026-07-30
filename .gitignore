@@ -34,6 +34,14 @@ __pycache__/
 venv/
 .venv/
 
+# Frontend compilado: lo genera `npm run build` (y el lanzador local solo).
+# Es producto de la compilacion, no fuente.
+frontend/dist/
+
+# Registros y estado local del lanzador (mejora 8.8)
+lanzador/*.log
+lanzador/.compilado
+
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
