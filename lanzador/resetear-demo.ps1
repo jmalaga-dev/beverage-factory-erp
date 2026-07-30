@@ -37,6 +37,26 @@
 
 $ErrorActionPreference = "Stop"
 
+# Escribe SQL a un archivo temporal en UTF-8 SIN BOM y devuelve la ruta.
+#
+# El "sin BOM" no es cosmetico. `Set-Content -Encoding utf8` en Windows
+# PowerShell 5.1 escribe un BOM (los bytes EF BB BF al principio), y psql
+# solo lo ignora si su codificacion de cliente resulta ser UTF8. En una
+# consola en espanol (codepage 850/1252, que es lo normal al hacer doble
+# clic en el .bat) psql interpreta esos tres bytes como los caracteres
+# "i>>?" y los pega al primer comando, con lo que el archivo entero falla:
+#
+#   ERROR: error de sintaxis en o cerca de <<i>>?DO>>
+#
+# Es un error que aparece o no segun el idioma/codepage de Windows, asi que
+# escribiendo sin BOM el script funciona igual en cualquier maquina. El
+# `$false` del constructor es justamente "no emitir BOM".
+function Escribir-SqlTemporal($sql) {
+    $ruta = [System.IO.Path]::GetTempFileName() + ".sql"
+    [System.IO.File]::WriteAllText($ruta, $sql, (New-Object System.Text.UTF8Encoding $false))
+    return $ruta
+}
+
 function Resetear-BaseDemo {
     $RaizRepo = Split-Path -Parent $PSScriptRoot
     $RutaBackend = Join-Path $RaizRepo "backend"
@@ -150,9 +170,8 @@ GRANT CONNECT ON DATABASE "$NombreBaseDemo" TO $NombreRolDemo;
         # (las que preservan mayusculas en "fabrica_V2_demo") es fragil al
         # pasarlo a un ejecutable nativo desde PowerShell. Un archivo evita
         # por completo ese problema de escapado.
-        $archivoTemp = [System.IO.Path]::GetTempFileName() + ".sql"
+        $archivoTemp = Escribir-SqlTemporal $sqlRol
         try {
-            Set-Content -Path $archivoTemp -Value $sqlRol -Encoding utf8
             & $psql @argsConexion -v ON_ERROR_STOP=1 -q -d postgres -f $archivoTemp
             if ($LASTEXITCODE -ne 0) { throw "Fallo al crear/actualizar el rol de demo." }
         } finally {
@@ -173,9 +192,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $NombreRo
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $NombreRolDemo;
 "@
-        $archivoTemp2 = [System.IO.Path]::GetTempFileName() + ".sql"
+        $archivoTemp2 = Escribir-SqlTemporal $sqlPermisos
         try {
-            Set-Content -Path $archivoTemp2 -Value $sqlPermisos -Encoding utf8
             & $psql @argsDemo -f $archivoTemp2
             if ($LASTEXITCODE -ne 0) { throw "Fallo al otorgar permisos dentro de la base de demo." }
         } finally {
