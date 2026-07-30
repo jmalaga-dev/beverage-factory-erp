@@ -779,6 +779,56 @@ Nota de depuración: cuando un endpoint crashea (error 500), el navegador a vece
 reporta "CORS" aunque la causa real sea otra — la terminal del backend es la
 fuente de verdad del error.
 
+### 7.1 Tres formas de servir la misma app
+
+Los dos servidores separados son la forma de **desarrollo**, no la única. Hay
+tres modos, y cada uno resuelve la relación frontend↔backend distinto:
+
+| Modo | Interfaz | API | Cómo se conecta |
+|---|---|---|---|
+| Desarrollo | Vite, 5173 | uvicorn `--reload`, 8000 | CORS entre dos orígenes |
+| Lanzador local (8.8) | compilada, la sirve el backend | uvicorn, 8010 | mismo origen, sin CORS |
+| Docker (8.6) | compilada, la sirve nginx, 8080 | uvicorn, 8001 | CORS entre dos orígenes |
+
+Lo que hace que convivan sin `if` de entorno en el código es que **cada capa
+decide por una sola señal**:
+
+- **El backend sirve la interfaz solo si existe `frontend/dist`.** No hay
+  variable de "modo": la presencia de la carpeta es la señal. En desarrollo no
+  existe (ahí la sirve Vite) y en la imagen de Docker tampoco, porque
+  `backend.Dockerfile` copia solo `backend/app`. Así el mismo `main.py` sirve
+  para los tres modos.
+- **La URL del backend en el frontend se resuelve al compilar**, por
+  `VITE_API_URL`. Sin variable queda el valor de desarrollo de siempre; Docker
+  la fija a su puerto publicado; el lanzador usa el valor especial
+  `MISMO_ORIGEN`, que deja la base vacía para que las llamadas salgan
+  relativas. Hace falta un valor explícito porque Vite no distingue una
+  variable vacía de una no definida.
+- **Los puertos están corridos a propósito** (8000/5173 desarrollo, 8010
+  lanzador, 8001/5433/8080 Docker) para que los tres modos puedan estar
+  prendidos a la vez.
+
+### 7.2 Las pantallas se llaman igual que los endpoints
+
+La pantalla de ventas es `/ventas` y la API de ventas también. Con la interfaz
+en su propio puerto no hay conflicto: son dos orígenes distintos. Sirviendo
+todo desde un solo puerto (el lanzador) **sí choca**, y no lo arregla una ruta
+comodín al final, porque FastAPI resuelve en orden de registro y `/ventas` de
+la API gana antes de llegar.
+
+Se resuelve por el **tipo de pedido, no por la dirección**: un middleware mira
+si el navegador está *abriendo* una dirección (`Sec-Fetch-Mode: navigate`, que
+los navegadores mandan en un link, un F5 o un marcador, y nunca en un
+`fetch()`) y en ese caso devuelve la interfaz; el `fetch()` de esa misma
+interfaz pidiendo `/ventas` recibe los datos. Las dos cosas conviven en la
+misma dirección.
+
+Se evaluó y descartó mover toda la API a un prefijo `/api`. Es lo "de manual"
+y elimina el choque de raíz, pero cambia todas las URLs de 22 routers, del
+frontend y de la documentación, para resolver un problema que solo existe en
+uno de los tres modos. Queda anotado como el arreglo de fondo si algún día
+molesta más.
+
 ---
 
 ## 8. VERSIONADO Y DATOS
@@ -926,6 +976,9 @@ Git/                          (raíz del repositorio)
 ├── fabrica_v2_postgres.sql   (esquema base, 31 tablas)
 ├── DECISIONES_DISENO.md      (este archivo)
 ├── MEJORAS_FUTURAS.md        (mejoras para próximas versiones)
+├── Fabrica V2.bat            (lanzador de uso diario, doble clic)
+├── lanzador/                 (iniciar.ps1 + su README; registros NO versionados)
+├── docker/                   (Dockerfiles, nginx, init, seed de demo)
 ├── backend/
 │   ├── .env                  (credenciales, NO versionado)
 │   ├── migraciones/          (cambios incrementales a la BD, numerados)

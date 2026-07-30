@@ -1,0 +1,6 @@
+# Scripts que corren DENTRO de un contenedor Linux (docker/init/00_init.sh):
+# tienen que quedar en LF pase lo que pase. En Windows, con core.autocrlf=true,
+# un `git checkout` normal reescribe el archivo a CRLF; Docker monta ese
+# archivo tal cual esta en disco (no pasa por git), asi que bash recibe un
+# shebang "#!/bin/bash\r" y falla al arrancar el contenedor de la base.
+*.sh text eol=lf

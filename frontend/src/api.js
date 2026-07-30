@@ -8,7 +8,15 @@
 // se resuelve al compilar. Sirve para el despliegue con Docker, donde el
 // backend no esta en 127.0.0.1:8000. Sin la variable queda el valor de
 // siempre, asi que el entorno de desarrollo local no cambia en nada.
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+//
+// El valor especial "MISMO_ORIGEN" deja la base vacia: las llamadas salen
+// relativas (fetch('/clientes')) y pegan contra quien haya servido la
+// pagina. Lo usa el lanzador local, donde el backend sirve el frontend
+// compilado desde su mismo puerto y no hay dos origenes que conciliar. No
+// alcanza con pasar la variable vacia: Vite no distingue "vacia" de "no
+// definida", asi que hace falta un valor explicito.
+const API_URL = import.meta.env.VITE_API_URL
+const BASE_URL = API_URL === 'MISMO_ORIGEN' ? '' : (API_URL || 'http://127.0.0.1:8000')
 
 // Lee del backend y devuelve el JSON. Si la respuesta es un error,
 // lanza una excepcion con el mensaje del backend (campo "detail").

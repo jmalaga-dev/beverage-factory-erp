@@ -135,9 +135,13 @@ El modelo editable está en [`fabrica_v2_modelo.dbml`](fabrica_v2_modelo.dbml)
 ├── backend/                 API FastAPI (rutas, servicios, modelos, migraciones)
 ├── frontend/                Interfaz React + Vite
 ├── docker/                  Dockerfiles, nginx, init y seed de demostración
+├── lanzador/                Lanzador de un clic para uso diario en Windows
 ├── reportes-powerbi/        Documentación de medidas DAX y visuales de Power BI
+├── Fabrica V2.bat           Lanzador de uso diario (doble clic)
+├── Fabrica V2 (demo).bat    Lanzador de demo (datos ficticios, se resetean)
 ├── docker-compose.yml       Orquestación (modo demo, datos ficticios)
 ├── docker-compose.real.yml  Overlay para evaluar con un respaldo real (local)
+├── docker-compose.vacio.yml Overlay para instalar sin datos (empresa nueva)
 ├── fabrica_v2_postgres.sql  Esquema completo de PostgreSQL
 ├── fabrica_v2_modelo.dbml   Modelo de datos editable (dbdiagram.io)
 ├── fabrica_diagrama_ER.png  Diagrama entidad-relación
@@ -147,9 +151,28 @@ El modelo editable está en [`fabrica_v2_modelo.dbml`](fabrica_v2_modelo.dbml)
 
 ---
 
+## Uso diario en Windows (un solo clic)
+
+Para *usar* el sistema, no para desarrollarlo: doble clic en **`Fabrica V2.bat`**.
+Verifica que PostgreSQL esté arriba, recompila la interfaz solo si hay cambios,
+levanta **un único proceso** que sirve la API y la interfaz en el mismo puerto
+(`http://127.0.0.1:8010`) y abre el navegador. Al cerrar la ventana se apaga el
+servidor: queda dentro de un *Job Object* de Windows con `KILL_ON_JOB_CLOSE`,
+así que el sistema operativo lo termina aunque se cierre con la X.
+
+Al lado hay un segundo lanzador, **`Fabrica V2 (demo).bat`**, para mostrar el
+sistema a terceros sin exponer ningún dato del negocio: usa una base aparte con
+datos ficticios que **se resetea en cada apertura**, corre en el puerto 8011
+(así puede convivir con el anterior) y se conecta con un usuario de PostgreSQL
+sin permisos sobre la base real.
+
+Detalles en [`lanzador/README.md`](lanzador/README.md).
+
+---
+
 ## Desarrollo local
 
-Requiere PostgreSQL 16, Python 3.12+ y Node 18+.
+Requiere PostgreSQL 16+, Python 3.12+ y Node 18+.
 
 ```bash
 # Base de datos: crear una base vacía y cargar el esquema

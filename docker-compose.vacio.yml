@@ -1,0 +1,19 @@
+# Variante SIN DATOS: esquema + migraciones, nada mas.
+#
+# Se usa SUMADO al compose principal, no en lugar de el:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.vacio.yml up --build
+#
+# Pensado para instalar el sistema en una empresa nueva: ni los datos
+# ficticios de la demo, ni un respaldo de otro negocio. Solo el esquema,
+# listo para que la primera persona empiece a cargar proveedores, productos,
+# etc. desde cero.
+#
+# Si la base ya fue inicializada antes (por ejemplo con el modo demo), hay
+# que borrar su volumen para que vuelva a correr la inicializacion:
+#   docker compose down -v
+
+services:
+  db:
+    environment:
+      MODO_DATOS: vacio

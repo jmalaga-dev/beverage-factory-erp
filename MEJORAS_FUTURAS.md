@@ -1722,7 +1722,7 @@ por ahora, no como pendiente.
 Para el final (etapa E), después de que el sistema esté probado en el uso
 diario real.
 
-**Estado: escrito y parcialmente verificado (jul 2026). Falta correrlo.**
+**Estado: implementado y corrido de punta a punta (jul 2026).**
 
 Archivos: `docker-compose.yml` (demo), `docker-compose.real.yml` (override),
 `docker/` (Dockerfiles de backend y frontend, `nginx.conf`, `init/00_init.sh`,
@@ -1758,9 +1758,8 @@ base local.
   en **5433**, no en 8000/5432, porque el entorno de desarrollo ya los ocupa
   y los contenedores no arrancarían con el entorno local prendido.
 
-**Qué está verificado y qué no.** Docker no está instalado en la máquina de
-desarrollo, así que **`docker compose up` nunca se ejecutó**. Sí se verificó,
-contra PostgreSQL real y sobre una base descartable (creada y borrada):
+**Verificación previa** (contra PostgreSQL real y sobre una base descartable,
+creada y borrada), de cuando Docker todavía no estaba instalado:
 - El esquema base + las **24 migraciones** aplican limpio sobre una base
   vacía. Es un camino que nunca se había probado: la base real creció
   migración por migración, no de cero.
@@ -1775,9 +1774,80 @@ contra PostgreSQL real y sobre una base descartable (creada y borrada):
   los tres puertos cuadran entre sí (el frontend llama al puerto que el
   backend publica, y ese origen está en la lista de CORS).
 
-Queda sin probar el plumbing de Docker: construcción de las imágenes, red
-entre contenedores y orden de arranque. Al instalar Docker, el primer
-`docker compose up --build` es la prueba pendiente.
+**La corrida real (jul 2026), con Docker 29.6.2 ya instalado.** El plumbing
+que quedaba pendiente —construcción de las imágenes, red entre contenedores,
+orden de arranque— funcionó. Lo verificado:
+
+- **Modo demo:** `docker compose up --build` construye las dos imágenes y
+  levanta los tres contenedores de cero. La base aplica esquema + 31
+  migraciones + seed, queda `healthy`, el backend responde `/docs` y
+  `/clientes`, y nginx sirve la app en el 8080 (incluido `/ventas`, o sea que
+  el `try_files` de la SPA funciona).
+- **Modo real:** probado con un `pg_dump` de verdad. Restaura, la verificación
+  de esquema pasa limpia, y los endpoints consultados responden todos sin un
+  solo error de base en el log.
+- **Rol `powerbi_lectura`:** comprobado en los dos sentidos. Lee, y al intentar
+  un `DELETE` recibe `permission denied for table`.
+
+**Tres cosas que la corrida real destapó** (ninguna se veía "escribiendo" el
+compose, y las tres habrían aparecido recién el día de entregarlo):
+
+1. **La versión de PostgreSQL estaba mal, y solo iba a fallar con datos
+   reales.** El compose usaba `postgres:16-alpine`, pero los respaldos los
+   genera `pg_dump 18` (la versión instalada), que escribe el archivo en
+   formato **1.16**; el `pg_restore` de la 16 no sabe leerlo y muere con
+   `unsupported version (1.16) in file header`. El modo demo no lo notaba
+   porque no usa respaldos: el problema estaba latente exactamente en el
+   camino que justifica la mejora. Regla que queda: **la versión del
+   contenedor tiene que ser >= la de desarrollo**, no solo "una nueva".
+2. **La imagen 18 cambió el punto de montaje.** Ya no es
+   `/var/lib/postgresql/data` sino `/var/lib/postgresql`: los datos ahora van
+   en un subdirectorio por versión (`/18/docker`) para que un `pg_upgrade`
+   futuro no tropiece con el límite del montaje. Con el montaje viejo, la 18
+   encuentra datos donde no los espera y se niega a arrancar. Cambiar la
+   versión de la imagen no era un cambio de una línea.
+3. **Un respaldo viejo restaura sin errores y deja la app medio rota.** El
+   modo real no aplica migraciones encima del dump (ya vienen adentro), así
+   que un respaldo anterior a una migración queda sin esas columnas. Se probó
+   con uno de dos semanas antes: `pg_restore` no se quejó de nada, la base
+   quedó "funcionando", y después `/ventas` y `/balance-actual` tiraron 500 por
+   `Venta.Taxi_Venta` y `Producto_Terminado.Destacado_Producto_Terminado`.
+   Quien está evaluando el sistema lo ve roto y culpa al sistema.
+
+   **No se puede arreglar re-aplicando las migraciones**: no son idempotentes
+   (`ADD COLUMN` sin `IF NOT EXISTS`), así que sobre un respaldo al día
+   fallarían todas. Lo que se hizo es **detectarlo y decirlo**: `00_init.sh`
+   arma en una base descartable el esquema que el código espera (base + todas
+   las migraciones), lo compara columna por columna contra lo restaurado, y si
+   falta algo lista exactamente qué y qué hacer. Es un aviso, no un corte: la
+   base queda restaurada igual. Verificado en los dos casos — con el respaldo
+   viejo lista las 21 columnas faltantes, con uno al día dice "esquema al
+   día".
+
+   De paso, la verificación revalida en cada corrida que esquema base +
+   migraciones sigan aplicando limpio sobre una base vacía.
+
+**Nota de higiene:** la prueba del modo real cargó datos verdaderos en el
+volumen del contenedor. Al terminar se hizo `docker compose down -v` y se
+borró el respaldo de prueba. El volumen de Docker nunca es la fuente de
+verdad: es la base local de desarrollo.
+
+**Tercer modo agregado después (jul 2026): `vacio`.** Surgió al conversar
+sobre vender el sistema a otra empresa — ni la demo (datos inventados) ni el
+real (respaldo de este negocio) sirven para instalar en un cliente nuevo;
+hace falta esquema limpio sin un solo dato. Se agregó reutilizando la misma
+lógica de esquema + migraciones que ya tenía el modo demo (antes solo vivía
+en esa rama, ahora es compartida entre demo y vacío; el que cambia es si
+después se carga o no `seed_demo.sql`), más el overlay
+`docker-compose.vacio.yml` con el mismo patrón que `docker-compose.real.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.vacio.yml up --build
+```
+
+Verificado: 40 tablas (las mismas que demo/real), cero filas en `Cliente`,
+`Venta` y `Producto_Terminado`, y la API responde `[]` sin errores — no hay
+diferencia entre "sin datos" y "endpoint roto" para quien lo prueba.
 
 ### 8.7 Self-hosting real (mediano plazo, con túnel)
 Distinto de 8.6: esto es para uso productivo real, no solo demo. Unas 3
@@ -1794,12 +1864,179 @@ falta un hosting pago — la propia PC alcanza como servidor:
   real): usar un túnel tipo **Cloudflare Tunnel** (gratis, da HTTPS,
   la PC se conecta hacia afuera en vez de aceptar conexiones entrantes).
   Nunca exponer el puerto de PostgreSQL directamente, solo el del backend.
+- **El túnel solo no restringe a "las 3 personas".** Publica el puerto bajo
+  una dirección pública de internet: cualquiera con el link (o que lo
+  encuentre/adivine) llega hasta la app. Restringir por identidad requiere
+  sumar **Cloudflare Access** (parte de Cloudflare Zero Trust, también
+  gratis para pocos usuarios): exige login por email antes de que el pedido
+  llegue al backend. Es la pieza que falta para que "3 personas" sea cierto,
+  no una capa opcional.
 - Evaluado y descartado por ahora: hosting pago en la nube (Render/Railway,
   ~7-15 USD/mes) — no se justifica con solo 3 usuarios y la PC ya disponible
   en el horario necesario.
 
-Pendiente de definir cuando se implemente: manejo de usuarios/roles (quién
-ve qué), que hasta ahora se dejó fuera de esta conversación a propósito.
+**Bloqueante real antes de exponer cualquier cosa a internet:** el sistema
+hoy no tiene usuarios ni contraseñas — quien entra, entra con permisos
+totales. Mientras todo corre en `127.0.0.1` no importa; con un túnel público
+sí, así que manejo de usuarios/roles deja de ser "pendiente de definir" y
+pasa a ser requisito previo al túnel, no posterior.
+
+### 8.8 Lanzador de un clic para uso diario (Windows)
+
+Surgió de una pregunta concreta (jul 2026): hoy, para *usar* el sistema, hay
+que abrir dos terminales a mano (uvicorn y Vite) y dejarlas abiertas; y al
+cerrarlas no siempre queda claro si los servidores se apagaron.
+
+**Estado: implementado y probado (jul 2026).**
+
+Archivos: `Fabrica V2.bat` (raíz, doble clic), `lanzador/iniciar.ps1`,
+`lanzador/README.md`. Toca además `backend/app/main.py` y
+`frontend/src/api.js`.
+
+**Decisión de diseño: un solo proceso, no dos.** Para *usar* la app, el
+`--reload` de uvicorn y la recarga en caliente de Vite no aportan nada — son
+para cuando se está escribiendo código. Compilando la interfaz una vez y
+sirviéndola desde el propio backend queda **un proceso y un puerto**, y
+desaparece toda la conciliación entre dos orígenes: CORS, la URL del backend
+dentro del frontend, y Node corriendo al lado. El backend sirve
+`frontend/dist` solo si esa carpeta existe; en desarrollo no existe, así que
+**el entorno de desarrollo no cambió en nada**.
+
+**Puerto 8010**, mismo criterio que los 8001/5433 del compose: el entorno de
+desarrollo ya ocupa el 8000. Así se puede estar usando la app por el lanzador
+y programando al mismo tiempo.
+
+**El choque de nombres entre pantallas y endpoints.** Las rutas de la app se
+llaman igual que los endpoints: la pantalla de ventas es `/ventas` y la API de
+ventas también. Con el frontend en su propio puerto no hay conflicto (dos
+orígenes distintos); en un solo puerto sí, y se descubrió probando: entrar a
+`/ventas` devolvía el JSON crudo en vez de la pantalla. Tampoco se arregla con
+una ruta comodín al final, porque FastAPI resuelve en orden de registro y
+`/ventas` de la API gana antes de llegar.
+
+Se resolvió con un middleware que mira **qué tipo de pedido es**, no la
+dirección: si el navegador está *abriendo* una dirección
+(`Sec-Fetch-Mode: navigate` — link, F5, marcador) recibe la interfaz; si es el
+`fetch()` de esa misma interfaz pidiendo `/ventas`, recibe los datos. Las dos
+cosas conviven en la misma dirección. Se descartó la alternativa de mover toda
+la API a un prefijo `/api`: es lo "de manual", pero cambia todas las URLs de
+22 routers, del frontend y de los ejemplos de esta bitácora, para resolver un
+problema que solo existe en este modo. Queda anotado como el arreglo de fondo
+si algún día molesta más.
+
+**Que al cerrar la ventana se apague todo.** En Windows, cerrar la consola no
+mata a los procesos que lanzó: quedarían huérfanos ocupando el puerto. Se usa
+un **Job Object** con `KILL_ON_JOB_CLOSE`, que es el mecanismo del propio
+sistema operativo: Windows termina el grupo cuando se cierra su último handle,
+así que no depende de que el script alcance a ejecutar código de limpieza —
+que es justamente lo que no pasa al cerrar con la X. El detalle fino: se mete
+al grupo **el propio lanzador**, no cada hijo por separado; la pertenencia se
+hereda, así que no hay ventana de carrera entre lanzar un proceso y meterlo.
+
+Dos consecuencias que hubo que manejar:
+- **El navegador se abre con `explorer.exe <url>`**, no lanzándolo directo. Si
+  fuera hijo del lanzador estaría en el grupo, y cerrar el lanzador cerraría
+  el navegador **con todas las pestañas del usuario**. `explorer.exe` ya está
+  corriendo y lo abre desde su propio árbol, afuera del grupo.
+- **Red de seguridad al arrancar:** si quedó algo escuchando en el 8010 se
+  cierra. Es un puerto exclusivo del lanzador, así que lo que esté ahí es de
+  una corrida propia y nunca del entorno de desarrollo.
+
+**Recompilación automática, y por qué la fecha no alcanza.** Compilar en cada
+arranque costaría ~20 s siempre; no compilar nunca haría que un día se mire
+una versión vieja sin saberlo. Se compara la fecha de las fuentes contra la
+del compilado — pero la fecha no dice **con qué `VITE_API_URL`** se compiló: un
+`npm run build` a mano (o el de Docker, que fija `localhost:8001`) deja un
+`dist` más nuevo que las fuentes pero apuntando a otro puerto, y el lanzador
+lo serviría tal cual: la app cargaría y ninguna pantalla traería datos. Por
+eso el lanzador deja una marca (`lanzador/.compilado`) y recompila si falta o
+si el `dist` es más nuevo que ella. La marca va afuera de `dist` porque Vite
+lo vacía en cada build.
+
+Para eso se agregó el valor `VITE_API_URL=MISMO_ORIGEN`, que deja la base de
+las llamadas vacía (salen relativas). No alcanzaba con pasar la variable
+vacía: Vite no distingue "vacía" de "no definida".
+
+**Qué está verificado:**
+- El `.bat` corre de punta a punta: verifica el servicio de PostgreSQL,
+  compila, levanta, espera a que responda y apaga al salir.
+- La lógica de recompilación en sus tres caminos: primera vez, "compilado por
+  otro medio" (detecta el build de Docker y recompila), y "al día" (no
+  compila, arranque de segundos).
+- El servidor único sirviendo las dos cosas en el 8010: `/` y las rutas de
+  pantalla devuelven `text/html`, los `assets` su tipo correcto, y `/clientes`,
+  `/ventas`, `/balance-actual` devuelven JSON al `fetch()`. `/docs` y
+  `/openapi.json` intactos.
+- Los tres valores de `VITE_API_URL` compilan a lo que corresponde: sin
+  variable → `http://127.0.0.1:8000` (desarrollo, sin cambios), `MISMO_ORIGEN`
+  → base vacía, `http://localhost:8001` → Docker.
+- Intentos de salir de `dist` por la ruta comodín (`/../backend/.env`, y sus
+  variantes codificadas): todos devuelven la interfaz, ninguno filtra el
+  archivo.
+- El backend de desarrollo en el 8000 siguió respondiendo normal durante todo
+  el trabajo.
+
+**Segundo lanzador, para demos (jul 2026).** Surgió de querer mostrar el
+sistema a un cliente o en una entrevista sin exponer datos del negocio.
+
+Hallazgo que cambió el plan: **`fabrica_V2_pruebas` no sirve para eso.** El
+nombre sugiere "datos de prueba", pero se verificó antes de armar nada que
+tiene exactamente el mismo contenido que la real (mismos clientes, mismas
+ventas) — es una copia restaurada de un respaldo, no datos inventados.
+Mostrarla filtraría nombres y cifras verdaderas. Así que el demo usa una
+base propia, `fabrica_V2_demo`, con el mismo `docker/seed_demo.sql` que ya
+usaba el modo demo de Docker.
+
+- **Dos `.bat` separados, no un menú.** El momento de usar el demo es con
+  alguien mirando; un menú agrega un paso donde equivocarse de tecla
+  significa mostrar los datos reales. Dos íconos con nombre distinto no
+  tienen esa falla.
+- **Puertos 8010 (real) y 8011 (demo)**, así los dos pueden estar abiertos a
+  la vez. Además esto es lo que hace que el túnel sea seguro por
+  construcción: apunta a *un* puerto, así que exponer uno no expone al otro.
+- **Se resetea en cada apertura**, no por tarea nocturna: el demo se usa un
+  rato y se cierra, y así nunca arrastra lo que tocó la visita anterior. El
+  reseteo corre antes de levantar el servidor; si falla, no queda un demo a
+  medias.
+- **Rol de PostgreSQL acotado** (`fabrica_demo_local`) en vez del
+  superusuario `postgres` que usa el modo real. La mecánica: `load_dotenv()`
+  usa `override=False`, así que basta con setear las variables `DB_*` en el
+  proceso antes de lanzar uvicorn — las hereda el hijo y ganan sobre
+  `backend/.env`, sin tocar ese archivo.
+- Se refactorizó `iniciar.ps1`: toda la mecánica común (Job Object, esperar,
+  abrir navegador, apagar) vive ahora en `_comun.ps1`, y los dos lanzadores
+  solo declaran puerto, base y paso previo. Verificado que el lanzador real
+  se comporta idéntico después del refactor.
+
+**Corrección sobre el alcance del rol acotado.** La primera versión del
+código afirmaba en un comentario que el rol tenía "denegado el CONNECT" a la
+base real. **Es falso, y la prueba lo destapó:** PostgreSQL otorga `CONNECT`
+a `PUBLIC` por defecto en toda base, y no existe un "denegar" por rol — un
+`REVOKE ... FROM <rol>` no quita lo que viene de `PUBLIC`. La única forma
+sería `REVOKE CONNECT ... FROM PUBLIC`, que afecta a todos los roles
+(incluido `powerbi_lectura`) y por eso no se hace desde el script del demo:
+es una decisión sobre la base real.
+
+Lo que sí se verificó con las credenciales del demo contra la base real: no
+puede leer un solo dato (`permiso denegado a la tabla ...`) y
+`information_schema` le devuelve **cero** nombres de tabla, porque esa vista
+filtra por privilegios. O sea: conecta, pero no ve nada. La protección
+efectiva es la de tablas, y así quedó documentado — sin prometer de más.
+
+**Hueco de `.gitignore` encontrado en el camino:** `backend/.env.demo`
+(lleva la contraseña del rol) **no** quedaba ignorado. El patrón `*.env`
+cubre `algo.env`, no `.env.algo`. Se agregó `.env.*` / `backend/.env.*` con
+excepción explícita para `.env.example`, que sí debe versionarse. Verificado
+con `git check-ignore` en ambos sentidos.
+
+**Qué se verificó del demo:**
+- Primera apertura: crea la base, el rol, y `backend/.env.demo`.
+- El demo en el 8011 muestra los clientes ficticios mientras el 8000 sigue
+  mostrando los reales — las dos cosas a la vez, sin pisarse.
+- Se creó un cliente desde la API del demo (simulando a alguien "jugando"
+  con la herramienta), se reabrió el lanzador, y el dato desapareció.
+- El rol acotado puede escribir en su propia base (hace falta: quien ve la
+  demo tiene que poder cargar cosas) pero no leer nada de la real.
 
 ---
 

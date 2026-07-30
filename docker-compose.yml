@@ -12,7 +12,14 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    # La version tiene que ser >= la del PostgreSQL de desarrollo (18), no solo
+    # "una razonablemente nueva". Los respaldos del modo real los genera
+    # `pg_dump 18`, que escribe el archivo en formato 1.16, y el `pg_restore`
+    # de una version anterior no sabe leerlo: falla con "unsupported version
+    # (1.16) in file header" y la base queda vacia. Con 16 el modo demo
+    # funcionaba igual (no usa respaldos), asi que el problema solo habria
+    # aparecido el dia de cargar los datos reales.
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: fabrica
       POSTGRES_USER: fabrica
@@ -26,7 +33,13 @@ services:
       # Publicado para poder conectar Power BI o pgAdmin desde afuera.
       - "5433:5432"
     volumes:
-      - datos_db:/var/lib/postgresql/data
+      # El montaje va en /var/lib/postgresql y NO en .../data, que era lo
+      # correcto hasta la 17. La imagen oficial de la 18 cambio de convencion:
+      # ahora los datos viven en un subdirectorio por version
+      # (/var/lib/postgresql/18/docker), para que un `pg_upgrade` futuro no
+      # tropiece con el limite del punto de montaje. Con el montaje viejo, la
+      # 18 encuentra datos donde no los espera y se niega a arrancar.
+      - datos_db:/var/lib/postgresql
       # Solo lectura: el contenedor no debe poder modificar el repositorio.
       - ./docker/init:/docker-entrypoint-initdb.d:ro
       - ./fabrica_v2_postgres.sql:/sql/00_schema.sql:ro
