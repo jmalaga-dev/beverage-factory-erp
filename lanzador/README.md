@@ -2,17 +2,24 @@
 
 Para **usar** el sistema en el día a día, sin abrir terminales a mano.
 
-```
-Doble clic en  Fabrica V2.bat  (en la raíz del repositorio)
-```
+Hay **dos**, y pueden estar abiertos a la vez:
 
-Levanta todo, abre el navegador en `http://127.0.0.1:8010` y, al cerrar la
-ventana, apaga el servidor.
+| Doble clic en | Qué levanta | Puerto | Datos |
+|---|---|---|---|
+| `Fabrica V2.bat` | la app de trabajo | 8010 | la base **real** |
+| `Fabrica V2 (demo).bat` | para mostrar a terceros | 8011 | **ficticios**, se resetean en cada apertura |
 
-Para tenerlo a mano: clic derecho sobre `Fabrica V2.bat` → **Enviar a** →
+Cada uno abre el navegador solo y, al cerrar la ventana, apaga su servidor.
+
+Para tenerlos a mano: clic derecho sobre el `.bat` → **Enviar a** →
 **Escritorio (crear acceso directo)**. El acceso directo se puede renombrar
 ("Fábrica V2", con acento) y se le puede cambiar el icono; el nombre del
 `.bat` no importa.
+
+**Por qué dos íconos y no un menú adentro de uno solo:** el momento de usar
+el demo suele ser con alguien mirando. Un menú agrega un paso donde
+equivocarse de tecla significa mostrar los datos reales del negocio. Con dos
+íconos de nombre distinto no hay tecla que apretar mal.
 
 ---
 
@@ -24,15 +31,16 @@ Son dos modos distintos y **conviven**:
 |---|---|---|
 | Cómo se arranca | dos terminales a mano | doble clic |
 | Procesos | uvicorn `--reload` + Vite | **uno solo** |
-| Puertos | 8000 (API) + 5173 (interfaz) | **8010** (las dos cosas) |
+| Puertos | 8000 (API) + 5173 (interfaz) | **8010** / **8011** (las dos cosas) |
 | Interfaz | Vite, recarga en caliente | compilada (`dist/`) |
 | CORS | hace falta (dos orígenes) | no hace falta (uno solo) |
 | Node corriendo | sí | no |
 
-El puerto es 8010 y no 8000 **a propósito**, mismo criterio que los 8001/5433
-del `docker-compose.yml`: el entorno de desarrollo ya ocupa el 8000. Así se
-puede estar usando la app por el lanzador y programando al mismo tiempo, sin
-que uno mate al otro ni haya que adivinar cuál de los dos está respondiendo.
+Los puertos son 8010 y 8011, no el 8000, **a propósito** — mismo criterio que
+los 8001/5433 del `docker-compose.yml`: el entorno de desarrollo ya ocupa el
+8000. Así se puede estar usando la app, mostrando el demo y programando al
+mismo tiempo, sin que uno mate al otro ni haya que adivinar cuál de los tres
+está respondiendo.
 
 ---
 
@@ -45,10 +53,14 @@ que uno mate al otro ni haya que adivinar cuál de los dos está respondiendo.
    `backend\.env`.
 3. **Libera el puerto** si quedó un servidor de una corrida anterior.
 4. **Recompila la interfaz solo si hace falta** (ver abajo).
-5. **Levanta un único proceso**: uvicorn sin `--reload`, escuchando en
+5. *(solo el demo)* **Resetea su base de datos** a datos ficticios limpios.
+6. **Levanta un único proceso**: uvicorn sin `--reload`, escuchando en
    `127.0.0.1` (solo esta máquina).
-6. **Espera a que responda** y abre el navegador.
-7. **Se queda esperando.** Al cerrarse, apaga el servidor.
+7. **Espera a que responda** y abre el navegador.
+8. **Se queda esperando.** Al cerrarse, apaga el servidor.
+
+La mecánica común vive en `_comun.ps1`; `iniciar.ps1` e `iniciar-demo.ps1`
+solo dicen en qué puerto, con qué base y si hay que resetear antes.
 
 Si algo falla, el detalle queda en `registro-errores.log` y
 `registro.log` (esta carpeta). No se versionan.
@@ -149,6 +161,68 @@ ya está corriendo: recibe la URL y abre el navegador desde su propio árbol de
 procesos, afuera del grupo.
 
 ---
+
+## El lanzador de demo
+
+Existe para **mostrar el sistema sin exponer un solo dato del negocio**: a un
+cliente, en una entrevista, o para dejarlo accesible un rato por un túnel.
+
+**No reusa `fabrica_V2_pruebas`**, aunque el nombre lo sugiera. Esa base es
+una *copia de la real* (se verificó: mismos clientes, mismas ventas), no
+datos ficticios — mostrarla filtraría nombres y números verdaderos. El demo
+usa una base propia, `fabrica_V2_demo`, con los mismos datos inventados que
+el modo demo de Docker (`docker/seed_demo.sql`): "Cliente Uno Demo",
+productos de fantasía, unas compras y una venta.
+
+### Se resetea en cada apertura
+
+Cada doble clic borra `fabrica_V2_demo` y la reconstruye de cero: esquema +
+migraciones + datos ficticios. Lo que haya tocado (o roto) quien vio la demo
+anterior no se arrastra a la siguiente, sin que haya que acordarse de
+limpiar nada.
+
+El reseteo corre **antes** de levantar el servidor. Si falla, el servidor no
+arranca — no queda un demo a medias.
+
+Se puede correr suelto, para dejarlo listo de antemano sin abrir el
+navegador:
+
+```
+powershell -File lanzador\resetear-demo.ps1
+```
+
+### Un usuario de base de datos aparte, sin acceso a lo real
+
+La app normalmente se conecta como `postgres`, el **superusuario** de todo
+el servidor PostgreSQL. Para el demo eso sería demasiado: si el demo queda
+expuesto por un túnel, quien entre estaría operando con el usuario más
+poderoso de la instalación.
+
+El demo se conecta con `fabrica_demo_local`, un rol que solo tiene permisos
+sobre `fabrica_V2_demo`. Comprobado con esas credenciales contra la base
+real: no puede leer un solo dato (`permiso denegado a la tabla ...`) y
+`information_schema` no le muestra ni un nombre de tabla, porque esa vista
+filtra por privilegios.
+
+> **Matiz, para no prometer de más:** ese rol *sí puede abrir una conexión* a
+> la base real — PostgreSQL le da `CONNECT` a `PUBLIC` por defecto en toda
+> base, y no existe un "denegar" por rol. Cortarlo requeriría
+> `REVOKE CONNECT ON DATABASE "fabrica_V2" FROM PUBLIC`, que afecta a **todos**
+> los roles (incluido `powerbi_lectura`) y por eso no se hace automáticamente:
+> es una decisión sobre la base real, no sobre el demo. La protección efectiva
+> es la de tablas — conecta, pero no ve absolutamente nada.
+
+La contraseña del rol se genera sola la primera vez y queda en
+`backend/.env.demo`, que **no se versiona**.
+
+### Sobre exponerlo por un túnel
+
+El túnel de Cloudflare apunta a **un puerto**. Mientras el túnel apunte al
+8010 (el real), el demo del 8011 no está expuesto en absoluto. Si en cambio
+se quiere mostrar el demo por internet, se arma un túnel al 8011 — y ahí sí
+conviene decidir si lleva Cloudflare Access o no, sabiendo que sin Access
+cualquiera con el link entra (pero solo a datos ficticios que se borran en la
+próxima apertura).
 
 ## Limitaciones
 

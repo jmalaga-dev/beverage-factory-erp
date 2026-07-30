@@ -1976,6 +1976,68 @@ vacía: Vite no distingue "vacía" de "no definida".
 - El backend de desarrollo en el 8000 siguió respondiendo normal durante todo
   el trabajo.
 
+**Segundo lanzador, para demos (jul 2026).** Surgió de querer mostrar el
+sistema a un cliente o en una entrevista sin exponer datos del negocio.
+
+Hallazgo que cambió el plan: **`fabrica_V2_pruebas` no sirve para eso.** El
+nombre sugiere "datos de prueba", pero se verificó antes de armar nada que
+tiene exactamente el mismo contenido que la real (mismos clientes, mismas
+ventas) — es una copia restaurada de un respaldo, no datos inventados.
+Mostrarla filtraría nombres y cifras verdaderas. Así que el demo usa una
+base propia, `fabrica_V2_demo`, con el mismo `docker/seed_demo.sql` que ya
+usaba el modo demo de Docker.
+
+- **Dos `.bat` separados, no un menú.** El momento de usar el demo es con
+  alguien mirando; un menú agrega un paso donde equivocarse de tecla
+  significa mostrar los datos reales. Dos íconos con nombre distinto no
+  tienen esa falla.
+- **Puertos 8010 (real) y 8011 (demo)**, así los dos pueden estar abiertos a
+  la vez. Además esto es lo que hace que el túnel sea seguro por
+  construcción: apunta a *un* puerto, así que exponer uno no expone al otro.
+- **Se resetea en cada apertura**, no por tarea nocturna: el demo se usa un
+  rato y se cierra, y así nunca arrastra lo que tocó la visita anterior. El
+  reseteo corre antes de levantar el servidor; si falla, no queda un demo a
+  medias.
+- **Rol de PostgreSQL acotado** (`fabrica_demo_local`) en vez del
+  superusuario `postgres` que usa el modo real. La mecánica: `load_dotenv()`
+  usa `override=False`, así que basta con setear las variables `DB_*` en el
+  proceso antes de lanzar uvicorn — las hereda el hijo y ganan sobre
+  `backend/.env`, sin tocar ese archivo.
+- Se refactorizó `iniciar.ps1`: toda la mecánica común (Job Object, esperar,
+  abrir navegador, apagar) vive ahora en `_comun.ps1`, y los dos lanzadores
+  solo declaran puerto, base y paso previo. Verificado que el lanzador real
+  se comporta idéntico después del refactor.
+
+**Corrección sobre el alcance del rol acotado.** La primera versión del
+código afirmaba en un comentario que el rol tenía "denegado el CONNECT" a la
+base real. **Es falso, y la prueba lo destapó:** PostgreSQL otorga `CONNECT`
+a `PUBLIC` por defecto en toda base, y no existe un "denegar" por rol — un
+`REVOKE ... FROM <rol>` no quita lo que viene de `PUBLIC`. La única forma
+sería `REVOKE CONNECT ... FROM PUBLIC`, que afecta a todos los roles
+(incluido `powerbi_lectura`) y por eso no se hace desde el script del demo:
+es una decisión sobre la base real.
+
+Lo que sí se verificó con las credenciales del demo contra la base real: no
+puede leer un solo dato (`permiso denegado a la tabla ...`) y
+`information_schema` le devuelve **cero** nombres de tabla, porque esa vista
+filtra por privilegios. O sea: conecta, pero no ve nada. La protección
+efectiva es la de tablas, y así quedó documentado — sin prometer de más.
+
+**Hueco de `.gitignore` encontrado en el camino:** `backend/.env.demo`
+(lleva la contraseña del rol) **no** quedaba ignorado. El patrón `*.env`
+cubre `algo.env`, no `.env.algo`. Se agregó `.env.*` / `backend/.env.*` con
+excepción explícita para `.env.example`, que sí debe versionarse. Verificado
+con `git check-ignore` en ambos sentidos.
+
+**Qué se verificó del demo:**
+- Primera apertura: crea la base, el rol, y `backend/.env.demo`.
+- El demo en el 8011 muestra los clientes ficticios mientras el 8000 sigue
+  mostrando los reales — las dos cosas a la vez, sin pisarse.
+- Se creó un cliente desde la API del demo (simulando a alguien "jugando"
+  con la herramienta), se reabrió el lanzador, y el dato desapareció.
+- El rol acotado puede escribir en su propia base (hace falta: quien ve la
+  demo tiene que poder cargar cosas) pero no leer nada de la real.
+
 ---
 
 ## 9. TIPOS Y VALIDACIONES

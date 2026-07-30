@@ -7,6 +7,14 @@
 *.env
 .env
 .env.local
+# Cualquier variante .env.ALGO (.env.demo lo genera el lanzador de demo con
+# la contrasena de su rol de PostgreSQL). Ojo: `*.env` NO cubre estos casos,
+# porque ahi el .env queda al principio y no como extension. La excepcion es
+# .env.example, que SI se versiona a proposito: es la plantilla sin secretos.
+.env.*
+!.env.example
+backend/.env.*
+!backend/.env.example
 *.key
 
 # Datos personales (CV) - se conserva en disco local, no se publica
